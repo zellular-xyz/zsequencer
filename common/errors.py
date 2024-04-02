@@ -7,6 +7,7 @@ class HtmlErrorCodes:
     PK_ALREADY_SET = 403
     SEQUENCER_CHANGE_NOT_APPROVED = 403
     PERMISSION_DENIED = 403
+    NOT_FOUND = 404
 
 
 class ErrorCodes:
@@ -18,6 +19,7 @@ class ErrorCodes:
     PK_ALREADY_SET = "public_shares_already_set"
     SEQUENCER_CHANGE_NOT_APPROVED = "sequencer_change_not_approved"
     PERMISSION_DENIED = "permission_denied"
+    NOT_FOUND = "not_found"
 
 
 class ErrorMessages:
@@ -29,3 +31,4 @@ class ErrorMessages:
     PK_ALREADY_SET = "The public shares already set."
     SEQUENCER_CHANGE_NOT_APPROVED = "The sequencer change request is not approved."
     PERMISSION_DENIED = "The request is not approved."
+    NOT_FOUND = "Not found."

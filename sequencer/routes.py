@@ -9,6 +9,7 @@ from ..common.errors import ErrorCodes
 from ..common.response_utils import error_response, success_response
 
 sequencer_blueprint = Blueprint("sequencer", __name__)
+cm: db.CollectionManager = db.CollectionManager()
 
 
 @sequencer_blueprint.route("/transactions", methods=["PUT"])
@@ -31,23 +32,26 @@ def put_transactions() -> Response:
     if not is_verified or req_data["node_id"] not in config.NODES:
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
-    with db.insertion_lock:
-        db.insert_txs(req_data["txs"])
-        db.upsert_node_state(
+    with cm.txs._lock:
+        # TODO: Should use bulk insert
+        for tx in req_data["txs"]:
+            cm.txs.insert_tx(tx)
+
+        cm.nodes_state.upsert_node_state(
             req_data["node_id"],
             req_data["index"],
             req_data["chaining_hash"],
         )
 
-        txs: list[Dict[str, Any]] = db.get_txs(req_data["index"])
-        sync_point: Dict[str, Any] = db.get_sync_point() or {}
+        txs: Dict[str, Any] = cm.txs.get_txs(after=req_data["index"])
+        sync_point: Dict[str, Any] = cm.nodes_state.get_sync_point() or {}
 
     # TODO: remove (create issue for testing)
     if config.NODE["id"] == "1":
-        txs = []
+        txs = {}
 
     data: Dict[str, Any] = {
-        "txs": txs,
+        "txs": list(txs.values()),
         "finalized": {
             "index": sync_point.get("index", 0),
             "chaining_hash": sync_point.get("chaining_hash", ""),

@@ -40,7 +40,7 @@ def run_node_tasks() -> None:
 
 
 def run_sequencer_tasks() -> None:
-    loop = asyncio.new_event_loop()
+    loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_sequencer_tasks_async())
 
