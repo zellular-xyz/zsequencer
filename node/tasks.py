@@ -5,40 +5,40 @@ from typing import Any, Dict, List
 
 import requests
 
-import config
+from config import zconfig
 from shared_state import state
 
-from ..common import db, utils
+from ..common import utils
+from ..common.db import zdb
 from ..common.logger import zlogger
 
 switch_lock: threading.Lock = threading.Lock()
-cm: db.CollectionManager = db.CollectionManager()
 
 
 def init_tx(tx: Dict[str, Any]) -> bool:
-    if config.NODE["id"] == config.SEQUENCER["id"]:
+    if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
         return False
 
-    cm.txs.insert_tx(tx)
+    zdb.txs.insert_tx(tx)
     return True
 
 
 def get_finalized(after: int) -> Dict[str, Any]:
-    return cm.txs.get_txs(after=after, states=["finalized"])
+    return zdb.txs.get_txs(after=after, states=["finalized"])
 
 
 def check_finalization() -> None:
-    not_finalized_txs: Dict[str, Any] = cm.txs.get_not_finalized_txs()
+    not_finalized_txs: Dict[str, Any] = zdb.txs.get_not_finalized_txs()
     if not_finalized_txs:
         state.add_missed_txs(not_finalized_txs)
 
 
 def send_txs() -> None:
-    initialized_txs: Dict[str, Any] = cm.txs.get_txs(states=["initialized"])
+    initialized_txs: Dict[str, Any] = zdb.txs.get_txs(states=["initialized"])
 
     last_synced_tx: Dict[str, Any] = (
-        cm.txs.get_last_tx_by_state("sequenced")
-        or cm.txs.get_last_tx_by_state("finalized")
+        zdb.txs.get_last_tx_by_state("sequenced")
+        or zdb.txs.get_last_tx_by_state("finalized")
         or {}
     )
 
@@ -48,7 +48,7 @@ def send_txs() -> None:
     data: str = json.dumps(
         {
             "txs": list(initialized_txs.values()),
-            "node_id": config.NODE["id"],
+            "node_id": zconfig.NODE["id"],
             "index": last_synced_tx.get("index", 0),
             "chaining_hash": last_synced_tx.get("chaining_hash", ""),
             "sig": concat_sig,
@@ -57,7 +57,7 @@ def send_txs() -> None:
     )
 
     headers: Dict[str, str] = {"Content-Type": "application/json"}
-    url: str = f'http://{config.SEQUENCER["host"]}:{config.SEQUENCER["server_port"]}/sequencer/transactions'
+    url: str = f'http://{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["server_port"]}/sequencer/transactions'
     try:
         response: Dict[str, Any] = requests.put(url, data, headers=headers).json()
         if response["status"] == "error":
@@ -95,8 +95,8 @@ def sync_with_sequencer(
         ):
             return
 
-    cm.txs.upsert_sequenced_txs(sequencer_response["txs"])
-    cm.txs.update_finalized_txs(sequencer_response["finalized"]["index"])
+    zdb.txs.upsert_sequenced_txs(sequencer_response["txs"])
+    zdb.txs.update_finalized_txs(sequencer_response["finalized"]["index"])
 
 
 def send_dispute_requests() -> None:
@@ -105,18 +105,18 @@ def send_dispute_requests() -> None:
 
     zlogger.info("sending dispute requests...")
     timestamp: int = int(time.time())
-    new_sequencer_id: str = utils.get_next_sequencer_id(config.SEQUENCER["id"])
+    new_sequencer_id: str = utils.get_next_sequencer_id(zconfig.SEQUENCER["id"])
     proofs: List[Dict[str, Any]] = [
         {
-            "node_id": config.NODE["id"],
-            "old_sequencer_id": config.SEQUENCER["id"],
+            "node_id": zconfig.NODE["id"],
+            "old_sequencer_id": zconfig.SEQUENCER["id"],
             "new_sequencer_id": new_sequencer_id,
             "timestamp": timestamp,
-            "sig": utils.sign(f'{config.SEQUENCER["id"]}{timestamp}'),
+            "sig": utils.sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     ]
-    for node in config.NODES.values():
-        if node["id"] in [config.NODE["id"], config.SEQUENCER["id"]]:
+    for node in zconfig.NODES.values():
+        if node["id"] in [zconfig.NODE["id"], zconfig.SEQUENCER["id"]]:
             continue
 
         try:
@@ -137,7 +137,7 @@ def send_dispute_request(node: Dict[str, Any]) -> Dict[str, Any]:
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
-            "sequencer_id": config.SEQUENCER["id"],
+            "sequencer_id": zconfig.SEQUENCER["id"],
             "txs": list(state.get_missed_txs().values()),
             "timestamp": timestamp,
         }
@@ -149,8 +149,8 @@ def send_dispute_request(node: Dict[str, Any]) -> Dict[str, Any]:
 
 def send_switch_requests(proofs: List[Dict[str, Any]]) -> None:
     zlogger.info("sending switch requests...")
-    for node in config.NODES.values():
-        if node["id"] == config.NODE["id"]:
+    for node in zconfig.NODES.values():
+        if node["id"] == zconfig.NODE["id"]:
             continue
 
         data: str = json.dumps(
@@ -175,35 +175,33 @@ def switch_sequencer(proofs: List[Dict[str, Any]], _type: str) -> bool:
 
         if not utils.is_switch_approved(proofs):
             return False
-
-        zlogger.info("switching the sequencer...")
         state._pause_node.set()
-        assert old_sequencer_id == config.SEQUENCER["id"], "something went wrong"
-        config.update_sequencer(new_sequencer_id)
-        assert new_sequencer_id == config.SEQUENCER["id"], "something went wrong"
+        assert old_sequencer_id == zconfig.SEQUENCER["id"], "something went wrong"
+        zconfig.update_sequencer(new_sequencer_id)
+        assert new_sequencer_id == zconfig.SEQUENCER["id"], "something went wrong"
         state.empty_missed_txs()
         last_finalized_tx: Dict[str, Any] = get_last_finalized_tx()
-        cm.txs.update_finalized_txs(last_finalized_tx["index"])
+        zdb.txs.update_finalized_txs(last_finalized_tx["index"])
 
-        if config.NODE["id"] == new_sequencer_id:
-            cm.txs.sequence_txs(last_finalized_tx)
+        if zconfig.NODE["id"] == new_sequencer_id:
+            zdb.txs.sequence_txs(last_finalized_tx)
             time.sleep(30)
         else:
-            cm.txs.update_reinitialized_txs(last_finalized_tx["index"])
+            zdb.txs.update_reinitialized_txs(last_finalized_tx["index"])
             time.sleep(60)
 
         state._pause_node.clear()
-        return config.SEQUENCER["id"] == new_sequencer_id
+        return zconfig.SEQUENCER["id"] == new_sequencer_id
 
 
 def get_last_finalized_tx() -> Dict[str, Any]:
-    last_finalized_tx: Dict[str, Any] = cm.txs.get_last_tx_by_state("finalized") or {
+    last_finalized_tx: Dict[str, Any] = zdb.txs.get_last_tx_by_state("finalized") or {
         "index": 0,
         "chaining_hash": "",
     }
 
-    for node in config.NODES.values():
-        if node["id"] == config.NODE["id"]:
+    for node in zconfig.NODES.values():
+        if node["id"] == zconfig.NODE["id"]:
             continue
 
         url: str = f'http://{node["host"]}:{node["server_port"]}/node/finalized_transactions/last'

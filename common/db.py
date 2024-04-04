@@ -8,7 +8,7 @@ import pymongo
 from pymongo.cursor import Cursor
 from pymongo.database import Database
 
-import config
+from config import zconfig
 
 
 class DatabaseClient:
@@ -24,7 +24,7 @@ class DatabaseClient:
 
     def _initialize(self):
         self.client = pymongo.MongoClient("mongodb://localhost:27017/")
-        self.database: Database = self.client[config.DB_NAME]
+        self.database: Database = self.client[zconfig.DB_NAME]
 
     def get_database(self) -> Database:
         return self.database
@@ -120,7 +120,7 @@ class TxsColl:
         return {tx["hash"]: tx for tx in cursor}
 
     def get_not_finalized_txs(self) -> Dict[str, Any]:
-        border: int = int(time.time()) - config.FINALIZATION_TIME_BORDER
+        border: int = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
         cursor: Cursor = self.coll.find(
             {"state": {"$ne": "finalized"}, "insertion_timestamp": {"$lt": border}},
             {"_id": 0},
@@ -211,7 +211,7 @@ class NodesStateColl:
     def get_nodes_state(self) -> List[Dict[str, Any]]:
         return list(
             self.coll.find(
-                {"node_id": {"$in": list(config.NODES.keys())}}, {"_id": 0}
+                {"node_id": {"$in": list(zconfig.NODES.keys())}}, {"_id": 0}
             ).sort("index", pymongo.DESCENDING)
         )
 
@@ -275,3 +275,6 @@ class keysColl:
         return self.coll.find_one(
             {"_id": "zellular", "public_shares": {"$exists": True}}
         )
+
+
+zdb: CollectionManager = CollectionManager()

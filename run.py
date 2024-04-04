@@ -2,14 +2,13 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import asyncio
 import threading
 import time
 
 from flask import Flask
 
-import config
+from config import zconfig
 from shared_state import state
 from zsequencer.node import tasks as node_tasks
 from zsequencer.node.routes import node_blueprint
@@ -19,7 +18,7 @@ from zsequencer.sequencer.routes import sequencer_blueprint
 
 def create_app() -> Flask:
     app: Flask = Flask(__name__)
-    app.secret_key = config.SECRET_KEY
+    app.secret_key = zconfig.SECRET_KEY
 
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
@@ -28,8 +27,8 @@ def create_app() -> Flask:
 
 def run_node_tasks() -> None:
     while True:
-        time.sleep(config.SEND_TXS_INTERVAL)
-        if config.NODE["id"] == config.SEQUENCER["id"]:
+        time.sleep(zconfig.SEND_TXS_INTERVAL)
+        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             continue
 
         if state._pause_node.is_set():
@@ -47,8 +46,8 @@ def run_sequencer_tasks() -> None:
 
 async def run_sequencer_tasks_async() -> None:
     while True:
-        time.sleep(config.SYNC_INTERVAL)
-        if config.NODE["id"] != config.SEQUENCER["id"]:
+        time.sleep(zconfig.SYNC_INTERVAL)
+        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
         if state._pause_node.is_set():
@@ -57,8 +56,14 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def run_flask_app(app: Flask, port: int) -> None:
-    app.run(host="localhost", port=port, debug=True, threaded=True, use_reloader=False)
+def run_flask_app(app: Flask) -> None:
+    app.run(
+        host="localhost",
+        port=zconfig.PORT,
+        debug=True,
+        threaded=True,
+        use_reloader=False,
+    )
 
 
 def main() -> None:
@@ -72,7 +77,7 @@ def main() -> None:
     node_tasks_thread.start()
 
     # Start the Zellular node Flask application
-    run_flask_app(app, 6000)
+    run_flask_app(app)
 
 
 if __name__ == "__main__":

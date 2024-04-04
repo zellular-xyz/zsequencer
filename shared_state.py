@@ -8,7 +8,6 @@ class SharedState:
         self._attempts = 0
         self._pause_node = threading.Event()
 
-
     def add_missed_txs(self, txs):
         with self._lock:
             self._missed_txs.update(txs)
@@ -24,7 +23,7 @@ class SharedState:
     def get_missed_txs(self):
         with self._lock:
             return self._missed_txs
-        
+
     def get_missed_txs_number(self):
         with self._lock:
             return len(self._missed_txs)

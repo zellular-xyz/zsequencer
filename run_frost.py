@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import argparse
 
-import config
+from config import zconfig
 from zsequencer.sequencer import tss
 
 if __name__ == "__main__":
@@ -13,7 +13,7 @@ if __name__ == "__main__":
         description="Run Frost node"
     )
     parser.add_argument(
-        "node_id", choices=list(config.NODES.keys()), help="The frost node id"
+        "node_id", choices=list(zconfig.NODES.keys()), help="The frost node id"
     )
     args: argparse.Namespace = parser.parse_args()
 

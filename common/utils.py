@@ -5,13 +5,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from eth_account.datastructures import SignedMessage
 from eth_account.messages import SignableMessage, encode_defunct
-from web3 import Web3
+from web3 import Account
 
-import config
+from config import zconfig
 
 from . import errors, response_utils
-
-w3: Web3 = Web3(Web3.HTTPProvider(config.RPC_URL, request_kwargs={"timeout": 15}))
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 
@@ -19,7 +17,7 @@ Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 def sequencer_only(f: Callable[..., Any]) -> Decorator:
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if config.NODE["id"] != config.SEQUENCER["id"]:
+        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
         return f(*args, **kwargs)
 
@@ -29,7 +27,7 @@ def sequencer_only(f: Callable[..., Any]) -> Decorator:
 def not_sequencer(f: Callable[..., Any]) -> Decorator:
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if config.NODE["id"] == config.SEQUENCER["id"]:
+        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
         return f(*args, **kwargs)
 
@@ -43,8 +41,8 @@ def is_frost_sig_verified(sig: str, index: int, chaining_hash: str) -> bool:
 
 def sign(msg: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=msg)
-    sig: SignedMessage = w3.eth.account.sign_message(
-        message_encoded, private_key=int(config.NODE["private_key"])
+    sig: SignedMessage = Account.sign_message(
+        message_encoded, private_key=int(zconfig.NODE["private_key"])
     )
     return sig.signature.hex()
 
@@ -52,10 +50,8 @@ def sign(msg: str) -> str:
 def is_sig_verified(sig: str, node_id: str, msg: str) -> bool:
     try:
         msg_encoded: SignableMessage = encode_defunct(text=msg)
-        recovered_address: str = w3.eth.account.recover_message(
-            msg_encoded, signature=sig
-        )
-        return recovered_address.lower() == config.NODES[node_id]["address"].lower()
+        recovered_address: str = Account.recover_message(msg_encoded, signature=sig)
+        return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:
         return False
 
@@ -70,7 +66,7 @@ def validate_request(req_data: Dict[str, Any], required_keys: List[str]) -> str:
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
     sorted_nodes: List[Dict[str, Any]] = sorted(
-        config.NODES.values(), key=lambda x: x["id"]
+        zconfig.NODES.values(), key=lambda x: x["id"]
     )
     index: Optional[int] = next(
         (i for i, item in enumerate(sorted_nodes) if item["id"] == old_sequencer_id),
@@ -84,7 +80,7 @@ def get_next_sequencer_id(old_sequencer_id: str) -> str:
 
 def is_switch_approved(proofs: List[Dict[str, Any]]) -> bool:
     approvals: int = sum(1 for proof in proofs if is_dispute_approved(proof))
-    return approvals >= config.THRESHOLD_NUMBER
+    return approvals >= zconfig.THRESHOLD_NUMBER
 
 
 def is_dispute_approved(proof: Dict[str, Any]) -> bool:
@@ -98,9 +94,9 @@ def is_dispute_approved(proof: Dict[str, Any]) -> bool:
     if not all(key in proof for key in required_keys):
         return False
 
-    new_sequencer_id: str = get_next_sequencer_id(config.SEQUENCER["id"])
+    new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
     if (
-        proof["old_sequencer_id"] != config.SEQUENCER["id"]
+        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
         or proof["new_sequencer_id"] != new_sequencer_id
     ):
         return False
@@ -110,7 +106,9 @@ def is_dispute_approved(proof: Dict[str, Any]) -> bool:
         return False
 
     if not is_sig_verified(
-        proof["sig"], proof["node_id"], f'{config.SEQUENCER["id"]}{proof["timestamp"]}'
+        proof["sig"],
+        proof["node_id"],
+        f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
     ):
         return False
 

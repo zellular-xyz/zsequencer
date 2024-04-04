@@ -8,11 +8,10 @@ from pyfrost.network_http.abstract import Validators
 from pyfrost.network_http.node import Node
 from pyfrost.network_http.sa import SA
 
-import config
+from config import zconfig
 
-from ..common import db
+from ..common.db import zdb
 
-cm: db.CollectionManager = db.CollectionManager()
 g_private_key: Dict[str, Any] = {}
 nonces: Dict[str, Any] = {}
 
@@ -32,19 +31,19 @@ class NodeDataManager(DataManager):
         del self.__nonces[nonce_public]
 
     def set_key(self, key: int, value: Dict[str, Any]) -> None:
-        cm.keys.set(public_key=str(key), private_key=json.dumps(value))
+        zdb.keys.set(public_key=str(key), private_key=json.dumps(value))
 
     def get_key(self, key: int) -> Optional[Dict[str, Any]]:
         global g_private_key
         if not g_private_key:
-            keys: Optional[Dict[str, Any]] = cm.keys.get()
+            keys: Optional[Dict[str, Any]] = zdb.keys.get()
             if not keys:
                 return
             g_private_key = json.loads(keys.get("private_key", "{}"))
         return g_private_key
 
     def remove_key(self, key: int) -> None:
-        cm.keys.delete(public_key=str(key))
+        zdb.keys.delete(public_key=str(key))
 
 
 class NodeValidators(Validators):
@@ -53,11 +52,11 @@ class NodeValidators(Validators):
 
     @staticmethod
     def caller_validator(sender_ip: str, method: str) -> bool:
-        if not cm.keys.get():
+        if not zdb.keys.get():
             allowed_methods = ["/v1/dkg/round1", "/v1/dkg/round2", "/v1/dkg/round3"]
         else:
             allowed_methods = ["/v1/sign", "/v1/generate-nonces"]
-        if sender_ip == config.SEQUENCER["host"] and method in allowed_methods:
+        if sender_ip == zconfig.SEQUENCER["host"] and method in allowed_methods:
             return True
         return False
 
@@ -77,7 +76,7 @@ class NodeValidators(Validators):
 
 class NodesInfo(BaseNodeInfo):
     def __init__(self):
-        self.nodes: Dict[str, Any] = config.NODES
+        self.nodes: Dict[str, Any] = zconfig.NODES
 
     def lookup_node(self, node_id: str) -> Dict[str, Any]:
         return self.nodes.get(node_id) or {}
@@ -90,13 +89,13 @@ class NodesInfo(BaseNodeInfo):
 
 async def request_nonces() -> None:
     global nonces
-    if not cm.keys.get_public_shares():
+    if not zdb.keys.get_public_shares():
         return
 
     node_ids: List[str] = [
         n["id"]
-        for n in config.NODES.values()
-        if len(nonces.get(n["id"], [])) < config.MIN_NONCES
+        for n in zconfig.NODES.values()
+        if len(nonces.get(n["id"], [])) < zconfig.MIN_NONCES
     ]
     if not node_ids:
         return
@@ -104,7 +103,7 @@ async def request_nonces() -> None:
     nodes_info: NodesInfo = NodesInfo()
     sa: SA = SA(nodes_info, default_timeout=50)
     nonces_response: Dict[str, Any] = await sa.request_nonces(
-        node_ids, config.MIN_NONCES * 10
+        node_ids, zconfig.MIN_NONCES * 10
     )
     for node_id in node_ids:
         nonces.setdefault(node_id, [])
@@ -114,7 +113,7 @@ async def request_nonces() -> None:
 async def request_sig(
     data: Dict[str, Any], party: List[str]
 ) -> Optional[Dict[str, Any]]:
-    keys: Optional[Dict[str, Any]] = cm.keys.get_public_shares()
+    keys: Optional[Dict[str, Any]] = zdb.keys.get_public_shares()
     if not keys:
         return
 
@@ -125,7 +124,7 @@ async def request_sig(
             continue
         nonces_dict[node_id] = nonces[node_id].pop()
 
-    if len(party) < config.THRESHOLD_NUMBER:
+    if len(party) < zconfig.THRESHOLD_NUMBER:
         await request_nonces()
         return
 
@@ -146,7 +145,7 @@ def run(node_number):
     node: Node = Node(
         data_manager,
         str(node_number),
-        config.NODE["private_key"],
+        zconfig.NODE["private_key"],
         nodes_info,
         NodeValidators.caller_validator,
         NodeValidators.data_validator,
