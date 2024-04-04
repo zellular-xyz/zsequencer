@@ -1,0 +1,123 @@
+import hashlib
+import json
+import os
+import secrets
+import subprocess
+import time
+from typing import Any, Dict, List
+
+import pymongo
+from fastecdsa import curve, keys
+from fastecdsa.encoding.sec1 import SEC1Encoder
+from web3 import Account
+
+client: pymongo.MongoClient = pymongo.MongoClient("mongodb://localhost:27017/")
+
+NUM_INSTANCES: int = 3
+BASE_PORT: int = 6000
+THRESHOLD_NUMBER: int = 2
+
+
+def generate_privates_and_nodes_info() -> tuple[List[int], Dict[str, Any]]:
+    previous_key: int = (
+        71940701385098721223324549130922930535689437869965850741649618196713151413648
+    )
+    nodes_info_dict: Dict[str, Any] = {}
+    privates_list: List[int] = []
+    for i in range(NUM_INSTANCES):
+        key_bytes: bytes = previous_key.to_bytes(32, "big")
+        hashed: bytes = hashlib.sha256(key_bytes).digest()
+        new_private: int = int.from_bytes(hashed, byteorder="big") % curve.secp256k1.q
+        previous_key = new_private
+        public_key: keys.Point = keys.get_public_key(new_private, curve.secp256k1)
+        compressed_pub_key: int = int(
+            SEC1Encoder.encode_public_key(public_key, True).hex(), 16
+        )
+        nodes_info_dict[str(i + 1)] = {
+            "id": str(i + 1),
+            "public_key": compressed_pub_key,
+            "address": Account.from_key(new_private).address,
+            "host": "127.0.0.1",
+            "port": str(5000 + i + 1),
+            "server_port": str(6000 + i + 1),
+        }
+        privates_list.append(new_private)
+    return privates_list, nodes_info_dict
+
+
+def run_command(command_name: str, command_args: str, env_variables: Dict[str, str]):
+    script_dir: str = os.path.dirname(os.path.abspath(__file__))
+    parent_dir: str = os.path.dirname(script_dir)
+    os.chdir(parent_dir)
+
+    command: str = (
+        f"python {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
+    )
+    launch_command: List[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
+    subprocess.Popen(launch_command, env=env_variables)
+
+
+def run():
+    privates_list, nodes_info_dict = generate_privates_and_nodes_info()
+
+    dst_dir: str = "/tmp/dev_net"
+    if not os.path.exists(dst_dir):
+        os.makedirs(dst_dir)
+
+    with open("../nodes.json", "w") as f:
+        f.write(json.dumps(nodes_info_dict))
+
+    for i in range(NUM_INSTANCES):
+        environment_variables: Dict[str, str] = {
+            "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
+            "ZSEQUENCER_SECRET_KEY": secrets.token_hex(24),
+            "ZSEQUENCER_PUBLIC_KEY": str(nodes_info_dict[str(i + 1)]["public_key"]),
+            "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
+            "ZSEQUENCER_NODES_FILE": "./nodes.json",
+            "ZSEQUENCER_DB_NAME": f"zsequencer_dev_{i + 1}",
+            "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
+            "ZSEQUENCER_SEND_TXS_INTERVAL": "5",
+            "ZSEQUENCER_SYNC_INTERVAL": "30",
+            "ZSEQUENCER_MIN_NONCES": "10",
+            "ZSEQUENCER_FINALIZATION_TIME_BORDER": "120",
+            "ZSEQUENCER_ENV_PATH": f"{dst_dir}/node{i + 1}",
+        }
+
+        with open(f"{dst_dir}/node{i + 1}.env", "w") as f:
+            for key, value in environment_variables.items():
+                f.write(f"{key}={value}\n")
+
+        client.drop_database(f"zsequencer_dev_{i + 1}")
+
+        env_variables = os.environ.copy()
+        env_variables.update(environment_variables)
+
+        run_command(
+            "run_frost.py",
+            f"{i + 1}",
+            env_variables,
+        )
+        time.sleep(1)
+        run_command(
+            "run.py",
+            f"/tmp/dev_net/.env.node{i + 1}",
+            env_variables,
+        )
+        time.sleep(1)
+        if i == 2:
+            run_command(
+                "examples/init_network.py",
+                "",
+                env_variables,
+            )
+            time.sleep(1)
+            run_command(
+                "examples/simple_app.py",
+                "",
+                env_variables,
+            )
+            time.sleep(1)
+
+
+if __name__ == "__main__":
+    run()
