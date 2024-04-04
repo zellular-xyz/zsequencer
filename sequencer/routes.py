@@ -2,9 +2,10 @@ from typing import Any, Dict
 
 from flask import Blueprint, Response, request
 
-import config
+from config import zconfig
 
-from ..common import db, utils
+from ..common import utils
+from ..common.db import zdb
 from ..common.errors import ErrorCodes
 from ..common.response_utils import error_response, success_response
 
@@ -28,26 +29,29 @@ def put_transactions() -> Response:
     is_verified: bool = utils.is_sig_verified(
         req_data["sig"], req_data["node_id"], concat_hash
     )
-    if not is_verified or req_data["node_id"] not in config.NODES:
+    if not is_verified or req_data["node_id"] not in zconfig.NODES:
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
-    with db.insertion_lock:
-        db.insert_txs(req_data["txs"])
-        db.upsert_node_state(
+    with zdb.txs._lock:
+        # TODO: Should use bulk insert
+        for tx in req_data["txs"]:
+            zdb.txs.insert_tx(tx)
+
+        zdb.nodes_state.upsert_node_state(
             req_data["node_id"],
             req_data["index"],
             req_data["chaining_hash"],
         )
 
-        txs: list[Dict[str, Any]] = db.get_txs(req_data["index"])
-        sync_point: Dict[str, Any] = db.get_sync_point() or {}
+        txs: Dict[str, Any] = zdb.txs.get_txs(after=req_data["index"])
+        sync_point: Dict[str, Any] = zdb.nodes_state.get_sync_point() or {}
 
     # TODO: remove (create issue for testing)
-    if config.NODE["id"] == "1":
-        txs = []
+    if zconfig.NODE["id"] == "1":
+        txs = {}
 
     data: Dict[str, Any] = {
-        "txs": txs,
+        "txs": list(txs.values()),
         "finalized": {
             "index": sync_point.get("index", 0),
             "chaining_hash": sync_point.get("chaining_hash", ""),
