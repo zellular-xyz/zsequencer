@@ -1,3 +1,5 @@
+import hashlib
+import json
 import time
 from collections import Counter
 from functools import wraps
@@ -132,3 +134,22 @@ def get_switch_parameter_from_proofs(
         return most_common_sequencer[0][0]
     else:
         return None, None
+
+
+def gen_tx_hash(tx: Dict[str, Any]) -> str:
+    tx_copy: Dict[str, Any] = {
+        key: value
+        for key, value in tx.items()
+        if key
+        not in [
+            "state",
+            "index",
+            "chaining_hash",
+            "chaining_hash_sig",
+            "hash",
+            "insertion_timestamp",
+        ]
+    }
+    tx_str: str = json.dumps(tx_copy, sort_keys=True)
+    tx_hash: str = hashlib.sha256(tx_str.encode()).hexdigest()
+    return tx_hash

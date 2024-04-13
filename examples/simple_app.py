@@ -1,31 +1,55 @@
+import json
 import os
 import sys
 import time
 from typing import Any, Dict
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+import requests
 
-from zsequencer.node import tasks as node_tasks
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 
 def send_tx() -> None:
     op: Dict[str, Any] = {
-        "name": "foo",
-        "app": "foo_app",
-        "timestamp": int(time.time() * 1000),
-        "version": 6,
+        "transactions": [
+            {
+                "name": "foo",
+                "app": "foo_app",
+                "amount": 1,
+                "timestamp": int(time.time()),
+                "version": 6,
+            },
+            {
+                "name": "foo",
+                "app": "foo_app",
+                "amount": 2,
+                "timestamp": int(time.time()),
+                "version": 6,
+            },
+        ],
+        "timestamp": int(time.time()),
     }
     print(f"send new operations: {op}")
-    node_tasks.init_tx(op)
+    response = requests.put(
+        "http://localhost:6003/node/transactions",
+        json.dumps(op),
+        headers={"Content-Type": "application/json"},
+    )
+    print(response.json())
 
 
 def sync() -> None:
     last: int = 0
     while True:
-        finalized_txs: Dict[str, Any] = node_tasks.get_finalized(last)
+        response = requests.get(
+            "http://localhost:6003/node/transactions",
+            params={"after": last, "states": ["finalized"]},
+        )
+        finalized_txs = response.json().get("data")
         if finalized_txs:
-            last: int = max(tx["index"] for tx in finalized_txs.values())
-            print("receive finalized operations: ", finalized_txs)
+            last: int = max(tx["index"] for tx in finalized_txs)
+            print("\nreceive finalized operations: ", finalized_txs)
+            break
         time.sleep(5)
 
 

@@ -7,8 +7,25 @@ from ..common.logger import zlogger
 from . import tss
 
 
+def sequence_transactions(txs: List[Dict[str, Any]]):
+    last_synced_tx: Dict[str, Any] = zdb.get_last_tx_by_state("sequenced") or {}
+    last_chaining_hash: str = last_synced_tx.get("chaining_hash", "")
+    index: int = last_synced_tx.get("index", 0)
+    for tx in txs:
+        tx_hash: str = zdb.gen_tx_hash(tx)
+        if tx_hash in zdb.transactions:
+            continue
+        index += 1
+        tx["index"] = index
+        tx["hash"] = tx_hash
+        tx["state"] = "sequenced"
+        tx["chaining_hash"] = zdb.gen_chaining_hash(last_chaining_hash, tx_hash)
+        last_chaining_hash = tx["chaining_hash"]
+    zdb.insert_txs(txs)
+
+
 def find_sync_point() -> Tuple[Optional[Dict[str, Any]], List[str]]:
-    sorted_states: List[Dict[str, Any]] = zdb.nodes_state.get_nodes_state()
+    sorted_states: List[Dict[str, Any]] = zdb.get_nodes_state()
     for state in sorted_states:
         party: List[str] = [
             s["node_id"] for s in sorted_states if s["index"] >= state["index"]
@@ -36,8 +53,8 @@ async def sync() -> None:
     # convert bytes to hex (bytes is not JSON serializable)
     sig["message_bytes"] = sig["message_bytes"].hex()
 
-    zdb.nodes_state.upsert_sync_point(state, sig)
-    zdb.txs.update_finalized_txs(state["index"])
+    zdb.upsert_sync_point(state, sig)
+    zdb.update_finalized_txs(state["index"])
 
 
 async def request_nonces() -> None:

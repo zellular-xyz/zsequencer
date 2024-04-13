@@ -2,11 +2,11 @@ import hashlib
 import json
 from typing import Any, Dict, List, Optional
 
-from pyfrost.network_http.abstract import DataManager
-from pyfrost.network_http.abstract import NodesInfo as BaseNodeInfo
-from pyfrost.network_http.abstract import Validators
-from pyfrost.network_http.node import Node
-from pyfrost.network_http.sa import SA
+from pyfrost.network.abstract import DataManager
+from pyfrost.network.abstract import NodesInfo as BaseNodeInfo
+from pyfrost.network.abstract import Validators
+from pyfrost.network.node import Node
+from pyfrost.network.sa import SA
 
 from config import zconfig
 
@@ -31,19 +31,19 @@ class NodeDataManager(DataManager):
         del self.__nonces[nonce_public]
 
     def set_key(self, key: int, value: Dict[str, Any]) -> None:
-        zdb.keys.set(public_key=str(key), private_key=json.dumps(value))
+        zdb.set_keys(public_key=str(key), private_key=json.dumps(value))
 
     def get_key(self, key: int) -> Optional[Dict[str, Any]]:
         global g_private_key
         if not g_private_key:
-            keys: Optional[Dict[str, Any]] = zdb.keys.get()
+            keys: Optional[Dict[str, Any]] = zdb.get_keys()
             if not keys:
                 return
             g_private_key = json.loads(keys.get("private_key", "{}"))
         return g_private_key
 
     def remove_key(self, key: int) -> None:
-        zdb.keys.delete(public_key=str(key))
+        zdb.delete_keys(public_key=str(key))
 
 
 class NodeValidators(Validators):
@@ -52,10 +52,14 @@ class NodeValidators(Validators):
 
     @staticmethod
     def caller_validator(sender_ip: str, method: str) -> bool:
-        if not zdb.keys.get():
-            allowed_methods = ["/v1/dkg/round1", "/v1/dkg/round2", "/v1/dkg/round3"]
+        if not zdb.get_keys():
+            allowed_methods = [
+                "/pyfrost/v1/dkg/round1",
+                "/pyfrost/v1/dkg/round2",
+                "/pyfrost/v1/dkg/round3",
+            ]
         else:
-            allowed_methods = ["/v1/sign", "/v1/generate-nonces"]
+            allowed_methods = ["/pyfrost/v1/sign", "/pyfrost/v1/generate-nonces"]
         if sender_ip == zconfig.SEQUENCER["host"] and method in allowed_methods:
             return True
         return False
@@ -75,6 +79,8 @@ class NodeValidators(Validators):
 
 
 class NodesInfo(BaseNodeInfo):
+    prefix = "/pyfrost"
+
     def __init__(self):
         self.nodes: Dict[str, Any] = zconfig.NODES
 
@@ -89,7 +95,7 @@ class NodesInfo(BaseNodeInfo):
 
 async def request_nonces() -> None:
     global nonces
-    if not zdb.keys.get_public_shares():
+    if not zdb.get_public_shares():
         return
 
     node_ids: List[str] = [
@@ -113,7 +119,7 @@ async def request_nonces() -> None:
 async def request_sig(
     data: Dict[str, Any], party: List[str]
 ) -> Optional[Dict[str, Any]]:
-    keys: Optional[Dict[str, Any]] = zdb.keys.get_public_shares()
+    keys: Optional[Dict[str, Any]] = zdb.get_public_shares()
     if not keys:
         return
 
@@ -139,10 +145,10 @@ async def request_sig(
     return signature
 
 
-def run(node_number):
+def gen_node(node_number: int) -> Node:
     data_manager: NodeDataManager = NodeDataManager()
     nodes_info: NodesInfo = NodesInfo()
-    node: Node = Node(
+    return Node(
         data_manager,
         str(node_number),
         zconfig.NODE["private_key"],
@@ -150,4 +156,3 @@ def run(node_number):
         NodeValidators.caller_validator,
         NodeValidators.data_validator,
     )
-    node.run_app()

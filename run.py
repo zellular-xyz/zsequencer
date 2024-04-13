@@ -2,6 +2,7 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import argparse
 import asyncio
 import threading
 import time
@@ -13,15 +14,17 @@ from shared_state import state
 from zsequencer.node import tasks as node_tasks
 from zsequencer.node.routes import node_blueprint
 from zsequencer.sequencer import tasks as sequencer_tasks
+from zsequencer.sequencer import tss
 from zsequencer.sequencer.routes import sequencer_blueprint
 
 
-def create_app() -> Flask:
+def create_app(tss_blueprint) -> Flask:
     app: Flask = Flask(__name__)
     app.secret_key = zconfig.SECRET_KEY
 
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
+    app.register_blueprint(tss_blueprint, url_prefix="/pyfrost")
     return app
 
 
@@ -66,8 +69,9 @@ def run_flask_app(app: Flask) -> None:
     )
 
 
-def main() -> None:
-    app: Flask = create_app()
+def main(node_id) -> None:
+    tss_node = tss.gen_node(node_id)
+    app: Flask = create_app(tss_node.blueprint)
 
     # Start periodic task in a thread
     sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
@@ -81,4 +85,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description="Run Zellular Node"
+    )
+    parser.add_argument(
+        "node_id", choices=list(zconfig.NODES.keys()), help="The frost node id"
+    )
+    args: argparse.Namespace = parser.parse_args()
+
+    main(args.node_id)

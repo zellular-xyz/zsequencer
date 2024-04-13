@@ -15,30 +15,18 @@ from ..common.logger import zlogger
 switch_lock: threading.Lock = threading.Lock()
 
 
-def init_tx(tx: Dict[str, Any]) -> bool:
-    if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
-        return False
-
-    zdb.txs.insert_tx(tx)
-    return True
-
-
-def get_finalized(after: int) -> Dict[str, Any]:
-    return zdb.txs.get_txs(after=after, states=["finalized"])
-
-
 def check_finalization() -> None:
-    not_finalized_txs: Dict[str, Any] = zdb.txs.get_not_finalized_txs()
+    not_finalized_txs: Dict[str, Any] = zdb.get_not_finalized_txs()
     if not_finalized_txs:
         state.add_missed_txs(not_finalized_txs)
 
 
 def send_txs() -> None:
-    initialized_txs: Dict[str, Any] = zdb.txs.get_txs(states=["initialized"])
+    initialized_txs: Dict[str, Any] = zdb.get_txs(states=["initialized"])
 
     last_synced_tx: Dict[str, Any] = (
-        zdb.txs.get_last_tx_by_state("sequenced")
-        or zdb.txs.get_last_tx_by_state("finalized")
+        zdb.get_last_tx_by_state("sequenced")
+        or zdb.get_last_tx_by_state("finalized")
         or {}
     )
 
@@ -57,12 +45,13 @@ def send_txs() -> None:
     )
 
     headers: Dict[str, str] = {"Content-Type": "application/json"}
-    url: str = f'http://{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["server_port"]}/sequencer/transactions'
+    url: str = f'http://{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["port"]}/sequencer/transactions'
     try:
         response: Dict[str, Any] = requests.put(url, data, headers=headers).json()
         if response["status"] == "error":
             state.add_missed_txs(initialized_txs)
             return
+
 
         sync_with_sequencer(initialized_txs, response["data"])
     except Exception:
@@ -95,15 +84,15 @@ def sync_with_sequencer(
         ):
             return
 
-    zdb.txs.upsert_sequenced_txs(sequencer_response["txs"])
-    zdb.txs.update_finalized_txs(sequencer_response["finalized"]["index"])
+    zdb.upsert_sequenced_txs(sequencer_response["txs"])
+    zdb.update_finalized_txs(sequencer_response["finalized"]["index"])
 
 
 def send_dispute_requests() -> None:
+
     if not state.get_missed_txs_number():
         return
 
-    zlogger.info("sending dispute requests...")
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(zconfig.SEQUENCER["id"])
     proofs: List[Dict[str, Any]] = [
@@ -142,7 +131,7 @@ def send_dispute_request(node: Dict[str, Any]) -> Dict[str, Any]:
             "timestamp": timestamp,
         }
     )
-    url: str = f'http://{node["host"]}:{node["server_port"]}/node/dispute'
+    url: str = f'http://{node["host"]}:{node["port"]}/node/dispute'
     headers: Dict[str, str] = {"Content-Type": "application/json"}
     return requests.post(url, data, headers=headers).json()
 
@@ -159,7 +148,7 @@ def send_switch_requests(proofs: List[Dict[str, Any]]) -> None:
                 "timestamp": int(time.time()),
             }
         )
-        url: str = f'http://{node["host"]}:{node["server_port"]}/node/switch'
+        url: str = f'http://{node["host"]}:{node["port"]}/node/switch'
         headers: Dict[str, str] = {"Content-Type": "application/json"}
         try:
             requests.post(url, data, headers=headers).json()
@@ -181,13 +170,13 @@ def switch_sequencer(proofs: List[Dict[str, Any]], _type: str) -> bool:
         assert new_sequencer_id == zconfig.SEQUENCER["id"], "something went wrong"
         state.empty_missed_txs()
         last_finalized_tx: Dict[str, Any] = get_last_finalized_tx()
-        zdb.txs.update_finalized_txs(last_finalized_tx["index"])
+        zdb.update_finalized_txs(last_finalized_tx["index"])
 
         if zconfig.NODE["id"] == new_sequencer_id:
-            zdb.txs.sequence_txs(last_finalized_tx)
+            zdb.sequence_txs(last_finalized_tx)
             time.sleep(30)
         else:
-            zdb.txs.update_reinitialized_txs(last_finalized_tx["index"])
+            zdb.update_reinitialized_txs(last_finalized_tx["index"])
             time.sleep(60)
 
         state._pause_node.clear()
@@ -195,7 +184,7 @@ def switch_sequencer(proofs: List[Dict[str, Any]], _type: str) -> bool:
 
 
 def get_last_finalized_tx() -> Dict[str, Any]:
-    last_finalized_tx: Dict[str, Any] = zdb.txs.get_last_tx_by_state("finalized") or {
+    last_finalized_tx: Dict[str, Any] = zdb.get_last_tx_by_state("finalized") or {
         "index": 0,
         "chaining_hash": "",
     }
@@ -204,7 +193,7 @@ def get_last_finalized_tx() -> Dict[str, Any]:
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        url: str = f'http://{node["host"]}:{node["server_port"]}/node/finalized_transactions/last'
+        url: str = f'http://{node["host"]}:{node["port"]}/node/finalized_transactions/last'
         headers: Dict[str, str] = {"Content-Type": "application/json"}
         try:
             response: requests.Response = requests.get(url, headers=headers)

@@ -6,12 +6,9 @@ import subprocess
 import time
 from typing import Any, Dict, List
 
-import pymongo
 from fastecdsa import curve, keys
 from fastecdsa.encoding.sec1 import SEC1Encoder
 from web3 import Account
-
-client: pymongo.MongoClient = pymongo.MongoClient("mongodb://localhost:27017/")
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
@@ -38,8 +35,7 @@ def generate_privates_and_nodes_info() -> tuple[List[int], Dict[str, Any]]:
             "public_key": compressed_pub_key,
             "address": Account.from_key(new_private).address,
             "host": "127.0.0.1",
-            "port": str(5000 + i + 1),
-            "server_port": str(6000 + i + 1),
+            "port": str(6000 + i + 1),
         }
         privates_list.append(new_private)
     return privates_list, nodes_info_dict
@@ -74,7 +70,8 @@ def run():
             "ZSEQUENCER_PUBLIC_KEY": str(nodes_info_dict[str(i + 1)]["public_key"]),
             "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
             "ZSEQUENCER_NODES_FILE": "./nodes.json",
-            "ZSEQUENCER_DB_NAME": f"zsequencer_dev_{i + 1}",
+            "ZSEQUENCER_SNAPSHOT_CHUNK": "1000",
+            "ZSEQUENCER_SNAPSHOT_PATH": "./data/",
             "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
             "ZSEQUENCER_SEND_TXS_INTERVAL": "5",
             "ZSEQUENCER_SYNC_INTERVAL": "30",
@@ -87,23 +84,15 @@ def run():
             for key, value in environment_variables.items():
                 f.write(f"{key}={value}\n")
 
-        client.drop_database(f"zsequencer_dev_{i + 1}")
-
         env_variables = os.environ.copy()
         env_variables.update(environment_variables)
 
         run_command(
-            "run_frost.py",
+            "run.py",
             f"{i + 1}",
             env_variables,
         )
-        time.sleep(1)
-        run_command(
-            "run.py",
-            f"/tmp/dev_net/.env.node{i + 1}",
-            env_variables,
-        )
-        time.sleep(1)
+        time.sleep(2)
         if i == 2:
             run_command(
                 "examples/init_network.py",
