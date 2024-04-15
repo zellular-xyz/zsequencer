@@ -166,16 +166,12 @@ class InMemoryDB:
             last_chaining_hash = tx["chaining_hash"]
 
     def update_finalized_txs(self, to_: int) -> None:
-        snapshot_index: int = 0
         for tx_hash, tx in self.transactions.items():
             if tx.get("state") == "sequenced" and tx.get("index", -1) <= to_:
                 tx["state"] = "finalized"
                 if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
-                    snapshot_index = tx["index"]
-        # TODO: Should transfer to the node code
-        # TODO: should check multiple snapshot
-        if snapshot_index:
-            self.save_snapshot(snapshot_index)
+                    # TODO: Should transfer to the node code
+                    self.save_snapshot(tx["index"])
 
     def update_reinitialized_txs(self, from_: int) -> None:
         timestamp = int(time.time())
@@ -217,7 +213,7 @@ class InMemoryDB:
         states = [
             state
             for state in self.nodes_state.values()
-            if state["node_id"] in zconfig.NODES
+            if state.get("node_id") in zconfig.NODES
         ]
         return sorted(states, key=lambda x: x["index"], reverse=True)
 
