@@ -138,7 +138,7 @@ async def request_sig(
     sa: SA = SA(nodes_info, default_timeout=50)
     sa_data: Dict[str, Any] = {"data": data}
     keys["public_key"] = int(keys["public_key"])
-    keys["public_shares"] = json.loads(keys["public_shares"])
+    keys["public_shares"] = keys["public_shares"]
     keys["party"] = party
 
     signature = await sa.request_signature(keys, nonces_dict, sa_data, party)
