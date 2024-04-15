@@ -244,7 +244,7 @@ class InMemoryDB:
         self.keys.setdefault("zellular", {})
         self.keys["zellular"].update(
             {
-                "public_shares": json.dumps(data["public_shares"]),
+                "public_shares": data["public_shares"],
                 "party": data["party"],
             }
         )
