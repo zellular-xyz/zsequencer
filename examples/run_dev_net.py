@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import time
 from typing import Any, Dict, List
@@ -60,10 +61,20 @@ def run():
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
 
-    with open("../nodes.json", "w") as f:
+    script_dir: str = os.path.dirname(os.path.abspath(__file__))
+    parent_dir: str = os.path.dirname(script_dir)
+    os.chdir(parent_dir)
+
+    with open("./nodes.json", "w") as f:
         f.write(json.dumps(nodes_info_dict))
 
     for i in range(NUM_INSTANCES):
+        data_dir = f"./db__{i + 1}"
+        try:
+            shutil.rmtree(data_dir)
+        except Exception:
+            pass
+
         environment_variables: Dict[str, str] = {
             "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
             "ZSEQUENCER_SECRET_KEY": secrets.token_hex(24),
@@ -71,10 +82,10 @@ def run():
             "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
             "ZSEQUENCER_NODES_FILE": "./nodes.json",
             "ZSEQUENCER_SNAPSHOT_CHUNK": "1000",
-            "ZSEQUENCER_SNAPSHOT_PATH": "./data/",
+            "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
             "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
             "ZSEQUENCER_SEND_TXS_INTERVAL": "5",
-            "ZSEQUENCER_SYNC_INTERVAL": "30",
+            "ZSEQUENCER_SYNC_INTERVAL": "15",
             "ZSEQUENCER_MIN_NONCES": "10",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER": "120",
             "ZSEQUENCER_ENV_PATH": f"{dst_dir}/node{i + 1}",

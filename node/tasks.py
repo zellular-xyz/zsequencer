@@ -25,9 +25,7 @@ def send_txs() -> None:
     initialized_txs: Dict[str, Any] = zdb.get_txs(states=["initialized"])
 
     last_synced_tx: Dict[str, Any] = (
-        zdb.get_last_tx_by_state("sequenced")
-        or zdb.get_last_tx_by_state("finalized")
-        or {}
+        zdb.last_sequenced_tx or zdb.last_finalized_tx or {}
     )
 
     concat_hash: str = "".join(initialized_txs.keys())
@@ -51,7 +49,6 @@ def send_txs() -> None:
         if response["status"] == "error":
             state.add_missed_txs(initialized_txs)
             return
-
 
         sync_with_sequencer(initialized_txs, response["data"])
     except Exception:
@@ -89,7 +86,6 @@ def sync_with_sequencer(
 
 
 def send_dispute_requests() -> None:
-
     if not state.get_missed_txs_number():
         return
 
@@ -184,7 +180,7 @@ def switch_sequencer(proofs: List[Dict[str, Any]], _type: str) -> bool:
 
 
 def get_last_finalized_tx() -> Dict[str, Any]:
-    last_finalized_tx: Dict[str, Any] = zdb.get_last_tx_by_state("finalized") or {
+    last_finalized_tx: Dict[str, Any] = zdb.last_finalized_tx or {
         "index": 0,
         "chaining_hash": "",
     }
@@ -193,7 +189,9 @@ def get_last_finalized_tx() -> Dict[str, Any]:
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        url: str = f'http://{node["host"]}:{node["port"]}/node/finalized_transactions/last'
+        url: str = (
+            f'http://{node["host"]}:{node["port"]}/node/finalized_transactions/last'
+        )
         headers: Dict[str, str] = {"Content-Type": "application/json"}
         try:
             response: requests.Response = requests.get(url, headers=headers)

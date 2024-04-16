@@ -24,12 +24,25 @@ class InMemoryDB:
         self.transactions: Dict[str, Dict[str, Any]] = {}
         self.nodes_state: Dict[str, Dict[str, Any]] = {}
         self.keys: Dict[str, Any] = {}
+        self.last_sequenced_tx = {}
+        self.last_finalized_tx = {}
         self.load_state()
 
     def load_state(self) -> None:
         self.nodes_state = {}
         self.keys = self.load_keys()
         self.transactions = self.load_transactions()
+        for tx in self.transactions.values():
+            if tx.get("state") == "sequenced":
+                if not self.last_sequenced_tx or tx.get(
+                    "index", -1
+                ) > self.last_sequenced_tx.get("index", "-1"):
+                    self.last_sequenced_tx = tx
+            elif tx.get("state") == "finalized":
+                if not self.last_finalized_tx or tx.get(
+                    "index", -1
+                ) > self.last_finalized_tx.get("index", "-1"):
+                    self.last_finalized_tx = tx
 
     @staticmethod
     def load_keys() -> Dict[str, Any]:
@@ -65,15 +78,24 @@ class InMemoryDB:
             return json.load(f)
 
     def save_snapshot(self, index: int) -> None:
+        snapshot_border = index - zconfig.SNAPSHOT_CHUNK
+        remove_border = max(index - zconfig.SNAPSHOT_CHUNK * 2, 0)
+
         snapshot_path: str = os.path.join(zconfig.SNAPSHOT_PATH, f"{index}.json.gz")
         with gzip.open(snapshot_path, "wt", encoding="UTF-8") as f:
             json.dump(
-                {k: v for k, v in self.transactions.items() if v["index"] <= index},
+                {
+                    k: v
+                    for k, v in self.transactions.items()
+                    if snapshot_border < v.get("index", 0) <= index
+                },
                 f,
             )
 
         self.transactions = {
-            k: v for k, v in self.transactions.items() if v["index"] > index
+            k: v
+            for k, v in self.transactions.items()
+            if v["state"] == "initialized" or v["index"] > remove_border
         }
 
         keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
@@ -110,14 +132,13 @@ class InMemoryDB:
     ) -> Dict[str, Dict[str, Any]]:
         filtered_txs = {}
         for tx_hash, tx in self.transactions.items():
-            if after is not None and tx.get("index", 0) <= after:
+            if after is not None and tx.get("index", -1) <= after:
                 continue
 
             if states and tx.get("state") not in states:
                 continue
 
             filtered_txs[tx_hash] = tx
-
         return filtered_txs
 
     def get_tx(
@@ -138,14 +159,6 @@ class InMemoryDB:
 
         return not_finalized_txs
 
-    def get_last_tx_by_state(self, state: str) -> Optional[Dict[str, Any]]:
-        last_tx = None
-        for tx in self.transactions.values():
-            if tx.get("state") == state:
-                if last_tx is None or tx.get("index", -1) > last_tx.get("index", -1):
-                    last_tx = tx
-        return last_tx
-
     def insert_txs(self, txs: List[Dict[str, Any]]) -> None:
         for tx in txs:
             tx.setdefault("hash", self.gen_tx_hash(tx))
@@ -155,8 +168,7 @@ class InMemoryDB:
             self.transactions[tx["hash"]] = tx
 
     def upsert_sequenced_txs(self, txs: List[Dict[str, Any]]) -> None:
-        last_synced_tx: Dict[str, Any] = self.get_last_tx_by_state("sequenced") or {}
-        last_chaining_hash: str = last_synced_tx.get("chaining_hash", "")
+        last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
         for tx in txs:
             tx_hash: str = self.gen_tx_hash(tx)
             tx["state"] = "sequenced"
@@ -164,11 +176,16 @@ class InMemoryDB:
             tx["insertion_timestamp"] = int(time.time())
             self.transactions[tx_hash] = tx
             last_chaining_hash = tx["chaining_hash"]
+            if tx["index"] > self.last_sequenced_tx.get("index", -1):
+                self.last_sequenced_tx = tx
 
     def update_finalized_txs(self, to_: int) -> None:
         for tx_hash, tx in self.transactions.items():
             if tx.get("state") == "sequenced" and tx.get("index", -1) <= to_:
                 tx["state"] = "finalized"
+                if tx["index"] > self.last_finalized_tx.get("index", -1):
+                    self.last_finalized_tx = tx
+
                 if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     # TODO: Should transfer to the node code
                     self.save_snapshot(tx["index"])

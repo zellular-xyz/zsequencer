@@ -79,7 +79,7 @@ class NodeValidators(Validators):
 
 
 class NodesInfo(BaseNodeInfo):
-    prefix = "/pyfrost"
+    prefix: str = "/pyfrost"
 
     def __init__(self):
         self.nodes: Dict[str, Any] = zconfig.NODES

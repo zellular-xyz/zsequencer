@@ -8,7 +8,7 @@ from . import tss
 
 
 def sequence_transactions(txs: List[Dict[str, Any]]):
-    last_synced_tx: Dict[str, Any] = zdb.get_last_tx_by_state("sequenced") or {}
+    last_synced_tx: Dict[str, Any] = zdb.last_sequenced_tx
     last_chaining_hash: str = last_synced_tx.get("chaining_hash", "")
     index: int = last_synced_tx.get("index", 0)
     for tx in txs:
@@ -21,6 +21,7 @@ def sequence_transactions(txs: List[Dict[str, Any]]):
         tx["state"] = "sequenced"
         tx["chaining_hash"] = zdb.gen_chaining_hash(last_chaining_hash, tx_hash)
         last_chaining_hash = tx["chaining_hash"]
+    zdb.last_sequenced_tx = tx
     zdb.insert_txs(txs)
 
 

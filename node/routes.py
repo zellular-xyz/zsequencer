@@ -15,6 +15,12 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
+# TODO: should remove
+@node_blueprint.route("/db", methods=["GET"])
+def get_db() -> List[Dict[str, Any]]:
+    return sorted(zdb.transactions.values(), key=lambda m: m.get("index"))
+
+
 @node_blueprint.route("/transactions", methods=["PUT"])
 @utils.not_sequencer
 def put_transactions() -> Response:
@@ -61,26 +67,23 @@ def post_dispute() -> Response:
 
 @node_blueprint.route("/state", methods=["GET"])
 def get_state() -> Response:
-    last_sequenced_tx: Dict[str, Any] = zdb.get_last_tx_by_state("sequenced") or {}
-    last_finalized_tx: Dict[str, Any] = zdb.get_last_tx_by_state("finalized") or {}
     data: Dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
         "public_key": zconfig.NODE["public_key"],
         "address": zconfig.NODE["address"],
-        "last_sequenced_index": last_sequenced_tx.get("index", 0),
-        "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
-        "last_finalized_index": last_finalized_tx.get("index", 0),
-        "last_finalized_hash": last_finalized_tx.get("hash", ""),
+        "last_sequenced_index": zdb.last_sequenced_tx.get("index", 0),
+        "last_sequenced_hash": zdb.last_sequenced_tx.get("hash", ""),
+        "last_finalized_index": zdb.last_finalized_tx.get("index", 0),
+        "last_finalized_hash": zdb.last_finalized_tx.get("hash", ""),
     }
     return success_response(data=data)
 
 
 @node_blueprint.route("/finalized_transactions/last", methods=["GET"])
 def get_last_finalized_tx() -> Response:
-    last_finalized_tx: Dict[str, Any] = zdb.get_last_tx_by_state("finalized") or {}
-    return success_response(data=last_finalized_tx)
+    return success_response(data=zdb.last_finalized_tx)
 
 
 @node_blueprint.route("/distributed_keys", methods=["PUT"])

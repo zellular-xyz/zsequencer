@@ -3,33 +3,30 @@ import os
 import sys
 import time
 from typing import Any, Dict
+import threading
 
 import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 
-def send_tx() -> None:
+def send_batch_txs(batch_number) -> None:
     op: Dict[str, Any] = {
         "transactions": [
             {
                 "name": "foo",
                 "app": "foo_app",
-                "amount": 1,
+                "serial": f"{batch_number}_{i}",
                 "timestamp": int(time.time()),
                 "version": 6,
-            },
-            {
-                "name": "foo",
-                "app": "foo_app",
-                "amount": 2,
-                "timestamp": int(time.time()),
-                "version": 6,
-            },
+            }
+            for i in range(500)
         ],
         "timestamp": int(time.time()),
     }
-    print(f"send new operations: {op}")
+    print(
+        f'sending {len(op["transactions"])} new operations (batch {batch_number + 1})'
+    )
     response = requests.put(
         "http://localhost:6003/node/transactions",
         json.dumps(op),
@@ -48,11 +45,22 @@ def sync() -> None:
         finalized_txs = response.json().get("data")
         if finalized_txs:
             last: int = max(tx["index"] for tx in finalized_txs)
-            print("\nreceive finalized operations: ", finalized_txs)
-            break
+            print("\nreceive finalized indexes: ", [t["index"] for t in finalized_txs])
         time.sleep(5)
 
 
+def start_sending_transactions():
+    for batch_number in range(10):
+        send_batch_txs(batch_number)
+        time.sleep(10)
+
+
 if __name__ == "__main__":
-    send_tx()
-    sync()
+    sender_thread = threading.Thread(target=start_sending_transactions)
+    sync_thread = threading.Thread(target=sync)
+
+    sender_thread.start()
+    sync_thread.start()
+
+    sync_thread.join()
+    sender_thread.join()

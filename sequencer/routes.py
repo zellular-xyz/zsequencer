@@ -21,7 +21,6 @@ def put_transactions() -> Response:
 
     req_data: Dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = ["node_id", "index", "chaining_hash", "sig", "txs"]
-
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
@@ -34,7 +33,8 @@ def put_transactions() -> Response:
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
     with zdb._lock:
-        tasks.sequence_transactions(req_data["txs"])
+        if req_data["txs"]:
+            tasks.sequence_transactions(req_data["txs"])
 
         zdb.upsert_node_state(
             req_data["node_id"],
