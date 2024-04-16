@@ -52,7 +52,7 @@ def sync() -> None:
 def start_sending_transactions():
     for batch_number in range(10):
         send_batch_txs(batch_number)
-        time.sleep(10)
+        time.sleep(2)
 
 
 if __name__ == "__main__":

@@ -87,7 +87,8 @@ class InMemoryDB:
                 {
                     k: v
                     for k, v in self.transactions.items()
-                    if snapshot_border < v.get("index", 0) <= index
+                    if v["state"] == "finalized"
+                    and snapshot_border < v.get("index", 0) <= index
                 },
                 f,
             )
@@ -95,7 +96,7 @@ class InMemoryDB:
         self.transactions = {
             k: v
             for k, v in self.transactions.items()
-            if v["state"] == "initialized" or v["index"] > remove_border
+            if v["state"] != "finalized" or v["index"] > remove_border
         }
 
         keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
@@ -126,19 +127,25 @@ class InMemoryDB:
         return hashlib.sha256((last_chaining_hash + tx_hash).encode()).hexdigest()
 
     def get_txs(
-        self,
-        after: Optional[int] = None,
-        states: Optional[List[str]] = None,
+        self, after: Optional[int] = None, states: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
-        filtered_txs = {}
-        for tx_hash, tx in self.transactions.items():
+        keys = list(self.transactions.keys())
+
+        def filter_condition(tx_hash):
+            tx = self.transactions.get(tx_hash)
+            if tx is None:
+                return False
             if after is not None and tx.get("index", -1) <= after:
-                continue
-
+                return False
             if states and tx.get("state") not in states:
-                continue
+                return False
+            return True
 
-            filtered_txs[tx_hash] = tx
+        relevant_keys = filter(filter_condition, keys)
+        filtered_txs = {
+            tx_hash: self.transactions[tx_hash] for tx_hash in relevant_keys
+        }
+
         return filtered_txs
 
     def get_tx(
@@ -148,15 +155,20 @@ class InMemoryDB:
         return self.transactions.get(hash, {})
 
     def get_not_finalized_txs(self) -> Dict[str, Any]:
-        border: int = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
-        not_finalized_txs = {}
-        for tx_hash, tx in self.transactions.items():
-            if (
-                tx.get("state") != "finalized"
-                and tx.get("insertion_timestamp", 0) < border
-            ):
-                not_finalized_txs[tx_hash] = tx
+        border = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
 
+        def is_not_finalized(tx_hash):
+            tx = self.transactions.get(tx_hash)
+            return (
+                tx
+                and tx.get("state") != "finalized"
+                and tx.get("insertion_timestamp", 0) < border
+            )
+
+        not_finalized_keys = filter(is_not_finalized, self.transactions.keys())
+        not_finalized_txs = {
+            tx_hash: self.transactions[tx_hash] for tx_hash in not_finalized_keys
+        }
         return not_finalized_txs
 
     def insert_txs(self, txs: List[Dict[str, Any]]) -> None:
