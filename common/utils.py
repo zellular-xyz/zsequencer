@@ -153,3 +153,7 @@ def gen_tx_hash(tx: Dict[str, Any]) -> str:
     tx_str: str = json.dumps(tx_copy, sort_keys=True)
     tx_hash: str = hashlib.sha256(tx_str.encode()).hexdigest()
     return tx_hash
+
+
+def gen_chaining_hash(last_chaining_hash: str, tx_hash: str) -> str:
+    return hashlib.sha256((last_chaining_hash + tx_hash).encode()).hexdigest()

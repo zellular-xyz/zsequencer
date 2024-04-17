@@ -1,38 +1,37 @@
 import json
 import os
 import sys
+import threading
 import time
 from typing import Any, Dict
-import threading
 
 import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+BATCH_SIZE = 1000
+BATCH_NUMBER = 10
 
 
-def send_batch_txs(batch_number) -> None:
+def send_batch_txs(batch_num) -> None:
     op: Dict[str, Any] = {
         "transactions": [
             {
                 "name": "foo",
                 "app": "foo_app",
-                "serial": f"{batch_number}_{i}",
+                "serial": f"{batch_num}_{tx_num}",
                 "timestamp": int(time.time()),
                 "version": 6,
             }
-            for i in range(500)
+            for tx_num in range(BATCH_SIZE)
         ],
         "timestamp": int(time.time()),
     }
-    print(
-        f'sending {len(op["transactions"])} new operations (batch {batch_number + 1})'
-    )
-    response = requests.put(
+    print(f'sending {len(op["transactions"])} new operations (batch {batch_num})')
+    requests.put(
         "http://localhost:6003/node/transactions",
         json.dumps(op),
         headers={"Content-Type": "application/json"},
     )
-    print(response.json())
 
 
 def sync() -> None:
@@ -45,14 +44,16 @@ def sync() -> None:
         finalized_txs = response.json().get("data")
         if finalized_txs:
             last: int = max(tx["index"] for tx in finalized_txs)
-            print("\nreceive finalized indexes: ", [t["index"] for t in finalized_txs])
-        time.sleep(5)
+            sorted_numbers = sorted([t["index"] for t in finalized_txs])
+            print(
+                f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
+            )
+        time.sleep(1)
 
 
 def start_sending_transactions():
-    for batch_number in range(10):
-        send_batch_txs(batch_number)
-        time.sleep(2)
+    for i in range(BATCH_NUMBER):
+        send_batch_txs(i + 1)
 
 
 if __name__ == "__main__":

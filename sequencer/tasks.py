@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import zconfig
 
+from ..common import utils
 from ..common.db import zdb
 from ..common.logger import zlogger
 from . import tss
@@ -12,14 +13,14 @@ def sequence_transactions(txs: List[Dict[str, Any]]):
     last_chaining_hash: str = last_synced_tx.get("chaining_hash", "")
     index: int = last_synced_tx.get("index", 0)
     for tx in txs:
-        tx_hash: str = zdb.gen_tx_hash(tx)
+        tx_hash: str = utils.gen_tx_hash(tx)
         if tx_hash in zdb.transactions:
             continue
         index += 1
         tx["index"] = index
         tx["hash"] = tx_hash
         tx["state"] = "sequenced"
-        tx["chaining_hash"] = zdb.gen_chaining_hash(last_chaining_hash, tx_hash)
+        tx["chaining_hash"] = utils.gen_chaining_hash(last_chaining_hash, tx_hash)
         last_chaining_hash = tx["chaining_hash"]
     zdb.last_sequenced_tx = tx
     zdb.insert_txs(txs)

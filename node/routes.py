@@ -18,7 +18,7 @@ node_blueprint = Blueprint("node", __name__)
 # TODO: should remove
 @node_blueprint.route("/db", methods=["GET"])
 def get_db() -> List[Dict[str, Any]]:
-    return sorted(zdb.transactions.values(), key=lambda m: m.get("index"))
+    return sorted(zdb.transactions.values(), key=lambda m: m.get("index", -1))
 
 
 @node_blueprint.route("/transactions", methods=["PUT"])

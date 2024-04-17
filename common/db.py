@@ -1,5 +1,4 @@
 import gzip
-import hashlib
 import json
 import os
 import threading
@@ -7,6 +6,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from config import zconfig
+
+from . import utils
 
 
 class InMemoryDB:
@@ -79,7 +80,9 @@ class InMemoryDB:
 
     def save_snapshot(self, index: int) -> None:
         snapshot_border = index - zconfig.SNAPSHOT_CHUNK
-        remove_border = max(index - zconfig.SNAPSHOT_CHUNK * 2, 0)
+        remove_border = max(
+            index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
+        )
 
         snapshot_path: str = os.path.join(zconfig.SNAPSHOT_PATH, f"{index}.json.gz")
         with gzip.open(snapshot_path, "wt", encoding="UTF-8") as f:
@@ -102,29 +105,6 @@ class InMemoryDB:
         keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
         with gzip.open(keys_path, "wt", encoding="UTF-8") as f:
             json.dump(self.keys, f)
-
-    @staticmethod
-    def gen_tx_hash(tx: Dict[str, Any]) -> str:
-        tx_copy: Dict[str, Any] = {
-            key: value
-            for key, value in tx.items()
-            if key
-            not in [
-                "state",
-                "index",
-                "chaining_hash",
-                "chaining_hash_sig",
-                "hash",
-                "insertion_timestamp",
-            ]
-        }
-        tx_str: str = json.dumps(tx_copy, sort_keys=True)
-        tx_hash: str = hashlib.sha256(tx_str.encode()).hexdigest()
-        return tx_hash
-
-    @staticmethod
-    def gen_chaining_hash(last_chaining_hash: str, tx_hash: str) -> str:
-        return hashlib.sha256((last_chaining_hash + tx_hash).encode()).hexdigest()
 
     def get_txs(
         self, after: Optional[int] = None, states: Optional[List[str]] = None
@@ -165,7 +145,7 @@ class InMemoryDB:
                 and tx.get("insertion_timestamp", 0) < border
             )
 
-        not_finalized_keys = filter(is_not_finalized, self.transactions.keys())
+        not_finalized_keys = filter(is_not_finalized, list(self.transactions.keys()))
         not_finalized_txs = {
             tx_hash: self.transactions[tx_hash] for tx_hash in not_finalized_keys
         }
@@ -173,7 +153,7 @@ class InMemoryDB:
 
     def insert_txs(self, txs: List[Dict[str, Any]]) -> None:
         for tx in txs:
-            tx.setdefault("hash", self.gen_tx_hash(tx))
+            tx.setdefault("hash", utils.gen_tx_hash(tx))
             if tx["hash"] in self.transactions:
                 continue
             tx.setdefault("state", "initialized")
@@ -182,9 +162,9 @@ class InMemoryDB:
     def upsert_sequenced_txs(self, txs: List[Dict[str, Any]]) -> None:
         last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
         for tx in txs:
-            tx_hash: str = self.gen_tx_hash(tx)
+            tx_hash: str = utils.gen_tx_hash(tx)
             tx["state"] = "sequenced"
-            tx["chaining_hash"] = self.gen_chaining_hash(last_chaining_hash, tx_hash)
+            tx["chaining_hash"] = utils.gen_chaining_hash(last_chaining_hash, tx_hash)
             tx["insertion_timestamp"] = int(time.time())
             self.transactions[tx_hash] = tx
             last_chaining_hash = tx["chaining_hash"]
@@ -192,15 +172,18 @@ class InMemoryDB:
                 self.last_sequenced_tx = tx
 
     def update_finalized_txs(self, to_: int) -> None:
-        for tx_hash, tx in self.transactions.items():
-            if tx.get("state") == "sequenced" and tx.get("index", -1) <= to_:
-                tx["state"] = "finalized"
-                if tx["index"] > self.last_finalized_tx.get("index", -1):
-                    self.last_finalized_tx = tx
+        for tx_hash in list(self.transactions.keys()):
+            tx = self.transactions.get(tx_hash, {})
+            if tx.get("state") != "sequenced":
+                continue
+            if tx.get("index", -1) <= to_:
+                continue
+            tx["state"] = "finalized"
+            if tx["index"] > self.last_finalized_tx.get("index", -1):
+                self.last_finalized_tx = tx
 
-                if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
-                    # TODO: Should transfer to the node code
-                    self.save_snapshot(tx["index"])
+            if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
+                self.save_snapshot(tx["index"])
 
     def update_reinitialized_txs(self, from_: int) -> None:
         timestamp = int(time.time())
@@ -222,7 +205,7 @@ class InMemoryDB:
 
         for tx in not_finalized_txs:
             index += 1
-            chaining_hash = self.gen_chaining_hash(last_chaining_hash, tx["hash"])
+            chaining_hash = utils.gen_chaining_hash(last_chaining_hash, tx["hash"])
 
             tx["state"] = "sequenced"
             tx["index"] = index

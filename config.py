@@ -24,6 +24,9 @@ class Config:
         self.SNAPSHOT_CHUNK: int = int(
             os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", default=1000)
         )
+        self.REMOVE_CHUNK_BORDER = int(
+            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", default=2)
+        )
         self.SNAPSHOT_PATH: str = os.getenv(
             "ZSEQUENCER_SNAPSHOT_PATH", default="./data/"
         )
@@ -70,6 +73,7 @@ class Config:
             "ZSEQUENCER_PRIVATE_KEY",
             "ZSEQUENCER_NODES_FILE",
             "ZSEQUENCER_SNAPSHOT_CHUNK",
+            "ZSEQUENCER_REMOVE_CHUNK_BORDER",
             "ZSEQUENCER_SNAPSHOT_PATH",
             "ZSEQUENCER_THRESHOLD_NUMBER",
             "ZSEQUENCER_SEND_TXS_INTERVAL",
