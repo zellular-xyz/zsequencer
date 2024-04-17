@@ -176,7 +176,7 @@ class InMemoryDB:
             tx = self.transactions.get(tx_hash, {})
             if tx.get("state") != "sequenced":
                 continue
-            if tx.get("index", -1) <= to_:
+            if tx.get("index", -1) > to_:
                 continue
             tx["state"] = "finalized"
             if tx["index"] > self.last_finalized_tx.get("index", -1):
