@@ -1,4 +1,5 @@
 import time
+from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, Response, request
@@ -17,8 +18,20 @@ node_blueprint = Blueprint("node", __name__)
 
 # TODO: should remove
 @node_blueprint.route("/db", methods=["GET"])
-def get_db() -> List[Dict[str, Any]]:
-    return sorted(zdb.transactions.values(), key=lambda m: m.get("index", -1))
+def get_db() -> Dict[str, Any]:
+    txs_count = Counter()
+
+    for tx in zdb.transactions.values():
+        state = tx.get("state", "NONE")
+        txs_count[state] += 1
+
+    return {
+        "nodes_state": zdb.nodes_state,
+        "txs_state": txs_count,
+        "transactions": sorted(
+            zdb.transactions.values(), key=lambda m: m.get("index", -1)
+        ),
+    }
 
 
 @node_blueprint.route("/transactions", methods=["PUT"])
