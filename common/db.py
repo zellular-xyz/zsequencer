@@ -141,7 +141,7 @@ class InMemoryDB:
             tx = self.transactions.get(tx_hash)
             return (
                 tx
-                and tx.get("state") != "finalized"
+                and tx.get("state") == "sequenced"
                 and tx.get("insertion_timestamp", 0) < border
             )
 
