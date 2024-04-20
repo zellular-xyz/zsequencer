@@ -8,20 +8,22 @@ from typing import Any, Dict
 import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-BATCH_SIZE = 1000
-BATCH_NUMBER = 10
+BATCH_SIZE = 100000
+BATCH_NUMBER = 1
 
 
 def send_batch_txs(batch_num) -> None:
     op: Dict[str, Any] = {
         "transactions": [
-            {
-                "name": "foo",
-                "app": "foo_app",
-                "serial": f"{batch_num}_{tx_num}",
-                "timestamp": int(time.time()),
-                "version": 6,
-            }
+            json.dumps(
+                {
+                    "name": "foo",
+                    "app": "foo_app",
+                    "serial": f"{batch_num}_{tx_num}",
+                    "timestamp": int(time.time()),
+                    "version": 6,
+                }
+            )
             for tx_num in range(BATCH_SIZE)
         ],
         "timestamp": int(time.time()),

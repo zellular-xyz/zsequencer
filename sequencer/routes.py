@@ -8,7 +8,6 @@ from ..common import utils
 from ..common.db import zdb
 from ..common.errors import ErrorCodes
 from ..common.response_utils import error_response, success_response
-from . import tasks
 
 sequencer_blueprint = Blueprint("sequencer", __name__)
 
@@ -34,7 +33,7 @@ def put_transactions() -> Response:
 
     with zdb._lock:
         if req_data["txs"]:
-            tasks.sequence_transactions(req_data["txs"])
+            zdb.insert_sequenced_txs(req_data["txs"])
 
         zdb.upsert_node_state(
             req_data["node_id"],

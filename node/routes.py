@@ -42,7 +42,8 @@ def put_transactions() -> Response:
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-    zdb.insert_txs(req_data["transactions"])
+
+    zdb.init_txs(req_data["transactions"])
     return success_response(data={}, message="The transactions received successfully.")
 
 
@@ -73,7 +74,7 @@ def post_dispute() -> Response:
         return success_response(data=data)
 
     else:
-        zdb.insert_txs(req_data["txs"])
+        zdb.init_txs(req_data["txs"])
 
         return error_response(ErrorCodes.ISSUE_NOT_FOUND)
 

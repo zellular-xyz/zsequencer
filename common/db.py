@@ -151,23 +151,44 @@ class InMemoryDB:
         }
         return not_finalized_txs
 
-    def insert_txs(self, txs: List[Dict[str, Any]]) -> None:
-        for tx in txs:
-            tx.setdefault("hash", utils.gen_tx_hash(tx))
-            if tx["hash"] in self.transactions:
+    def init_txs(self, bodies: List[str]) -> None:
+        for body in bodies:
+            tx_hash = utils.gen_hash(body)
+            if tx_hash in self.transactions:
                 continue
-            tx.setdefault("state", "initialized")
-            self.transactions[tx["hash"]] = tx
+            self.transactions[tx_hash] = {
+                "body": body,
+                "hash": tx_hash,
+                "state": "initialized",
+            }
+
+    def insert_sequenced_txs(self, txs: List[Dict[str, Any]]):
+        last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
+        index: int = self.last_sequenced_tx.get("index", 0)
+        for tx in txs:
+            tx_hash: str = utils.gen_hash(tx["body"])
+            if tx_hash in zdb.transactions:
+                continue
+            index += 1
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
+
+            tx["index"] = index
+            tx["state"] = "sequenced"
+            tx["hash"] = tx_hash
+            tx["chaining_hash"] = last_chaining_hash
+            self.transactions[tx_hash] = tx
+        self.last_sequenced_tx = tx
 
     def upsert_sequenced_txs(self, txs: List[Dict[str, Any]]) -> None:
         last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
         for tx in txs:
-            tx_hash: str = utils.gen_tx_hash(tx)
-            tx["state"] = "sequenced"
-            tx["chaining_hash"] = utils.gen_chaining_hash(last_chaining_hash, tx_hash)
+            tx_hash: str = utils.gen_hash(tx["body"])
+            assert tx["hash"] == tx_hash, "invalid transaction hash"
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
+            assert tx["chaining_hash"] == last_chaining_hash, "invalid chaining hash"
             tx["insertion_timestamp"] = int(time.time())
             self.transactions[tx_hash] = tx
-            last_chaining_hash = tx["chaining_hash"]
+
             if tx["index"] > self.last_sequenced_tx.get("index", -1):
                 self.last_sequenced_tx = tx
 
@@ -176,7 +197,7 @@ class InMemoryDB:
             tx = self.transactions.get(tx_hash, {})
             if tx.get("state") != "sequenced":
                 continue
-            if tx.get("index", -1) > to_:
+            if tx.get("index", float("inf")) > to_:
                 continue
             tx["state"] = "finalized"
             if tx["index"] > self.last_finalized_tx.get("index", -1):
@@ -205,7 +226,7 @@ class InMemoryDB:
 
         for tx in not_finalized_txs:
             index += 1
-            chaining_hash = utils.gen_chaining_hash(last_chaining_hash, tx["hash"])
+            chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
 
             tx["state"] = "sequenced"
             tx["index"] = index

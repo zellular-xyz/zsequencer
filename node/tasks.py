@@ -123,7 +123,7 @@ def send_dispute_request(node: Dict[str, Any]) -> Dict[str, Any]:
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "txs": list(state.get_missed_txs().values()),
+            "txs": [tx["body"] for tx in state.get_missed_txs().values()],
             "timestamp": timestamp,
         }
     )
