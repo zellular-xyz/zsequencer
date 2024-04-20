@@ -1,7 +1,7 @@
 import json
 import threading
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 import requests
 
@@ -61,18 +61,6 @@ def send_txs() -> None:
 def sync_with_sequencer(
     initialized_txs: Dict[str, Any], sequencer_response: Dict[str, Any]
 ) -> None:
-    synced_hashes: List[str] = [tx["hash"] for tx in sequencer_response["txs"]]
-
-    censored_txs: Dict[str, Any] = {
-        k: v for k, v in initialized_txs.items() if k not in synced_hashes
-    }
-
-    # remove synced txs from missed_txs
-    state.set_missed_txs(
-        {k: v for k, v in state.get_missed_txs().items() if k not in synced_hashes}
-    )
-    state.add_missed_txs(censored_txs)
-
     if sequencer_response["finalized"]["index"]:
         if not utils.is_frost_sig_verified(
             sequencer_response["finalized"]["sig"],
@@ -80,6 +68,23 @@ def sync_with_sequencer(
             sequencer_response["finalized"]["chaining_hash"],
         ):
             return
+
+    synced_hashes: Set[str] = set(tx["hash"] for tx in sequencer_response["txs"])
+    initialized_hashes: Set[str] = set(initialized_txs.keys())
+    current_missed_hashes: Set[str] = set(state.get_missed_txs().keys())
+
+    censored_hashes: Set[str] = initialized_hashes - synced_hashes
+    censored_txs: Dict[str, Any] = {
+        hash_: initialized_txs[hash_] for hash_ in censored_hashes
+    }
+
+    new_missed_hashes: Set[str] = current_missed_hashes - synced_hashes
+    new_missed_txs: Dict[str, Any] = {
+        hash_: state.get_missed_txs()[hash_] for hash_ in new_missed_hashes
+    }
+    new_missed_txs.update(censored_txs)
+
+    state.set_missed_txs(new_missed_txs)
 
     zdb.upsert_sequenced_txs(sequencer_response["txs"])
     zdb.update_finalized_txs(sequencer_response["finalized"]["index"])
