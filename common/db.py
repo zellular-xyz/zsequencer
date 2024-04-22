@@ -204,10 +204,10 @@ class InMemoryDB:
         for snapshot_index in snapshot_indexes:
             self.save_snapshot(snapshot_index)
 
-    def update_reinitialized_txs(self, from_: int) -> None:
+    def update_reinitialized_txs(self, _from: int) -> None:
         timestamp = int(time.time())
         for tx_hash, tx in self.transactions.items():
-            if from_ < tx.get("index", -1):
+            if _from < tx.get("index", float("inf")):
                 tx.update({"state": "initialized", "insertion_timestamp": timestamp})
 
     def sequence_txs(self, last_finalized_tx: Dict[str, Any]) -> None:
