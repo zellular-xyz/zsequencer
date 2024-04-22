@@ -188,19 +188,21 @@ class InMemoryDB:
 
         self.last_sequenced_tx = tx
 
-    def update_finalized_txs(self, to_: int) -> None:
+    def update_finalized_txs(self, _to: int) -> None:
+        snapshot_indexes: List[int] = []
         for tx_hash in list(self.transactions.keys()):
             tx = self.transactions.get(tx_hash, {})
-            if tx.get("state") != "sequenced":
-                continue
-            if tx.get("index", float("inf")) > to_:
-                continue
-            tx["state"] = "finalized"
+            if tx.get("state") == "sequenced" and tx.get("index", float("inf")) <= _to:
+                tx["state"] = "finalized"
+
             if tx["index"] > self.last_finalized_tx.get("index", -1):
                 self.last_finalized_tx = tx
 
             if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
-                self.save_snapshot(tx["index"])
+                snapshot_indexes.append(tx["index"])
+
+        for snapshot_index in snapshot_indexes:
+            self.save_snapshot(snapshot_index)
 
     def update_reinitialized_txs(self, from_: int) -> None:
         timestamp = int(time.time())
