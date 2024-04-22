@@ -81,12 +81,12 @@ def run():
             "ZSEQUENCER_PUBLIC_KEY": str(nodes_info_dict[str(i + 1)]["public_key"]),
             "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
             "ZSEQUENCER_NODES_FILE": "./nodes.json",
-            "ZSEQUENCER_SNAPSHOT_CHUNK": "100000",
+            "ZSEQUENCER_SNAPSHOT_CHUNK": "200000",
             "ZSEQUENCER_REMOVE_CHUNK_BORDER": "3",
             "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
             "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
-            "ZSEQUENCER_SEND_TXS_INTERVAL": "3",
-            "ZSEQUENCER_SYNC_INTERVAL": "5",
+            "ZSEQUENCER_SEND_TXS_INTERVAL": "0.1",
+            "ZSEQUENCER_SYNC_INTERVAL": "0.1",
             "ZSEQUENCER_MIN_NONCES": "10",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER": "120",
             "ZSEQUENCER_ENV_PATH": f"{dst_dir}/node{i + 1}",
@@ -99,25 +99,12 @@ def run():
         env_variables = os.environ.copy()
         env_variables.update(environment_variables)
 
-        run_command(
-            "run.py",
-            f"{i + 1}",
-            env_variables,
-        )
+        run_command("run.py", f"{i + 1}", env_variables)
         time.sleep(2)
         if i == 2:
-            run_command(
-                "examples/init_network.py",
-                "",
-                env_variables,
-            )
+            run_command("examples/init_network.py", "", env_variables)
             time.sleep(1)
-            run_command(
-                "examples/simple_app.py",
-                "",
-                env_variables,
-            )
-            time.sleep(1)
+            run_command("examples/simple_app.py", "", env_variables)
 
 
 if __name__ == "__main__":

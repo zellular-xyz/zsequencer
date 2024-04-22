@@ -109,23 +109,17 @@ class InMemoryDB:
     def get_txs(
         self, after: Optional[int] = None, states: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
-        keys = list(self.transactions.keys())
-
-        def filter_condition(tx_hash):
-            tx = self.transactions.get(tx_hash)
-            if tx is None:
-                return False
+        tx_hashes: List[str] = list(self.transactions.keys())
+        filtered_txs = {}
+        for tx_hash in tx_hashes:
+            tx: Optional[Dict[str, Any]] = self.transactions.get(tx_hash)
+            if not tx:
+                continue
             if after is not None and tx.get("index", -1) <= after:
-                return False
+                continue
             if states and tx.get("state") not in states:
-                return False
-            return True
-
-        relevant_keys = filter(filter_condition, keys)
-        filtered_txs = {
-            tx_hash: self.transactions[tx_hash] for tx_hash in relevant_keys
-        }
-
+                continue
+            filtered_txs[tx_hash] = tx
         return filtered_txs
 
     def get_tx(
@@ -180,17 +174,22 @@ class InMemoryDB:
         self.last_sequenced_tx = tx
 
     def upsert_sequenced_txs(self, txs: List[Dict[str, Any]]) -> None:
+        if not txs:
+            return
+
         last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
+
         for tx in txs:
             tx_hash: str = utils.gen_hash(tx["body"])
             assert tx["hash"] == tx_hash, "invalid transaction hash"
-            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
-            assert tx["chaining_hash"] == last_chaining_hash, "invalid chaining hash"
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
+            assert (
+                tx["chaining_hash"] == last_chaining_hash
+            ), f"invalid chaining hash {tx_hash} => {last_chaining_hash} {tx}"
             tx["insertion_timestamp"] = int(time.time())
             self.transactions[tx_hash] = tx
 
-            if tx["index"] > self.last_sequenced_tx.get("index", -1):
-                self.last_sequenced_tx = tx
+        self.last_sequenced_tx = tx
 
     def update_finalized_txs(self, to_: int) -> None:
         for tx_hash in list(self.transactions.keys()):
@@ -234,6 +233,10 @@ class InMemoryDB:
             self.transactions[tx["hash"]] = tx
 
             last_chaining_hash = chaining_hash
+
+        self.transactions = dict(
+            sorted(self.transactions.items(), key=lambda item: item[1]["index"])
+        )
 
     def upsert_node_state(self, node_id: str, index: int, chaining_hash: str) -> None:
         self.nodes_state[node_id] = {

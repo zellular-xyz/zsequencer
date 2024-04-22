@@ -38,6 +38,7 @@ def send_batch_txs(batch_num) -> None:
 
 def sync() -> None:
     last: int = 0
+    t1 = time.time()
     while True:
         response = requests.get(
             "http://localhost:6003/node/transactions",
@@ -46,11 +47,10 @@ def sync() -> None:
         finalized_txs = response.json().get("data")
         if finalized_txs:
             last: int = max(tx["index"] for tx in finalized_txs)
-            sorted_numbers = sorted([t["index"] for t in finalized_txs])
             print(
-                f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
+                f"\nlast finalized transactions: {last} ==> {time.time() - t1}",
             )
-        time.sleep(1)
+        time.sleep(0.1)
 
 
 def start_sending_transactions():

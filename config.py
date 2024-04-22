@@ -33,10 +33,12 @@ class Config:
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
         self.SECRET_KEY: Optional[str] = os.getenv("ZSEQUENCER_SECRET_KEY")
         self.PUBLIC_KEY: int = int(os.getenv("ZSEQUENCER_PUBLIC_KEY", default=0))
-        self.SEND_TXS_INTERVAL: int = int(
+        self.SEND_TXS_INTERVAL: float = float(
             os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", default=5)
         )
-        self.SYNC_INTERVAL: int = int(os.getenv("ZSEQUENCER_SYNC_INTERVAL", default=30))
+        self.SYNC_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SYNC_INTERVAL", default=30)
+        )
         self.MIN_NONCES: int = int(os.getenv("ZSEQUENCER_MIN_NONCES", default=10))
         self.FINALIZATION_TIME_BORDER: int = int(
             os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", default=120)
