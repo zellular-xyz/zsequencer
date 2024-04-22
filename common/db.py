@@ -130,19 +130,15 @@ class InMemoryDB:
 
     def get_not_finalized_txs(self) -> Dict[str, Any]:
         border = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
-
-        def is_not_finalized(tx_hash):
-            tx = self.transactions.get(tx_hash)
-            return (
-                tx
-                and tx.get("state") == "sequenced"
+        tx_hashes: List[str] = list(self.transactions.keys())
+        not_finalized_txs = {}
+        for tx_hash in tx_hashes:
+            tx: Optional[Dict[str, Any]] = self.transactions.get(tx_hash, {})
+            if (
+                tx.get("state") == "sequenced"
                 and tx.get("insertion_timestamp", 0) < border
-            )
-
-        not_finalized_keys = filter(is_not_finalized, list(self.transactions.keys()))
-        not_finalized_txs = {
-            tx_hash: self.transactions[tx_hash] for tx_hash in not_finalized_keys
-        }
+            ):
+                not_finalized_txs[tx_hash] = tx
         return not_finalized_txs
 
     def init_txs(self, bodies: List[str]) -> None:
