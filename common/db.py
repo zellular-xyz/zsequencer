@@ -210,7 +210,7 @@ class InMemoryDB:
             if _from < tx.get("index", float("inf")):
                 tx.update({"state": "initialized", "insertion_timestamp": timestamp})
 
-    def sequence_txs(self, last_finalized_tx: Dict[str, Any]) -> None:
+    def resequence_txs(self, last_finalized_tx: Dict[str, Any]) -> None:
         index = last_finalized_tx["index"]
         last_chaining_hash = last_finalized_tx["chaining_hash"]
 

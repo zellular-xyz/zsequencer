@@ -174,7 +174,7 @@ def switch_sequencer(proofs: List[Dict[str, Any]], _type: str) -> bool:
         zdb.update_finalized_txs(last_finalized_tx["index"])
 
         if zconfig.NODE["id"] == new_sequencer_id:
-            zdb.sequence_txs(last_finalized_tx)
+            zdb.resequence_txs(last_finalized_tx)
             time.sleep(30)
         else:
             zdb.update_reinitialized_txs(last_finalized_tx["index"])
