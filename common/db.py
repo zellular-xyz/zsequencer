@@ -176,14 +176,13 @@ class InMemoryDB:
             return
 
         last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
-
         for tx in txs:
             tx_hash: str = utils.gen_hash(tx["body"])
             assert tx["hash"] == tx_hash, "invalid transaction hash"
+
             last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
-            assert (
-                tx["chaining_hash"] == last_chaining_hash
-            ), f"invalid chaining hash {tx_hash} => {last_chaining_hash} {tx}"
+            assert tx["chaining_hash"] == last_chaining_hash, "invalid chaining hash"
+
             tx["insertion_timestamp"] = int(time.time())
             self.transactions[tx_hash] = tx
 
