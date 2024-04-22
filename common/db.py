@@ -217,21 +217,16 @@ class InMemoryDB:
         not_finalized_txs = [
             tx for tx in self.transactions.values() if tx.get("state") != "finalized"
         ]
-
-        not_finalized_txs.sort(
-            key=lambda x: (x.get("index") is None, x.get("index", float("inf")))
-        )
+        not_finalized_txs.sort(key=lambda x: x.get("index", float("inf")))
 
         for tx in not_finalized_txs:
             index += 1
-            chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
 
             tx["state"] = "sequenced"
             tx["index"] = index
-            tx["chaining_hash"] = chaining_hash
+            tx["chaining_hash"] = last_chaining_hash
             self.transactions[tx["hash"]] = tx
-
-            last_chaining_hash = chaining_hash
 
         self.transactions = dict(
             sorted(self.transactions.items(), key=lambda item: item[1]["index"])
