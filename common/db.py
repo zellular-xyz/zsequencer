@@ -146,19 +146,21 @@ class InMemoryDB:
             tx_hash = utils.gen_hash(body)
             if tx_hash in self.transactions:
                 continue
+
             self.transactions[tx_hash] = {
                 "body": body,
                 "hash": tx_hash,
                 "state": "initialized",
             }
 
-    def insert_sequenced_txs(self, txs: List[Dict[str, Any]]):
+    def sequencer_init_txs(self, txs: List[Dict[str, Any]]):
         last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
         index: int = self.last_sequenced_tx.get("index", 0)
         for tx in txs:
             tx_hash: str = utils.gen_hash(tx["body"])
             if tx_hash in zdb.transactions:
                 continue
+
             index += 1
             last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
 

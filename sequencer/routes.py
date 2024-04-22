@@ -33,7 +33,7 @@ def put_transactions() -> Response:
 
     with zdb._lock:
         if req_data["txs"]:
-            zdb.insert_sequenced_txs(req_data["txs"])
+            zdb.sequencer_init_txs(req_data["txs"])
 
         zdb.upsert_node_state(
             req_data["node_id"],
