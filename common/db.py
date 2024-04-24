@@ -192,6 +192,8 @@ class InMemoryDB:
         snapshot_indexes: List[int] = []
         for tx_hash in list(self.transactions.keys()):
             tx = self.transactions.get(tx_hash, {})
+            if not tx:
+                continue
             if tx.get("state") == "sequenced" and tx.get("index", float("inf")) <= _to:
                 tx["state"] = "finalized"
 
@@ -203,6 +205,9 @@ class InMemoryDB:
 
         for snapshot_index in snapshot_indexes:
             self.save_snapshot(snapshot_index)
+
+    def insert_sync_sig(self, sig_data: Dict[str, Any]):
+        self.transactions[sig_data["hash"]].setdefault("sig", sig_data["sig"])
 
     def update_reinitialized_txs(self, _from: int) -> None:
         timestamp = int(time.time())
@@ -232,11 +237,14 @@ class InMemoryDB:
             sorted(self.transactions.items(), key=lambda item: item[1]["index"])
         )
 
-    def upsert_node_state(self, node_id: str, index: int, chaining_hash: str) -> None:
+    def upsert_node_state(
+        self, node_id: str, index: int, chaining_hash: str, hash: str
+    ) -> None:
         self.nodes_state[node_id] = {
             "node_id": node_id,
             "index": index,
             "chaining_hash": chaining_hash,
+            "hash": hash,
         }
 
     def get_nodes_state(self) -> List[Dict[str, Any]]:
@@ -251,6 +259,7 @@ class InMemoryDB:
         self.nodes_state["sync_point"] = {
             "index": state["index"],
             "chaining_hash": state["chaining_hash"],
+            "hash": state["hash"],
             "sig": json.dumps(sig),
         }
 

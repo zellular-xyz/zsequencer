@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import zconfig
@@ -7,7 +8,7 @@ from ..common.logger import zlogger
 from . import tss
 
 
-def find_sync_point() -> Tuple[Optional[Dict[str, Any]], List[str]]:
+def find_sync_point() -> Tuple[Dict[str, Any], List[str]]:
     sorted_states: List[Dict[str, Any]] = zdb.get_nodes_state()
     for state in sorted_states:
         party: List[str] = [
@@ -15,7 +16,7 @@ def find_sync_point() -> Tuple[Optional[Dict[str, Any]], List[str]]:
         ]
         if len(party) >= zconfig.THRESHOLD_NUMBER:
             return state, party
-    return None, []
+    return {}, []
 
 
 async def sync() -> None:
@@ -24,7 +25,7 @@ async def sync() -> None:
         return
 
     state, party = find_sync_point()
-    if not state:
+    if not state.get("index"):
         return
 
     del state["node_id"]
@@ -38,6 +39,14 @@ async def sync() -> None:
 
     zdb.upsert_sync_point(state, sig)
     zdb.update_finalized_txs(state["index"])
+    zdb.insert_sync_sig(
+        {
+            "index": state["index"],
+            "chaining_hash": state["chaining_hash"],
+            "hash": state["hash"],
+            "sig": json.dumps(sig),
+        }
+    )
 
 
 async def request_nonces() -> None:

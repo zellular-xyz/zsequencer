@@ -37,6 +37,7 @@ def send_txs() -> None:
             "node_id": zconfig.NODE["id"],
             "index": last_synced_tx.get("index", 0),
             "chaining_hash": last_synced_tx.get("chaining_hash", ""),
+            "hash": last_synced_tx.get("hash", ""),
             "sig": concat_sig,
             "timestamp": int(time.time()),
         }
@@ -87,7 +88,9 @@ def sync_with_sequencer(
     state.set_missed_txs(new_missed_txs)
 
     zdb.upsert_sequenced_txs(sequencer_response["txs"])
-    zdb.update_finalized_txs(sequencer_response["finalized"]["index"])
+    if sequencer_response["finalized"]["index"]:
+        zdb.update_finalized_txs(sequencer_response["finalized"]["index"])
+        zdb.insert_sync_sig(sequencer_response["finalized"])
 
 
 def send_dispute_requests() -> None:
