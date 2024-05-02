@@ -6,7 +6,7 @@ To illustrate how apps can be decentralized with the Zellular Sequencer, let's l
 Python Code for a Simple Order-Book
 -----------------------------------
 
-The complete code for the sample order book is available at `this link <./codes/order-book.py>`_. Below is a brief overview of the code structure:
+The complete code for the sample order book is available at `this link <https://github.com/siftal/zsequencer/blob/main/docs/codes/order_book.py>`_. Below is a brief overview of the code structure:
 
 Setting up the Environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -200,4 +200,4 @@ Add a thread to continuously retrieve finalized, sequenced orders. Apply the sam
         ...
 
 
-The complete code for the decentralized version of the sample order book is available `here <./codes/zellular-order-book.py>`_. As demonstrated, decentralizing apps with the Zellular Sequencer is straightforward and accessible for any Python developer, requiring no deep expertise in blockchain or smart contracts.
+The complete code for the decentralized version of the sample order book is available `here <https://github.com/siftal/zsequencer/blob/main/docs/codes/zellular_order_book.py>`_. As demonstrated, decentralizing apps with the Zellular Sequencer is straightforward and accessible for any Python developer, requiring no deep expertise in blockchain or smart contracts.
