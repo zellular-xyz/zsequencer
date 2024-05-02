@@ -1,3 +1,4 @@
+import hashlib
 import time
 from collections import Counter
 from functools import wraps
@@ -132,3 +133,7 @@ def get_switch_parameter_from_proofs(
         return most_common_sequencer[0][0]
     else:
         return None, None
+
+
+def gen_hash(s: str):
+    return hashlib.sha256(s.encode()).hexdigest()

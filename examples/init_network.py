@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 import requests
-from pyfrost.network_http.dkg import Dkg
+from pyfrost.network.dkg import Dkg
 
 from config import zconfig
 from zsequencer.sequencer import tss
@@ -25,7 +25,7 @@ async def run_sample() -> None:
     }
     headers: Dict[str, str] = {"Content-Type": "application/json"}
     for node in zconfig.NODES.values():
-        url: str = f'http://{node["host"]}:{node["server_port"]}/node/distributed_keys'
+        url: str = f'http://{node["host"]}:{node["port"]}/node/distributed_keys'
         requests.put(url, json.dumps(data), headers=headers)
     print("Successfully initialized: ", dk)
 

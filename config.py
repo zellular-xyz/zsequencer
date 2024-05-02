@@ -20,27 +20,40 @@ class Config:
         env_file = f"{env}.env"
         load_dotenv(dotenv_path=env_file, override=True)
 
-        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT") or 6000)
-        self.DB_NAME: str = os.getenv("ZSEQUENCER_DB_NAME") or "zsequencer"
+        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", default=6000))
+        self.SNAPSHOT_CHUNK: int = int(
+            os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", default=1000)
+        )
+        self.REMOVE_CHUNK_BORDER = int(
+            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", default=2)
+        )
+        self.SNAPSHOT_PATH: str = os.getenv(
+            "ZSEQUENCER_SNAPSHOT_PATH", default="./data/"
+        )
+        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
         self.SECRET_KEY: Optional[str] = os.getenv("ZSEQUENCER_SECRET_KEY")
-        self.PUBLIC_KEY: int = int(os.getenv("ZSEQUENCER_PUBLIC_KEY") or 0)
-        self.SEND_TXS_INTERVAL: int = int(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL") or 5
+        self.PUBLIC_KEY: int = int(os.getenv("ZSEQUENCER_PUBLIC_KEY", default=0))
+        self.SEND_TXS_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", default=5)
         )
-        self.SYNC_INTERVAL: int = int(os.getenv("ZSEQUENCER_SYNC_INTERVAL") or 30)
-        self.MIN_NONCES: int = int(os.getenv("ZSEQUENCER_MIN_NONCES") or 10)
+        self.SYNC_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SYNC_INTERVAL", default=30)
+        )
+        self.MIN_NONCES: int = int(os.getenv("ZSEQUENCER_MIN_NONCES", default=10))
         self.FINALIZATION_TIME_BORDER: int = int(
-            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER") or 120
+            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", default=120)
         )
-        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE") or "nodes.json"
+        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", default="nodes.js")
         self.NODES: Dict[str, Dict[str, Any]] = self.load_nodes(self.NODES_FILE)
         self.THRESHOLD_NUMBER: int = int(
-            os.getenv("ZSEQUENCER_THRESHOLD_NUMBER") or int(math.ceil(len(self.NODES)))
+            os.getenv(
+                "ZSEQUENCER_THRESHOLD_NUMBER", default=int(math.ceil(len(self.NODES)))
+            )
         )
         self.NODE: Dict[str, int] = next(
             (n for n in self.NODES.values() if n["public_key"] == self.PUBLIC_KEY), {}
         )
-        self.NODE["private_key"] = int(os.getenv("ZSEQUENCER_PRIVATE_KEY") or 0)
+        self.NODE["private_key"] = int(os.getenv("ZSEQUENCER_PRIVATE_KEY", default=0))
         self.SEQUENCER: Dict[str, Any] = self.NODES["1"]
 
         self.validate_env_variables()
@@ -61,7 +74,9 @@ class Config:
             "ZSEQUENCER_PUBLIC_KEY",
             "ZSEQUENCER_PRIVATE_KEY",
             "ZSEQUENCER_NODES_FILE",
-            "ZSEQUENCER_DB_NAME",
+            "ZSEQUENCER_SNAPSHOT_CHUNK",
+            "ZSEQUENCER_REMOVE_CHUNK_BORDER",
+            "ZSEQUENCER_SNAPSHOT_PATH",
             "ZSEQUENCER_THRESHOLD_NUMBER",
             "ZSEQUENCER_SEND_TXS_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",

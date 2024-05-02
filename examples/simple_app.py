@@ -1,34 +1,69 @@
+import json
 import os
 import sys
+import threading
 import time
 from typing import Any, Dict
 
+import requests
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+BATCH_SIZE = 100000
+BATCH_NUMBER = 1
 
-from zsequencer.node import tasks as node_tasks
 
-
-def send_tx() -> None:
+def send_batch_txs(batch_num) -> None:
     op: Dict[str, Any] = {
-        "name": "foo",
-        "app": "foo_app",
-        "timestamp": int(time.time() * 1000),
-        "version": 6,
+        "transactions": [
+            json.dumps(
+                {
+                    "name": "foo",
+                    "app": "foo_app",
+                    "serial": f"{batch_num}_{tx_num}",
+                    "timestamp": int(time.time()),
+                    "version": 6,
+                }
+            )
+            for tx_num in range(BATCH_SIZE)
+        ],
+        "timestamp": int(time.time()),
     }
-    print(f"send new operations: {op}")
-    node_tasks.init_tx(op)
+    print(f'sending {len(op["transactions"])} new operations (batch {batch_num})')
+    requests.put(
+        "http://localhost:6003/node/transactions",
+        json.dumps(op),
+        headers={"Content-Type": "application/json"},
+    )
 
 
 def sync() -> None:
     last: int = 0
+    t1 = time.time()
     while True:
-        finalized_txs: Dict[str, Any] = node_tasks.get_finalized(last)
+        response = requests.get(
+            "http://localhost:6003/node/transactions",
+            params={"after": last, "states": ["finalized"]},
+        )
+        finalized_txs = response.json().get("data")
         if finalized_txs:
-            last: int = max(tx["index"] for tx in finalized_txs.values())
-            print("receive finalized operations: ", finalized_txs)
-        time.sleep(5)
+            last: int = max(tx["index"] for tx in finalized_txs)
+            print(
+                f"\nlast finalized transactions: {last} ==> {time.time() - t1}",
+            )
+        time.sleep(0.1)
+
+
+def start_sending_transactions():
+    for i in range(BATCH_NUMBER):
+        send_batch_txs(i + 1)
 
 
 if __name__ == "__main__":
-    send_tx()
-    sync()
+    sender_thread = threading.Thread(target=start_sending_transactions)
+    sync_thread = threading.Thread(target=sync)
+
+    sender_thread.start()
+    sync_thread.start()
+
+    sync_thread.join()
+    sender_thread.join()

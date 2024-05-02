@@ -1,280 +1,298 @@
-import hashlib
+import gzip
 import json
+import os
 import threading
 import time
 from typing import Any, Dict, List, Optional
 
-import pymongo
-from pymongo.cursor import Cursor
-from pymongo.database import Database
-
 from config import zconfig
 
+from . import utils
 
-class DatabaseClient:
+
+class InMemoryDB:
     _instance = None
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = super(DatabaseClient, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._initialize()
             return cls._instance
 
     def _initialize(self):
-        self.client = pymongo.MongoClient("mongodb://localhost:27017/")
-        self.database: Database = self.client[zconfig.DB_NAME]
+        self.transactions: Dict[str, Dict[str, Any]] = {}
+        self.nodes_state: Dict[str, Dict[str, Any]] = {}
+        self.keys: Dict[str, Any] = {}
+        self.last_sequenced_tx = {}
+        self.last_finalized_tx = {}
+        self.load_state()
 
-    def get_database(self) -> Database:
-        return self.database
-
-
-class CollectionManager:
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(CollectionManager, cls).__new__(cls)
-                cls._instance._initialize()
-            return cls._instance
-
-    def _initialize(self):
-        self.txs_coll = TxsColl()
-        self.nodes_state_coll = NodesStateColl()
-        self.keys_coll = keysColl()
-
-    @property
-    def txs(self):
-        return self.txs_coll
-
-    @property
-    def nodes_state(self):
-        return self.nodes_state_coll
-
-    @property
-    def keys(self):
-        return self.keys_coll
-
-
-class TxsColl:
-    _lock: threading.Lock = threading.Lock()
-
-    def __init__(self):
-        db_client: DatabaseClient = DatabaseClient()
-        db: Database = db_client.get_database()
-        self.coll = db.get_collection("transactions")
-        # TODO: transfer to the init db script in production
-        self.coll.create_index([("hash", pymongo.ASCENDING)], unique=True)
+    def load_state(self) -> None:
+        self.nodes_state = {}
+        self.keys = self.load_keys()
+        self.transactions = self.load_transactions()
+        for tx in self.transactions.values():
+            if tx.get("state") == "sequenced":
+                if not self.last_sequenced_tx or tx.get(
+                    "index", -1
+                ) > self.last_sequenced_tx.get("index", "-1"):
+                    self.last_sequenced_tx = tx
+            elif tx.get("state") == "finalized":
+                if not self.last_finalized_tx or tx.get(
+                    "index", -1
+                ) > self.last_finalized_tx.get("index", "-1"):
+                    self.last_finalized_tx = tx
 
     @staticmethod
-    def gen_tx_hash(tx: Dict[str, Any]) -> str:
-        tx_copy: Dict[str, Any] = {
-            key: value
-            for key, value in tx.items()
-            if key
-            not in [
-                "_id",
-                "state",
-                "index",
-                "chaining_hash",
-                "chaining_hash_sig",
-                "hash",
-                "insertion_timestamp",
+    def load_keys() -> Dict[str, Any]:
+        keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
+        try:
+            with gzip.open(
+                keys_path,
+                "rt",
+                encoding="UTF-8",
+            ) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @staticmethod
+    def load_transactions(index: Optional[int] = None) -> Dict[str, Any]:
+        if not index:
+            snapshots: List[str] = [
+                f for f in os.listdir(zconfig.SNAPSHOT_PATH) if f.endswith(".json.gz")
             ]
-        }
-        tx_str: str = json.dumps(tx_copy, sort_keys=True)
-        tx_hash: str = hashlib.sha256(tx_str.encode()).hexdigest()
-        return tx_hash
+            index = max(
+                (int(x.split(".")[0]) for x in snapshots if x.split(".")[0].isdigit()),
+                default=0,
+            )
+        if index == 0:
+            return {}
+        snapshot_path = os.path.join(zconfig.SNAPSHOT_PATH, f"{index}.json.gz")
+        with gzip.open(
+            snapshot_path,
+            "rt",
+            encoding="UTF-8",
+        ) as f:
+            return json.load(f)
 
-    @staticmethod
-    def gen_chaining_hash(last_chaining_hash: str, tx_hash: str) -> str:
-        return hashlib.sha256((last_chaining_hash + tx_hash).encode()).hexdigest()
+    def save_snapshot(self, index: int) -> None:
+        snapshot_border = index - zconfig.SNAPSHOT_CHUNK
+        remove_border = max(
+            index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
+        )
+
+        snapshot_path: str = os.path.join(zconfig.SNAPSHOT_PATH, f"{index}.json.gz")
+        with gzip.open(snapshot_path, "wt", encoding="UTF-8") as f:
+            json.dump(
+                {
+                    k: v
+                    for k, v in self.transactions.items()
+                    if v["state"] == "finalized"
+                    and snapshot_border < v.get("index", 0) <= index
+                },
+                f,
+            )
+
+        self.transactions = {
+            k: v
+            for k, v in self.transactions.items()
+            if v["state"] != "finalized" or v["index"] > remove_border
+        }
+
+        keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
+        with gzip.open(keys_path, "wt", encoding="UTF-8") as f:
+            json.dump(self.keys, f)
 
     def get_txs(
+        self, after: Optional[int] = None, states: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        tx_hashes: List[str] = list(self.transactions.keys())
+        filtered_txs = {}
+        for tx_hash in tx_hashes:
+            tx: Optional[Dict[str, Any]] = self.transactions.get(tx_hash)
+            if not tx:
+                continue
+            if after is not None and tx.get("index", -1) <= after:
+                continue
+            if states and tx.get("state") not in states:
+                continue
+            filtered_txs[tx_hash] = tx
+        return filtered_txs
+
+    def get_tx(
         self,
-        after: Optional[int] = None,
-        states: Optional[List[str]] = None,
-        search_term: Optional[Any] = None,
+        hash: str,
     ) -> Dict[str, Any]:
-        query: Dict[str, Any] = {}
-
-        if after is not None:
-            query["index"] = {"$gt": after}
-
-        if states:
-            query["state"] = {"$in": states}
-
-        if search_term:
-            if isinstance(search_term, int) or str(search_term).isdigit():
-                search_term = int(search_term)
-            query["$or"] = [
-                {"id": search_term},
-                {"index": search_term},
-                {"hash": search_term},
-                {"chaining_hash": search_term},
-            ]
-        cursor: Cursor = self.coll.find(query, {"_id": 0})
-        return {tx["hash"]: tx for tx in cursor}
+        return self.transactions.get(hash, {})
 
     def get_not_finalized_txs(self) -> Dict[str, Any]:
-        border: int = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
-        cursor: Cursor = self.coll.find(
-            {"state": {"$ne": "finalized"}, "insertion_timestamp": {"$lt": border}},
-            {"_id": 0},
-        )
-        return {tx["hash"]: tx for tx in cursor}
+        border = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
+        tx_hashes: List[str] = list(self.transactions.keys())
+        not_finalized_txs = {}
+        for tx_hash in tx_hashes:
+            tx: Optional[Dict[str, Any]] = self.transactions.get(tx_hash, {})
+            if (
+                tx.get("state") == "sequenced"
+                and tx.get("insertion_timestamp", 0) < border
+            ):
+                not_finalized_txs[tx_hash] = tx
+        return not_finalized_txs
 
-    def get_last_tx_by_state(self, state: str) -> Optional[Dict[str, Any]]:
-        return self.coll.find_one(
-            {"state": state}, sort=[("index", -1)], projection={"_id": 0}
-        )
+    def init_txs(self, bodies: List[str]) -> None:
+        for body in bodies:
+            tx_hash = utils.gen_hash(body)
+            if tx_hash in self.transactions:
+                continue
 
-    def insert_tx(self, tx: Dict[str, Any]) -> bool:
-        try:
-            tx["hash"] = self.gen_tx_hash(tx)
-            tx["state"] = "initialized"
-            self.coll.insert_one(tx)
-            return True
-        except Exception:
-            return False
+            self.transactions[tx_hash] = {
+                "body": body,
+                "hash": tx_hash,
+                "state": "initialized",
+            }
+
+    def sequencer_init_txs(self, txs: List[Dict[str, Any]]):
+        last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
+        index: int = self.last_sequenced_tx.get("index", 0)
+        for tx in txs:
+            tx_hash: str = utils.gen_hash(tx["body"])
+            if tx_hash in zdb.transactions:
+                continue
+
+            index += 1
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
+
+            tx["index"] = index
+            tx["state"] = "sequenced"
+            tx["hash"] = tx_hash
+            tx["chaining_hash"] = last_chaining_hash
+            self.transactions[tx_hash] = tx
+        self.last_sequenced_tx = tx
 
     def upsert_sequenced_txs(self, txs: List[Dict[str, Any]]) -> None:
-        batch: List[Any] = []
-        last_synced_tx: Dict[str, Any] = self.get_last_tx_by_state("sequenced") or {}
-        last_chaining_hash: str = last_synced_tx.get("chaining_hash", "")
+        if not txs:
+            return
+
+        last_chaining_hash: str = self.last_sequenced_tx.get("chaining_hash", "")
         for tx in txs:
-            tx_hash: str = self.gen_tx_hash(tx)
-            tx["state"] = "sequenced"
-            tx["chaining_hash"] = self.gen_chaining_hash(last_chaining_hash, tx_hash)
-            batch.append(
-                pymongo.UpdateOne({"hash": tx_hash}, {"$set": tx}, upsert=True)
-            )
-            last_chaining_hash = tx["chaining_hash"]
-        if batch:
-            self.coll.bulk_write(batch)
+            tx_hash: str = utils.gen_hash(tx["body"])
+            assert tx["hash"] == tx_hash, "invalid transaction hash"
 
-    def update_finalized_txs(self, to_: int) -> None:
-        # TODO: if _to is greater than the last sequenced tx index should sync with the sequencer
-        self.coll.update_many(
-            {"state": "sequenced", "index": {"$lte": to_}},
-            {"$set": {"state": "finalized"}},
-        )
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
+            assert tx["chaining_hash"] == last_chaining_hash, "invalid chaining hash"
 
-    def update_reinitialized_txs(self, from_: int) -> None:
+            tx["insertion_timestamp"] = int(time.time())
+            self.transactions[tx_hash] = tx
+
+        self.last_sequenced_tx = tx
+
+    def update_finalized_txs(self, _to: int) -> None:
+        snapshot_indexes: List[int] = []
+        for tx_hash in list(self.transactions.keys()):
+            tx = self.transactions.get(tx_hash, {})
+            if not tx:
+                continue
+            if tx.get("state") == "sequenced" and tx.get("index", float("inf")) <= _to:
+                tx["state"] = "finalized"
+
+            if tx["index"] > self.last_finalized_tx.get("index", -1):
+                self.last_finalized_tx = tx
+
+            if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
+                snapshot_indexes.append(tx["index"])
+
+        for snapshot_index in snapshot_indexes:
+            self.save_snapshot(snapshot_index)
+
+    def insert_sync_sig(self, sig_data: Dict[str, Any]):
+        self.transactions[sig_data["hash"]].setdefault("sig", sig_data["sig"])
+
+    def update_reinitialized_txs(self, _from: int) -> None:
         timestamp = int(time.time())
-        self.coll.update_many(
-            {"index": {"$gt": from_}},
-            {"$set": {"state": "initialized", "insertion_timestamp": timestamp}},
-        )
+        for tx_hash, tx in self.transactions.items():
+            if _from < tx.get("index", float("inf")):
+                tx.update({"state": "initialized", "insertion_timestamp": timestamp})
 
-    def sequence_txs(self, last_finalized_tx: Dict[str, Any]) -> None:
-        index: int = last_finalized_tx["index"]
-        last_chaining_hash: str = last_finalized_tx["chaining_hash"]
-        cursor: Cursor = self.coll.find({"state": {"$ne": "finalized"}}).sort(
-            [("index", 1), ("index", -1)]
-        )
-        for tx in cursor:
+    def resequence_txs(self, last_finalized_tx: Dict[str, Any]) -> None:
+        index = last_finalized_tx["index"]
+        last_chaining_hash = last_finalized_tx["chaining_hash"]
+
+        not_finalized_txs = [
+            tx for tx in self.transactions.values() if tx.get("state") != "finalized"
+        ]
+        not_finalized_txs.sort(key=lambda x: x.get("index", float("inf")))
+
+        for tx in not_finalized_txs:
             index += 1
-            chaining_hash: str = self.gen_chaining_hash(last_chaining_hash, tx["hash"])
-            self.coll.update_one(
-                {"hash": tx["hash"]},
-                {
-                    "$set": {
-                        "state": "sequenced",
-                        "index": index,
-                        "chaining_hash": chaining_hash,
-                    }
-                },
-            )
+            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
 
-            last_chaining_hash = chaining_hash
+            tx["state"] = "sequenced"
+            tx["index"] = index
+            tx["chaining_hash"] = last_chaining_hash
+            self.transactions[tx["hash"]] = tx
 
-
-class NodesStateColl:
-    _lock: threading.Lock = threading.Lock()
-
-    def __init__(self):
-        db_client: DatabaseClient = DatabaseClient()
-        db: Database = db_client.get_database()
-        self.coll = db.get_collection("nodes_state")
-
-    def upsert_node_state(self, node_id: str, index: int, chaining_hash: str) -> None:
-        self.coll.update_one(
-            {"node_id": node_id},
-            {"$set": {"index": index, "chaining_hash": chaining_hash}},
-            upsert=True,
+        self.transactions = dict(
+            sorted(self.transactions.items(), key=lambda item: item[1]["index"])
         )
+
+    def upsert_node_state(
+        self, node_id: str, index: int, chaining_hash: str, hash: str
+    ) -> None:
+        self.nodes_state[node_id] = {
+            "node_id": node_id,
+            "index": index,
+            "chaining_hash": chaining_hash,
+            "hash": hash,
+        }
 
     def get_nodes_state(self) -> List[Dict[str, Any]]:
-        return list(
-            self.coll.find(
-                {"node_id": {"$in": list(zconfig.NODES.keys())}}, {"_id": 0}
-            ).sort("index", pymongo.DESCENDING)
-        )
+        states = [
+            state
+            for state in self.nodes_state.values()
+            if state.get("node_id") in zconfig.NODES
+        ]
+        return sorted(states, key=lambda x: x["index"], reverse=True)
 
     def upsert_sync_point(self, state: Dict[str, Any], sig: Any) -> None:
-        self.coll.update_one(
-            {"_id": "sync_point"},
-            {
-                "$set": {
-                    "index": state["index"],
-                    "chaining_hash": state["chaining_hash"],
-                    "sig": json.dumps(sig),
-                }
-            },
-            upsert=True,
-        )
+        self.nodes_state["sync_point"] = {
+            "index": state["index"],
+            "chaining_hash": state["chaining_hash"],
+            "hash": state["hash"],
+            "sig": json.dumps(sig),
+        }
 
     def get_sync_point(self) -> Optional[Dict[str, Any]]:
-        return self.coll.find_one({"_id": "sync_point"}, {"_id": 0})
+        return self.nodes_state.get("sync_point")
 
+    def set_keys(self, public_key, private_key) -> None:
+        self.keys["zellular"] = {
+            "public_key": public_key,
+            "private_key": private_key,
+        }
 
-class keysColl:
-    _lock: threading.Lock = threading.Lock()
+    def get_keys(self) -> Optional[Dict[str, Any]]:
+        return self.keys.get("zellular")
 
-    def __init__(self):
-        db_client: DatabaseClient = DatabaseClient()
-        db: Database = db_client.get_database()
-        self.coll = db.get_collection("keys")
-
-    def set(self, public_key, private_key) -> None:
-        self.coll.insert_one(
-            {
-                "_id": "zellular",
-                "public_key": public_key,
-                "private_key": private_key,
-            }
-        )
-
-    def get(self) -> Optional[Dict[str, Any]]:
-        return self.coll.find_one({"_id": "zellular"})
-
-    def delete(self, public_key) -> None:
-        self.coll.delete_one(
-            {
-                "public_key": public_key,
-            }
-        )
+    def delete_keys(self, public_key) -> None:
+        if self.keys.get("zellular", {}).get("public_key") == public_key:
+            del self.keys["zellular"]
 
     def set_public_shares(self, data: Dict[str, Any]) -> None:
-        self.coll.update_one(
-            {"_id": "zellular"},
+        self.keys.setdefault("zellular", {})
+        self.keys["zellular"].update(
             {
-                "$set": {
-                    "public_shares": json.dumps(data["public_shares"]),
-                    "party": data["party"],
-                }
-            },
-            upsert=True,
+                "public_shares": data["public_shares"],
+                "party": data["party"],
+            }
         )
 
     def get_public_shares(self) -> Optional[Dict[str, Any]]:
-        return self.coll.find_one(
-            {"_id": "zellular", "public_shares": {"$exists": True}}
-        )
+        item = self.keys.get("zellular")
+        if item and "public_shares" in item:
+            return item
+        return None
 
 
-zdb: CollectionManager = CollectionManager()
+zdb: InMemoryDB = InMemoryDB()

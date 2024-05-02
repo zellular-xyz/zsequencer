@@ -2,16 +2,14 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import time
 from typing import Any, Dict, List
 
-import pymongo
 from fastecdsa import curve, keys
 from fastecdsa.encoding.sec1 import SEC1Encoder
 from web3 import Account
-
-client: pymongo.MongoClient = pymongo.MongoClient("mongodb://localhost:27017/")
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
@@ -38,8 +36,7 @@ def generate_privates_and_nodes_info() -> tuple[List[int], Dict[str, Any]]:
             "public_key": compressed_pub_key,
             "address": Account.from_key(new_private).address,
             "host": "127.0.0.1",
-            "port": str(5000 + i + 1),
-            "server_port": str(6000 + i + 1),
+            "port": str(6000 + i + 1),
         }
         privates_list.append(new_private)
     return privates_list, nodes_info_dict
@@ -64,20 +61,32 @@ def run():
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
 
-    with open("../nodes.json", "w") as f:
+    script_dir: str = os.path.dirname(os.path.abspath(__file__))
+    parent_dir: str = os.path.dirname(script_dir)
+    os.chdir(parent_dir)
+
+    with open("./nodes.json", "w") as f:
         f.write(json.dumps(nodes_info_dict))
 
     for i in range(NUM_INSTANCES):
+        data_dir = f"./db__{i + 1}"
+        try:
+            shutil.rmtree(data_dir)
+        except Exception:
+            pass
+
         environment_variables: Dict[str, str] = {
             "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
             "ZSEQUENCER_SECRET_KEY": secrets.token_hex(24),
             "ZSEQUENCER_PUBLIC_KEY": str(nodes_info_dict[str(i + 1)]["public_key"]),
             "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
             "ZSEQUENCER_NODES_FILE": "./nodes.json",
-            "ZSEQUENCER_DB_NAME": f"zsequencer_dev_{i + 1}",
+            "ZSEQUENCER_SNAPSHOT_CHUNK": "200000",
+            "ZSEQUENCER_REMOVE_CHUNK_BORDER": "3",
+            "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
             "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
-            "ZSEQUENCER_SEND_TXS_INTERVAL": "5",
-            "ZSEQUENCER_SYNC_INTERVAL": "30",
+            "ZSEQUENCER_SEND_TXS_INTERVAL": "0.1",
+            "ZSEQUENCER_SYNC_INTERVAL": "0.1",
             "ZSEQUENCER_MIN_NONCES": "10",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER": "120",
             "ZSEQUENCER_ENV_PATH": f"{dst_dir}/node{i + 1}",
@@ -87,36 +96,15 @@ def run():
             for key, value in environment_variables.items():
                 f.write(f"{key}={value}\n")
 
-        client.drop_database(f"zsequencer_dev_{i + 1}")
-
         env_variables = os.environ.copy()
         env_variables.update(environment_variables)
 
-        run_command(
-            "run_frost.py",
-            f"{i + 1}",
-            env_variables,
-        )
-        time.sleep(1)
-        run_command(
-            "run.py",
-            f"/tmp/dev_net/.env.node{i + 1}",
-            env_variables,
-        )
-        time.sleep(1)
+        run_command("run.py", f"{i + 1}", env_variables)
+        time.sleep(2)
         if i == 2:
-            run_command(
-                "examples/init_network.py",
-                "",
-                env_variables,
-            )
+            run_command("examples/init_network.py", "", env_variables)
             time.sleep(1)
-            run_command(
-                "examples/simple_app.py",
-                "",
-                env_variables,
-            )
-            time.sleep(1)
+            run_command("examples/simple_app.py", "", env_variables)
 
 
 if __name__ == "__main__":

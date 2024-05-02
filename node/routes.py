@@ -1,5 +1,6 @@
 import time
-from typing import Any, Dict
+from collections import Counter
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, Response, request
 
@@ -15,6 +16,37 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
+# TODO: should remove
+@node_blueprint.route("/db", methods=["GET"])
+def get_db() -> Dict[str, Any]:
+    txs_count = Counter()
+
+    for tx in zdb.transactions.values():
+        state = tx.get("state", "NONE")
+        txs_count[state] += 1
+
+    return {
+        "nodes_state": zdb.nodes_state,
+        "txs_state": txs_count,
+        "transactions": sorted(
+            zdb.transactions.values(), key=lambda m: m.get("index", -1)
+        ),
+    }
+
+
+@node_blueprint.route("/transactions", methods=["PUT"])
+@utils.not_sequencer
+def put_transactions() -> Response:
+    req_data: Dict[str, Any] = request.get_json(silent=True) or {}
+    required_keys: List[str] = ["transactions", "timestamp"]
+    error_message: str = utils.validate_request(req_data, required_keys)
+    if error_message:
+        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
+
+    zdb.init_txs(req_data["transactions"])
+    return success_response(data={}, message="The transactions received successfully.")
+
+
 @node_blueprint.route("/dispute", methods=["POST"])
 @utils.not_sequencer
 def post_dispute() -> Response:
@@ -22,7 +54,7 @@ def post_dispute() -> Response:
         return error_response(ErrorCodes.INVALID_REQUEST, "Request must be JSON.")
 
     req_data: Dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "txs", "timestamp"]
+    required_keys: List[str] = ["sequencer_id", "txs", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
@@ -42,34 +74,30 @@ def post_dispute() -> Response:
         return success_response(data=data)
 
     else:
-        for tx in req_data["txs"]:
-            tasks.init_tx(tx)
+        zdb.init_txs(req_data["txs"])
 
         return error_response(ErrorCodes.ISSUE_NOT_FOUND)
 
 
 @node_blueprint.route("/state", methods=["GET"])
 def get_state() -> Response:
-    last_sequenced_tx: Dict[str, Any] = zdb.txs.get_last_tx_by_state("sequenced") or {}
-    last_finalized_tx: Dict[str, Any] = zdb.txs.get_last_tx_by_state("finalized") or {}
     data: Dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
         "public_key": zconfig.NODE["public_key"],
         "address": zconfig.NODE["address"],
-        "last_sequenced_index": last_sequenced_tx.get("index", 0),
-        "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
-        "last_finalized_index": last_finalized_tx.get("index", 0),
-        "last_finalized_hash": last_finalized_tx.get("hash", ""),
+        "last_sequenced_index": zdb.last_sequenced_tx.get("index", 0),
+        "last_sequenced_hash": zdb.last_sequenced_tx.get("hash", ""),
+        "last_finalized_index": zdb.last_finalized_tx.get("index", 0),
+        "last_finalized_hash": zdb.last_finalized_tx.get("hash", ""),
     }
     return success_response(data=data)
 
 
 @node_blueprint.route("/finalized_transactions/last", methods=["GET"])
 def get_last_finalized_tx() -> Response:
-    last_finalized_tx: Dict[str, Any] = zdb.txs.get_last_tx_by_state("finalized") or {}
-    return success_response(data=last_finalized_tx)
+    return success_response(data=zdb.last_finalized_tx)
 
 
 @node_blueprint.route("/distributed_keys", methods=["PUT"])
@@ -81,10 +109,10 @@ def put_distributed_keys() -> Response:
     if not req_data:
         return error_response(ErrorCodes.INVALID_REQUEST)
 
-    if zdb.keys.get_public_shares():
+    if zdb.get_public_shares():
         return error_response(ErrorCodes.PK_ALREADY_SET)
 
-    zdb.keys.set_public_shares(req_data)
+    zdb.set_public_shares(req_data)
     return success_response(data={}, message="The distributed keys set successfully.")
 
 
@@ -108,19 +136,21 @@ def post_switch_sequencer() -> Response:
 
 @node_blueprint.route("/transactions", methods=["GET"])
 def get_transactions() -> Response:
-    index: int = request.args.get("after", default=0, type=int)
-    txs: Dict[str, Any] = zdb.txs.get_txs(after=index)
+    after: Optional[int] = request.args.get("after", default=None, type=int)
+    states: List[str] = request.args.getlist("states", type=str)
+
+    txs: Dict[str, Dict[str, Any]] = zdb.get_txs(after=after, states=states)
     return success_response(data=list(txs.values()))
 
 
 @node_blueprint.route("/transaction", methods=["GET"])
 def get_transaction() -> Response:
-    search_term: str = request.args.get("search_term", default="", type=str)
+    hash: str = request.args.get("hash", default="", type=str)
 
-    if not search_term:
+    if not hash:
         return error_response(ErrorCodes.INVALID_REQUEST)
 
-    txs: Dict[str, Any] = zdb.txs.get_txs(search_term=search_term)
+    txs: Dict[str, Any] = zdb.get_tx(hash=hash)
     if not txs:
         return error_response(ErrorCodes.NOT_FOUND)
 
