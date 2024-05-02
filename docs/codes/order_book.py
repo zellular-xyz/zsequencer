@@ -1,25 +1,25 @@
-from flask import Flask, request, session, jsonify
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import check_password_hash
+from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
+import base64
+import requests
+from threading import Thread
+import time
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///orders.db'
 app.config['SECRET_KEY'] = 'your_secret_key'
 db = SQLAlchemy(app)
-
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+zsequencer_url = 'http://localhost:8323/node/transactions'
 
 class Balance(db.Model):
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    public_key = db.Column(db.String(500), primary_key=True)
     token = db.Column(db.String(50), primary_key=True)
     amount = db.Column(db.Float, nullable=False)
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    public_key = db.Column(db.String(500), nullable=False)
     base_token = db.Column(db.String(50), nullable=False)
     quote_token = db.Column(db.String(50), nullable=False)
     order_type = db.Column(db.String(10), nullable=False)  # 'buy' or 'sell'
@@ -31,22 +31,58 @@ class Order(db.Model):
 def create_tables():
     db.create_all()
 
-@app.route('/login', methods=['POST'])
-def login():
-    username = request.form['username']
-    password = request.form['password']
-    user = User.query.filter_by(username=username).first()
-    if user and check_password_hash(user.password_hash, password):
-        session['user_id'] = user.id
-        return jsonify({"message": "Logged in successfully"}), 200
-    return jsonify({"message": "Invalid username or password"}), 401
+def verify_order(order):
+    # Serialize the data from the form fields
+    keys = ['order_type', 'base_token', 'quote_token', 'quantity', 'price']
+    message = ','.join([order[key] for key in keys]).encode('utf-8')
+
+    # Verify the signature
+    try:
+        public_key = base64.b64decode(order['public_key'])
+        signature = base64.b64decode(order['signature'])
+        vk = VerifyingKey.from_string(public_key, curve=SECP256k1)
+        vk.verify(signature, message)
+    except (BadSignatureError, ValueError):
+        return False
+    return True
 
 @app.route('/order', methods=['POST'])
 def place_order():
-    if 'user_id' not in session:
-        return jsonify({"message": "Please log in"}), 401
+    if not verify_order(request.form):
+        return jsonify({"message": "Invalid signature"}), 403
 
-    order = request.form
+    keys = ['order_type', 'base_token', 'quote_token', 'quantity', 'price']
+    headers = {"Content-Type": "application/json"}
+    data = {
+        'transactions': [{key: request.form[key] for key in keys}],
+        'timestamp': int(time.time())
+    }
+    requests.put(zsequencer_url, jsonify(data), headers=headers)
+    return { 'success': True }
+
+def process_loop():
+    last = 0
+    while True:
+        params={"after": last, "states": ["finalized"]}
+        response = requests.get(zsequencer_url, params=params)
+        finalized_txs = response.json().get("data")
+        if not finalized_txs:
+            time.sleep(1)
+            continue
+
+        last = max(tx["index"] for tx in finalized_txs)
+        sorted_numbers = sorted([t["index"] for t in finalized_txs])
+        print(
+            f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
+        )
+        for tx in finalized_txs:
+            place_order(tx)
+
+def __place_order(order):
+    if not verify_order(order):
+        print("Invalid signature:", order)
+        return
+
     order_type = order['order_type']
     base_token = order['base_token']
     quote_token = order['quote_token']
@@ -127,4 +163,5 @@ def update_balances(new_order, matched_order, trade_quantity):
     db.session.commit()
 
 if __name__ == '__main__':
+    Thread(target=process_loop).start()
     app.run(debug=True)
