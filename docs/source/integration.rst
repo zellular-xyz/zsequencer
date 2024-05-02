@@ -193,10 +193,32 @@ Add a thread to continuously retrieve finalized, sequenced orders. Apply the sam
 
 .. code-block:: python
 
+    def process_loop():
+        last = 0
+        while True:
+            params={"after": last, "states": ["finalized"]}
+            response = requests.get(zsequencer_url, params=params)
+            finalized_txs = response.json().get("data")
+            if not finalized_txs:
+                time.sleep(1)
+                continue
+
+            last = max(tx["index"] for tx in finalized_txs)
+            sorted_numbers = sorted([t["index"] for t in finalized_txs])
+            print(
+                f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
+            )
+            for tx in finalized_txs:
+                place_order(tx)
+
     def __place_order(order):
         if not verify_order(order):
             print("Invalid signature:", order)
             return
         ...
+
+    if __name__ == '__main__':
+        Thread(target=process_loop).start()
+        app.run(debug=True)
 
 The complete code for the decentralized version of the sample order book can be accessed `here <https://github.com/siftal/zsequencer/blob/main/docs/codes/order_book.py>`_. Additionally, you can view the GitHub comparison between the centralized and decentralized versions `here <https://github.com/siftal/zsequencer/compare/18ba23d..39a1a42>`_. As demonstrated, integrating the Zellular Sequencer into your apps is straightforward and accessible for any Python developer, without requiring deep expertise in blockchain or smart contracts.
