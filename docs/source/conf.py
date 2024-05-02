@@ -2,11 +2,11 @@
 
 # -- Project information
 
-project = 'Zellular'
+project = 'Zellular Sequencer'
 copyright = '2021, Graziella'
 author = 'Graziella'
 
-release = '0.1'
+release = '0.1.0'
 version = '0.1.0'
 
 # -- General configuration
