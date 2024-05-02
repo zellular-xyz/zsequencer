@@ -46,11 +46,12 @@ def place_order():
     if 'user_id' not in session:
         return jsonify({"message": "Please log in"}), 401
 
-    order_type = request.form['order_type']
-    base_token = request.form['base_token']
-    quote_token = request.form['quote_token']
-    quantity = float(request.form['quantity'])
-    price = float(request.form['price'])
+    order = request.form
+    order_type = order['order_type']
+    base_token = order['base_token']
+    quote_token = order['quote_token']
+    quantity = float(order['quantity'])
+    price = float(order['price'])
 
     # Determine the cost in quote tokens and check balances
     cost_in_quote = quantity * price
