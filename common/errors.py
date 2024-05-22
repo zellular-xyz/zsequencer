@@ -8,7 +8,6 @@ class HtmlErrorCodes:
     SEQUENCER_CHANGE_NOT_APPROVED = 403
     PERMISSION_DENIED = 403
     NOT_FOUND = 404
-    LOCAL_ONLY = 403
 
 
 class ErrorCodes:
@@ -21,7 +20,6 @@ class ErrorCodes:
     SEQUENCER_CHANGE_NOT_APPROVED = "sequencer_change_not_approved"
     PERMISSION_DENIED = "permission_denied"
     NOT_FOUND = "not_found"
-    LOCAL_ONLY = "local_only"
 
 
 class ErrorMessages:
@@ -34,4 +32,3 @@ class ErrorMessages:
     SEQUENCER_CHANGE_NOT_APPROVED = "The sequencer change request is not approved."
     PERMISSION_DENIED = "The request is not approved."
     NOT_FOUND = "Not found."
-    LOCAL_ONLY = "The request is not approved."

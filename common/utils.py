@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from eth_account.datastructures import SignedMessage
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import request
 from web3 import Account
 
 from config import zconfig
@@ -31,19 +30,6 @@ def not_sequencer(f: Callable[..., Any]) -> Decorator:
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
-        return f(*args, **kwargs)
-
-    return decorated_function
-
-
-def local_only(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if request.remote_addr not in [
-            "127.0.0.1",
-            "::1",
-        ]:
-            return response_utils.error_response(errors.ErrorCodes.LOCAL_ONLY)
         return f(*args, **kwargs)
 
     return decorated_function
