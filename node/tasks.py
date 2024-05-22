@@ -1,7 +1,9 @@
 import json
+import os
 import threading
 import time
-from typing import Any, Dict, List, Set
+from collections import Counter
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 
@@ -212,3 +214,92 @@ def get_last_finalized_tx() -> Dict[str, Any]:
             zlogger.exception("An error occurred:")
 
     return last_finalized_tx
+
+
+def get_network_data_state() -> Dict[str, Any]:
+    data_states: List[Dict[str, Any]] = []
+    node_ids: List[str] = []
+    result: Dict[str, Any] = {}
+
+    for node in zconfig.NODES.values():
+        if node["id"] in [zconfig.NODE["id"], zconfig.SEQUENCER["id"]]:
+            continue
+
+        data_state: Optional[Dict[str, Any]] = get_node_data_state(node)
+        if not data_state:
+            continue
+
+        data_states.append(data_state)
+
+    hashes = [d["hash"] for d in data_states if "hash" in d]
+    hash_counts = Counter(hashes)
+    if not hash_counts:
+        return result
+
+    most_common: tuple = hash_counts.most_common(1)[0]
+    if most_common[1] < zconfig.THRESHOLD_NUMBER:
+        return result
+
+    for data_state in data_states:
+        zdb.upsert_node_data_state(node["id"], data_state)
+        if data_state["hash"] != most_common[0]:
+            continue
+
+        node_ids.append(node["id"])
+        if not result and data_state["files"]:
+            result = data_state
+
+    result["node_ids"] = node_ids
+    zdb.upsert_network_data_state(result)
+    return result
+
+
+def get_node_data_state(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    url: str = f'http://{node["host"]}:{node["port"]}/node/data_state'
+    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    try:
+        response: Dict[str, Any] = requests.get(url, headers=headers).json()
+        if response["status"] != "success":
+            return
+
+        if not utils.is_sig_verified(
+            response["data"]["signature"], node["id"], response["data"]["hash"]
+        ):
+            return
+
+        return response["data"]
+    except Exception:
+        zlogger.exception("An error occurred:")
+
+
+def get_local_data_file(file_name: str) -> Optional[str]:
+    data_state: Dict[str, Any] = zdb.get_node_data_state(zconfig.NODE["id"]) or {}
+    file_path: str = data_state.get("files", {}).get(file_name)
+    if not file_path or not os.path.exists(file_path):
+        return
+
+    with open(file_path, "r") as f:
+        return f.read()
+
+
+def get_remote_data_file(file_name: str) -> Optional[str]:
+    network_data_state: Optional[Dict[str, Any]] = zdb.get_network_data_state()
+    if not network_data_state:
+        return
+
+    for node_id in network_data_state["node_ids"]:
+        data_state: Dict[str, Any] = zdb.get_node_data_state(node_id) or {}
+        if file_name not in data_state.get("files", {}):
+            continue
+
+        node: Dict[str, Any] = zconfig.NODES[node_id]
+        url: str = (
+            f'http://{node["host"]}:{node["port"]}/node/data_state/files/{file_name}'
+        )
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        try:
+            response: Dict[str, Any] = requests.get(url, headers=headers).json()
+            if response["status"] == "success":
+                return response["data"]
+        except Exception:
+            zlogger.exception("An error occurred:")

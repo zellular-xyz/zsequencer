@@ -11,8 +11,9 @@ from flask import Flask
 
 from config import zconfig
 from shared_state import state
+from zsequencer.common.db import zdb
 from zsequencer.node import tasks as node_tasks
-from zsequencer.node.routes import node_blueprint
+from zsequencer.node.routes import local_blueprint, node_blueprint
 from zsequencer.sequencer import tasks as sequencer_tasks
 from zsequencer.sequencer import tss
 from zsequencer.sequencer.routes import sequencer_blueprint
@@ -22,6 +23,7 @@ def create_app(tss_blueprint) -> Flask:
     app: Flask = Flask(__name__)
     app.secret_key = zconfig.SECRET_KEY
 
+    app.register_blueprint(local_blueprint, url_prefix="/local")
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
     app.register_blueprint(tss_blueprint, url_prefix="/pyfrost")

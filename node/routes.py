@@ -13,7 +13,8 @@ from ..common.errors import ErrorCodes
 from ..common.response_utils import error_response, success_response
 from . import tasks
 
-node_blueprint = Blueprint("node", __name__)
+node_blueprint: Blueprint = Blueprint("node", __name__)
+local_blueprint: Blueprint = Blueprint("local", __name__)
 
 
 # TODO: should remove
@@ -34,8 +35,9 @@ def get_db() -> Dict[str, Any]:
     }
 
 
-@node_blueprint.route("/transactions", methods=["PUT"])
+@local_blueprint.route("/transactions", methods=["PUT"])
 @utils.not_sequencer
+@utils.local_only
 def put_transactions() -> Response:
     req_data: Dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: List[str] = ["transactions", "timestamp"]
@@ -155,3 +157,56 @@ def get_transaction() -> Response:
         return error_response(ErrorCodes.NOT_FOUND)
 
     return success_response(data=list(txs.values())[0])
+
+
+@local_blueprint.route("/data_state", methods=["PUT"])
+@utils.local_only
+def put_data_state() -> Response:
+    req_data: Dict[str, Any] = request.get_json(silent=True) or {}
+    required_keys: List[str] = ["hash"]
+    error_message: str = utils.validate_request(req_data, required_keys)
+    if error_message:
+        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
+
+    zdb.upsert_node_data_state(zconfig.NODE["id"], req_data)
+    return success_response(data={}, message="The data state set successfully.")
+
+
+@node_blueprint.route("/data_state", methods=["GET"])
+def get_data_state() -> Response:
+    data_state: Optional[Dict[str, Any]] = zdb.get_node_data_state(zconfig.NODE["id"])
+    if data_state:
+        data_state["signature"] = utils.sign(data_state["hash"])
+    return success_response(data=data_state)
+
+
+@local_blueprint.route("/data_state", methods=["GET"])
+@utils.local_only
+def get_network_data_state() -> Response:
+    data_state: Dict[str, Any] = tasks.get_network_data_state()
+    return success_response(data=data_state)
+
+
+@node_blueprint.route("/data_state/files/<file_name>", methods=["GET"])
+def get_local_data_file(file_name: str) -> Response:
+    if not file_name:
+        return error_response(ErrorCodes.INVALID_REQUEST)
+
+    data: Optional[str] = tasks.get_local_data_file(file_name)
+    if not data:
+        return error_response(ErrorCodes.NOT_FOUND)
+
+    return success_response(data=data)
+
+
+@local_blueprint.route("/data_state/files/<file_name>", methods=["GET"])
+@utils.local_only
+def get_remote_data_file(file_name: str) -> Response:
+    if not file_name:
+        return error_response(ErrorCodes.INVALID_REQUEST)
+
+    data: Optional[str] = tasks.get_remote_data_file(file_name)
+    if not data:
+        return error_response(ErrorCodes.NOT_FOUND)
+
+    return success_response(data=data)

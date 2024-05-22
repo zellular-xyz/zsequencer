@@ -24,6 +24,7 @@ class InMemoryDB:
     def _initialize(self):
         self.transactions: Dict[str, Dict[str, Any]] = {}
         self.nodes_state: Dict[str, Dict[str, Any]] = {}
+        self.nodes_data_state: Dict[int, Dict[str, Any]] = {}
         self.keys: Dict[str, Any] = {}
         self.last_sequenced_tx = {}
         self.last_finalized_tx = {}
@@ -254,6 +255,21 @@ class InMemoryDB:
             if state.get("node_id") in zconfig.NODES
         ]
         return sorted(states, key=lambda x: x["index"], reverse=True)
+
+    def upsert_node_data_state(self, node_id: int, data_state: Dict[str, Any]) -> None:
+        self.nodes_data_state[node_id] = {
+            "hash": data_state["hash"],
+            "files": data_state.get("files", {}),
+        }
+
+    def get_node_data_state(self, node_id: int) -> Optional[Dict[str, Any]]:
+        return self.nodes_data_state.get(node_id)
+
+    def upsert_network_data_state(self, data_state: Dict[str, Any]) -> None:
+        self.nodes_state["network_data_state"] = data_state
+
+    def get_network_data_state(self) -> Optional[Dict[str, Any]]:
+        return self.nodes_state.get("network_data_state")
 
     def upsert_sync_point(self, state: Dict[str, Any], sig: Any) -> None:
         self.nodes_state["sync_point"] = {
