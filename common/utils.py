@@ -1,91 +1,108 @@
-import hashlib
+"""This module provides utility functions and decorators for the zellular application."""
+
 import time
 from collections import Counter
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
+import xxhash
 from eth_account.datastructures import SignedMessage
 from eth_account.messages import SignableMessage, encode_defunct
 from web3 import Account
 
-from config import zconfig
+from zsequencer.config import zconfig
 
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 
 
-def sequencer_only(f: Callable[..., Any]) -> Decorator:
-    @wraps(f)
+def sequencer_only(func: Callable[..., Any]) -> Decorator:
+    """Decorator to restrict access to sequencer-only functions."""
+
+    @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
-        return f(*args, **kwargs)
+        return func(*args, **kwargs)
 
     return decorated_function
 
 
-def not_sequencer(f: Callable[..., Any]) -> Decorator:
-    @wraps(f)
+def not_sequencer(func: Callable[..., Any]) -> Decorator:
+    """Decorator to restrict access to non-sequencer functions."""
+
+    @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
-        return f(*args, **kwargs)
+        return func(*args, **kwargs)
 
     return decorated_function
 
 
 def is_frost_sig_verified(sig: str, index: int, chaining_hash: str) -> bool:
+    """Verify a FROST signature."""
     # TODO: check signature
     return True
 
 
 def sign(msg: str) -> str:
+    """Sign a message using the node's private key."""
     message_encoded: SignableMessage = encode_defunct(text=msg)
     sig: SignedMessage = Account.sign_message(
-        message_encoded, private_key=int(zconfig.NODE["private_key"])
+        signable_message=message_encoded, private_key=int(zconfig.NODE["private_key"])
     )
     return sig.signature.hex()
 
 
 def is_sig_verified(sig: str, node_id: str, msg: str) -> bool:
+    """Verify a signature against the node's public address."""
     try:
         msg_encoded: SignableMessage = encode_defunct(text=msg)
-        recovered_address: str = Account.recover_message(msg_encoded, signature=sig)
+        recovered_address: str = Account.recover_message(
+            signable_message=msg_encoded, signature=sig
+        )
         return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:
         return False
 
 
-def validate_request(req_data: Dict[str, Any], required_keys: List[str]) -> str:
+def validate_request(req_data: dict[str, Any], required_keys: list[str]) -> str:
+    """Validate a request by checking if required keys are present."""
     if all(key in req_data for key in required_keys):
         return ""
-    missing_keys: List[str] = [key for key in required_keys if key not in req_data]
+    missing_keys: list[str] = [key for key in required_keys if key not in req_data]
     message: str = "Required keys are missing: " + ", ".join(missing_keys)
     return message
 
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
-    sorted_nodes: List[Dict[str, Any]] = sorted(
+    """Get the ID of the next sequencer."""
+    sorted_nodes: list[dict[str, Any]] = sorted(
         zconfig.NODES.values(), key=lambda x: x["id"]
     )
-    index: Optional[int] = next(
+    index: int | None = next(
         (i for i, item in enumerate(sorted_nodes) if item["id"] == old_sequencer_id),
         None,
     )
     if index is None or index == len(sorted_nodes) - 1:
         return sorted_nodes[0]["id"]
-    else:
-        return sorted_nodes[index + 1]["id"]
+
+    return sorted_nodes[index + 1]["id"]
 
 
-def is_switch_approved(proofs: List[Dict[str, Any]]) -> bool:
+def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
+    """Check if the switch to a new sequencer is approved."""
     approvals: int = sum(1 for proof in proofs if is_dispute_approved(proof))
     return approvals >= zconfig.THRESHOLD_NUMBER
 
 
-def is_dispute_approved(proof: Dict[str, Any]) -> bool:
-    required_keys: List[str] = [
+def is_dispute_approved(proof: dict[str, Any]) -> bool:
+    """Check if a dispute is approved based on the provided proof."""
+    required_keys: list[str] = [
         "node_id",
         "old_sequencer_id",
         "new_sequencer_id",
@@ -117,8 +134,9 @@ def is_dispute_approved(proof: Dict[str, Any]) -> bool:
 
 
 def get_switch_parameter_from_proofs(
-    proofs: List[Dict[str, Any]],
-) -> Tuple[Optional[str], Optional[str]]:
+    proofs: list[dict[str, Any]],
+) -> tuple[str | None, str | None]:
+    """Get the switch parameters from proofs."""
     sequencer_counts: Counter = Counter()
     for proof in proofs:
         if "old_sequencer_id" in proof and "new_sequencer_id" in proof:
@@ -131,9 +149,21 @@ def get_switch_parameter_from_proofs(
     most_common_sequencer = sequencer_counts.most_common(1)
     if most_common_sequencer:
         return most_common_sequencer[0][0]
-    else:
-        return None, None
+
+    return None, None
 
 
-def gen_hash(s: str):
-    return hashlib.sha256(s.encode()).hexdigest()
+def gen_hash(msg: str) -> str:
+    """Generate a hash for a given string."""
+    return xxhash.xxh128_hexdigest(msg)
+
+
+def multi_gen_hash(strings: list[str]) -> list[str]:
+    """Generate hashes for multiple strings concurrently."""
+    with ProcessPoolExecutor() as executor:
+        futures = {executor.submit(gen_hash, s): i for i, s in enumerate(strings)}
+        results = [""] * len(strings)
+        for future in as_completed(futures):
+            index = futures[future]
+            results[index] = future.result()
+    return results
