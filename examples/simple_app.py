@@ -1,69 +1,83 @@
+"""This script simulates a simple app which uses Zsequencer."""
+
 import json
 import os
 import sys
 import threading
 import time
-from typing import Any, Dict
+from typing import Any
 
 import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-BATCH_SIZE = 100000
-BATCH_NUMBER = 1
+BATCH_SIZE: int = 100_000
+BATCH_NUMBER: int = 1
+APP_NAME: str = "simple_app"
+NODE_URL: str = "http://localhost:6003"
 
 
-def send_batch_txs(batch_num) -> None:
-    op: Dict[str, Any] = {
-        "transactions": [
-            json.dumps(
-                {
-                    "name": "foo",
-                    "app": "foo_app",
-                    "serial": f"{batch_num}_{tx_num}",
-                    "timestamp": int(time.time()),
-                    "version": 6,
-                }
-            )
-            for tx_num in range(BATCH_SIZE)
-        ],
-        "timestamp": int(time.time()),
-    }
-    print(f'sending {len(op["transactions"])} new operations (batch {batch_num})')
-    requests.put(
-        "http://localhost:6003/node/transactions",
-        json.dumps(op),
-        headers={"Content-Type": "application/json"},
-    )
-
-
-def sync() -> None:
-    last: int = 0
-    t1 = time.time()
+def check_state() -> None:
+    """Continuously check and print the node state until all the transactions are finalized."""
+    start_time: float = time.time()
     while True:
-        response = requests.get(
-            "http://localhost:6003/node/transactions",
-            params={"after": last, "states": ["finalized"]},
+        last_finalized_tx: dict[str, Any] = requests.get(
+            f"{NODE_URL}/node/{APP_NAME}/transactions/finalized/last"
+        ).json()
+        print(
+            f'Last finalized index: {last_finalized_tx["data"].get("index", 0)} -  ({time.time() - start_time} s)'
         )
-        finalized_txs = response.json().get("data")
-        if finalized_txs:
-            last: int = max(tx["index"] for tx in finalized_txs)
-            print(
-                f"\nlast finalized transactions: {last} ==> {time.time() - t1}",
-            )
+        if last_finalized_tx["data"].get("index") == BATCH_NUMBER * BATCH_SIZE:
+            break
         time.sleep(0.1)
 
 
-def start_sending_transactions():
-    for i in range(BATCH_NUMBER):
-        send_batch_txs(i + 1)
+def sending_transactions(transaction_batches: list[dict[str, Any]]) -> None:
+    """Send batches of transactions to the node."""
+    for i, batch in enumerate(transaction_batches):
+        print(f'sending {len(batch["transactions"])} new operations (batch {i})')
+        requests.put(
+            url=f"{NODE_URL}/node/transactions",
+            data=json.dumps(batch),
+            headers={"Content-Type": "application/json"},
+        )
+
+
+def generate_dummy_transactions() -> list[dict[str, Any]]:
+    """Create batches of transactions."""
+    timestamp: int = int(time.time())
+    return [
+        {
+            "app_name": APP_NAME,
+            "transactions": [
+                json.dumps(
+                    {
+                        "operation": "foo",
+                        "serial": f"{batch_num}_{tx_num}",
+                        "version": 6,
+                    }
+                )
+                for tx_num in range(BATCH_SIZE)
+            ],
+            "timestamp": timestamp,
+        }
+        for batch_num in range(BATCH_NUMBER)
+    ]
+
+
+def main() -> None:
+    """run the simple app."""
+    transaction_batches: list[dict[str, Any]] = generate_dummy_transactions()
+    sender_thread = threading.Thread(
+        target=sending_transactions, args=[transaction_batches]
+    )
+    sync_thread = threading.Thread(target=check_state)
+
+    sender_thread.start()
+    sender_thread.join()
+
+    sync_thread.start()
+    sync_thread.join()
 
 
 if __name__ == "__main__":
-    sender_thread = threading.Thread(target=start_sending_transactions)
-    sync_thread = threading.Thread(target=sync)
-
-    sender_thread.start()
-    sync_thread.start()
-
-    sync_thread.join()
-    sender_thread.join()
+    main()
