@@ -1,6 +1,6 @@
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pyfrost.network.abstract import DataManager
 from pyfrost.network.abstract import NodesInfo as BaseNodeInfo
@@ -8,12 +8,11 @@ from pyfrost.network.abstract import Validators
 from pyfrost.network.node import Node
 from pyfrost.network.sa import SA
 
-from config import zconfig
+from zsequencer.common.db import zdb
+from zsequencer.config import zconfig
 
-from ..common.db import zdb
-
-g_private_key: Dict[str, Any] = {}
-nonces: Dict[str, Any] = {}
+g_private_key: dict[str, Any] = {}
+nonces: dict[str, Any] = {}
 
 
 class NodeDataManager(DataManager):
@@ -30,15 +29,15 @@ class NodeDataManager(DataManager):
     def remove_nonce(self, nonce_public: str) -> None:
         del self.__nonces[nonce_public]
 
-    def set_key(self, key: int, value: Dict[str, Any]) -> None:
+    def set_key(self, key: int, value: dict[str, Any]) -> None:
         zdb.set_keys(public_key=str(key), private_key=json.dumps(value))
 
-    def get_key(self, key: int) -> Optional[Dict[str, Any]]:
+    def get_key(self, key: int) -> dict[str, Any] | None:
         global g_private_key
         if not g_private_key:
-            keys: Optional[Dict[str, Any]] = zdb.get_keys()
+            keys: dict[str, Any] | None = zdb.get_keys()
             if not keys:
-                return
+                return None
             g_private_key = json.loads(keys.get("private_key", "{}"))
         return g_private_key
 
@@ -65,13 +64,14 @@ class NodeValidators(Validators):
         return False
 
     @staticmethod
-    def data_validator(input_data: Dict[str, Any]):
+    def data_validator(input_data: dict[str, Any]):
+        # TODO: update data validation
         # tx = db.get_tx(input_data['index'])
         # if tx['chaining_hash'] != input_data['chaining_hash']:
         #     raise ValueError(
         #         "Input data is not valid: chaining_hash mismatch")
 
-        result: Dict[str, Any] = {"data": input_data}
+        result: dict[str, Any] = {"data": input_data}
         hash_obj = hashlib.sha3_256(json.dumps(result["data"]).encode())
         hash_hex: str = hash_obj.hexdigest()
         result["hash"] = hash_hex
@@ -82,12 +82,12 @@ class NodesInfo(BaseNodeInfo):
     prefix: str = "/pyfrost"
 
     def __init__(self):
-        self.nodes: Dict[str, Any] = zconfig.NODES
+        self.nodes: dict[str, Any] = zconfig.NODES
 
-    def lookup_node(self, node_id: str) -> Dict[str, Any]:
+    def lookup_node(self, node_id: str) -> dict[str, Any]:
         return self.nodes.get(node_id) or {}
 
-    def get_all_nodes(self, n: Optional[int] = None) -> List[str]:
+    def get_all_nodes(self, n: int | None = None) -> list[str]:
         if n is None:
             n = len(self.nodes)
         return list(self.nodes.keys())[:n]
@@ -98,7 +98,7 @@ async def request_nonces() -> None:
     if not zdb.get_public_shares():
         return
 
-    node_ids: List[str] = [
+    node_ids: list[str] = [
         n["id"]
         for n in zconfig.NODES.values()
         if len(nonces.get(n["id"], [])) < zconfig.MIN_NONCES
@@ -108,7 +108,7 @@ async def request_nonces() -> None:
 
     nodes_info: NodesInfo = NodesInfo()
     sa: SA = SA(nodes_info, default_timeout=50)
-    nonces_response: Dict[str, Any] = await sa.request_nonces(
+    nonces_response: dict[str, Any] = await sa.request_nonces(
         node_ids, zconfig.MIN_NONCES * 10
     )
     for node_id in node_ids:
@@ -116,14 +116,12 @@ async def request_nonces() -> None:
         nonces[node_id] += nonces_response[node_id]["data"]
 
 
-async def request_sig(
-    data: Dict[str, Any], party: List[str]
-) -> Optional[Dict[str, Any]]:
-    keys: Optional[Dict[str, Any]] = zdb.get_public_shares()
+async def request_sig(data: dict[str, Any], party: list[str]) -> dict[str, Any] | None:
+    keys: dict[str, Any] | None = zdb.get_public_shares()
     if not keys:
         return
 
-    nonces_dict: Dict[str, Any] = {}
+    nonces_dict: dict[str, Any] = {}
     for node_id in party[:]:
         if not nonces.get(node_id):
             party.remove(node_id)
@@ -136,7 +134,7 @@ async def request_sig(
 
     nodes_info: NodesInfo = NodesInfo()
     sa: SA = SA(nodes_info, default_timeout=50)
-    sa_data: Dict[str, Any] = {"data": data}
+    sa_data: dict[str, Any] = {"data": data}
     keys["public_key"] = int(keys["public_key"])
     keys["public_shares"] = keys["public_shares"]
     keys["party"] = party
