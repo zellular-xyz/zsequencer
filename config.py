@@ -1,7 +1,13 @@
+"""
+Configuration functions for the ZSequencer.
+"""
+
+import cProfile
+import functools
 import json
-import math
 import os
-from typing import Any, Dict, List, Optional
+import pstats
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -9,66 +15,29 @@ from dotenv import load_dotenv
 class Config:
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls) -> "Config":
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
             cls._instance.load_environment_variables()
         return cls._instance
 
-    def load_environment_variables(self):
-        env = os.getenv("ZSEQUENCER_ENV_PATH", "production")
-        env_file = f"{env}.env"
-        load_dotenv(dotenv_path=env_file, override=True)
+    @staticmethod
+    def load_json_file(file_path: str) -> dict[str, Any]:
+        """Load JSON data from a file."""
+        try:
+            with open(file=file_path, mode="r", encoding="utf-8") as json_file:
+                return json.load(json_file)
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+            return {}
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from file: {file_path}")
+            return {}
 
-        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", default=6000))
-        self.SNAPSHOT_CHUNK: int = int(
-            os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", default=1000)
-        )
-        self.REMOVE_CHUNK_BORDER = int(
-            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", default=2)
-        )
-        self.SNAPSHOT_PATH: str = os.getenv(
-            "ZSEQUENCER_SNAPSHOT_PATH", default="./data/"
-        )
-        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
-        self.SECRET_KEY: Optional[str] = os.getenv("ZSEQUENCER_SECRET_KEY")
-        self.PUBLIC_KEY: int = int(os.getenv("ZSEQUENCER_PUBLIC_KEY", default=0))
-        self.SEND_TXS_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", default=5)
-        )
-        self.SYNC_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SYNC_INTERVAL", default=30)
-        )
-        self.MIN_NONCES: int = int(os.getenv("ZSEQUENCER_MIN_NONCES", default=10))
-        self.FINALIZATION_TIME_BORDER: int = int(
-            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", default=120)
-        )
-        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", default="nodes.js")
-        self.NODES: Dict[str, Dict[str, Any]] = self.load_nodes(self.NODES_FILE)
-        self.THRESHOLD_NUMBER: int = int(
-            os.getenv(
-                "ZSEQUENCER_THRESHOLD_NUMBER", default=int(math.ceil(len(self.NODES)))
-            )
-        )
-        self.NODE: Dict[str, int] = next(
-            (n for n in self.NODES.values() if n["public_key"] == self.PUBLIC_KEY), {}
-        )
-        self.NODE["private_key"] = int(os.getenv("ZSEQUENCER_PRIVATE_KEY", default=0))
-        self.SEQUENCER: Dict[str, Any] = self.NODES["1"]
-
-        self.validate_env_variables()
-
-    def load_nodes(self, file_path: str) -> Dict[str, Dict[str, int]]:
-        with open(file_path, "r") as json_file:
-            nodes_data: Dict[str, Dict[str, int]] = json.load(json_file)
-        return nodes_data
-
-    def update_sequencer(self, sequencer_id: Optional[str]) -> None:
-        if sequencer_id:
-            self.SEQUENCER = self.NODES[sequencer_id]
-
-    def validate_env_variables(self):
-        required_vars: List[str] = [
+    @staticmethod
+    def validate_env_variables() -> None:
+        """Validate that all required environment variables are set."""
+        required_vars: list[str] = [
             "ZSEQUENCER_PORT",
             "ZSEQUENCER_SECRET_KEY",
             "ZSEQUENCER_PUBLIC_KEY",
@@ -84,12 +53,87 @@ class Config:
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
         ]
 
-        missing_vars: List[str] = [var for var in required_vars if not os.getenv(var)]
+        missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
 
         if missing_vars:
             raise EnvironmentError(
                 f"Missing environment variables: {', '.join(missing_vars)}"
             )
+
+    def load_environment_variables(self):
+        """Load environment variables from a .env file and validate them."""
+        env: str = os.getenv("ZSEQUENCER_ENV_PATH", "production")
+        env_file: str = f"{env}.env"
+        load_dotenv(dotenv_path=env_file, override=True)
+        self.validate_env_variables()
+
+        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
+        self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
+        self.REMOVE_CHUNK_BORDER: int = int(
+            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
+        )
+        self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
+        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
+        self.SECRET_KEY: str | None = os.getenv("ZSEQUENCER_SECRET_KEY")
+        self.PUBLIC_KEY: int = int(os.getenv("ZSEQUENCER_PUBLIC_KEY", "0"))
+        self.SEND_TXS_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
+        )
+        self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
+        self.MIN_NONCES: int = int(os.getenv("ZSEQUENCER_MIN_NONCES", "10"))
+        self.FINALIZATION_TIME_BORDER: int = int(
+            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
+        )
+        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
+        self.NODES: dict[str, dict[str, Any]] = self.load_json_file(self.NODES_FILE)
+        self.THRESHOLD_NUMBER: int = int(
+            os.getenv("ZSEQUENCER_THRESHOLD_NUMBER", str(len(self.NODES)))
+        )
+        self.NODE: dict[str, int] = next(
+            (n for n in self.NODES.values() if n["public_key"] == self.PUBLIC_KEY), {}
+        )
+        self.NODE["private_key"] = int(os.getenv("ZSEQUENCER_PRIVATE_KEY", "0"))
+        self.SEQUENCER: dict[str, Any] = self.NODES["1"]
+
+        self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "apps.json")
+        self.APPS: dict[str, dict[str, Any]] = self.load_json_file(self.APPS_FILE)
+
+        self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
+
+    def update_sequencer(self, sequencer_id: str | None) -> None:
+        """Update the sequencer configuration."""
+        if sequencer_id:
+            self.SEQUENCER = self.NODES[sequencer_id]
+
+    # TODO: remove
+    @staticmethod
+    def profile_function(output_file: str) -> Any:
+        """Decorator to profile the execution of a function."""
+
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                profiler = cProfile.Profile()
+                profiler.enable()
+                try:
+                    result = func(*args, **kwargs)
+                finally:
+                    profiler.disable()
+                    with open(
+                        file=f"{zconfig.NODE['port']}_{output_file}",
+                        mode="a",
+                        encoding="utf-8",
+                    ) as file:
+                        for arg in kwargs.values():
+                            if isinstance(arg, list):
+                                file.write(f"length: {len(arg)}\n")
+                        ps = pstats.Stats(profiler, stream=file)
+                        ps.strip_dirs().sort_stats("cumulative").print_stats()
+                return result
+
+            return wrapper
+
+        return decorator
 
 
 zconfig: Config = Config()
