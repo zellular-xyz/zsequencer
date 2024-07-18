@@ -17,8 +17,11 @@ NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
 THRESHOLD_NUMBER: int = 2
 DST_DIR: str = "/tmp/zellular_dev_net"
-NODES_FILE: str = "./nodes.json"
-APPS_FILE: str = "./apps.json"
+NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
+APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
+BATCH_SIZE: int = 100_000
+BATCH_NUMBER: int = 1
+APP_NAME: str = "simple_app"
 
 
 def generate_privates_and_nodes_info() -> tuple[list[int], dict[str, Any]]:
@@ -77,6 +80,9 @@ def main() -> None:
     with open(file=NODES_FILE, mode="w", encoding="utf-8") as file:
         file.write(json.dumps(nodes_info_dict))
 
+    with open(file=APPS_FILE, mode="w", encoding="utf-8") as file:
+        file.write(json.dumps({f"{APP_NAME}": {"url": "", "public_keys": []}}))
+
     for i in range(NUM_INSTANCES):
         data_dir: str = f"{DST_DIR}/db_{i + 1}"
         try:
@@ -118,7 +124,11 @@ def main() -> None:
         if i == NUM_INSTANCES - 1:
             run_command("examples/init_network.py", "", env_variables)
             time.sleep(2)
-            run_command("examples/simple_app.py", "", env_variables)
+            run_command(
+                "examples/simple_app.py",
+                f"--batch_size {BATCH_SIZE} --batch_number {BATCH_NUMBER} --app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
+                env_variables,
+            )
 
 
 if __name__ == "__main__":
