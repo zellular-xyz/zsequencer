@@ -27,7 +27,7 @@ def get_db() -> dict[str, Any]:
         locked_num: int = zdb.get_last_tx(app_name, "locked").get("index", 0)
         finalized_num: int = zdb.get_last_tx(app_name, "finalized").get("index", 0)
         all_num: int = len(zdb.apps[app_name]["transactions"])
-        initialized_num: int = all_num - (sequenced_num + locked_num + finalized_num)
+        initialized_num: int = all_num - sequenced_num
         apps_data[app_name] = {
             "transactions_state": {
                 "initialized": initialized_num,
