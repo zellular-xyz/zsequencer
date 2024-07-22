@@ -9,6 +9,10 @@ import time
 from typing import Any
 
 import requests
+from requests.exceptions import RequestException
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from zsequencer.common.logger import zlogger
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -42,15 +46,21 @@ def check_state(
     """Continuously check and print the node state until all the transactions are finalized."""
     start_time: float = time.time()
     while True:
-        last_finalized_tx: dict[str, Any] = requests.get(
-            f"{node_url}/node/{app_name}/transactions/finalized/last"
-        ).json()
-        print(
-            f'Last finalized index: {last_finalized_tx["data"].get("index", 0)} -  ({time.time() - start_time} s)'
-        )
-        if last_finalized_tx["data"].get("index") == batch_number * batch_size:
-            break
-        time.sleep(0.1)
+        try:
+            response = requests.get(
+                f"{node_url}/node/{app_name}/transactions/finalized/last"
+            )
+            response.raise_for_status()
+            last_finalized_tx: dict[str, Any] = response.json()
+            last_finalized_index: int = last_finalized_tx["data"].get("index", 0)
+            zlogger.info(
+                f"Last finalized index: {last_finalized_index} -  ({time.time() - start_time} s)"
+            )
+            if last_finalized_index == batch_number * batch_size:
+                break
+        except RequestException as e:
+            zlogger.error(f"Error checking state: {e}")
+        time.sleep(0.05)
 
 
 def sending_transactions(
@@ -58,12 +68,16 @@ def sending_transactions(
 ) -> None:
     """Send batches of transactions to the node."""
     for i, batch in enumerate(transaction_batches):
-        print(f'sending {len(batch["transactions"])} new operations (batch {i})')
-        requests.put(
-            url=f"{node_url}/node/transactions",
-            data=json.dumps(batch),
-            headers={"Content-Type": "application/json"},
-        )
+        zlogger.info(f'sending {len(batch["transactions"])} new operations (batch {i})')
+        try:
+            response = requests.put(
+                url=f"{node_url}/node/transactions",
+                data=json.dumps(batch),
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+        except RequestException as e:
+            zlogger.error(f"Error sending transactions: {e}")
 
 
 def generate_dummy_transactions(
@@ -91,7 +105,7 @@ def generate_dummy_transactions(
 
 
 def main() -> None:
-    """run the simple app."""
+    """Run the simple app."""
     args = parse_args()
     transaction_batches: list[dict[str, Any]] = generate_dummy_transactions(
         args.app_name, args.batch_size, args.batch_number
@@ -105,9 +119,9 @@ def main() -> None:
     )
 
     sender_thread.start()
-    sender_thread.join()
-
     sync_thread.start()
+
+    sender_thread.join()
     sync_thread.join()
 
 
