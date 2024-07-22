@@ -250,13 +250,7 @@ class InMemoryDB:
                     tx["chaining_hash"] == last_chaining_hash
                 ), "invalid chaining hash"
 
-            tx.update(
-                {
-                    "sequenced_timestamp": now,
-                    "state": "sequenced",
-                }
-            )
-
+            tx["sequenced_timestamp"] = now
             transactions[tx["hash"]] = tx
 
             self.apps[app_name]["last_sequenced_tx"] = tx
