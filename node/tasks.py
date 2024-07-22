@@ -88,6 +88,8 @@ def sync_with_sequencer(
     app_name: str, initialized_txs: dict[str, Any], sequencer_response: dict[str, Any]
 ) -> None:
     """Sync transactions with the sequencer."""
+    zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
+
     if sequencer_response["locked"]["index"]:
         if not utils.is_frost_sig_verified(
             sig=sequencer_response["locked"]["sig"],
@@ -114,7 +116,6 @@ def sync_with_sequencer(
             sig_data=sequencer_response["finalized"],
         )
 
-    zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
     check_censorship(
         app_name=app_name,
         initialized_txs=initialized_txs,
