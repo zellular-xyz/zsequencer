@@ -57,8 +57,8 @@ def put_transactions() -> Response:
 
 def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the transaction data."""
-    # TODO: check if lock is required
-    zdb.sequencer_init_txs(app_name=req_data["app_name"], txs=req_data["txs"])
+    with zdb.lock:
+        zdb.sequencer_init_txs(app_name=req_data["app_name"], txs=req_data["txs"])
 
     txs: dict[str, Any] = zdb.get_txs(
         app_name=req_data["app_name"],
