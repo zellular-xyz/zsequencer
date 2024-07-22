@@ -27,7 +27,7 @@ APP_NAME: str = "simple_app"
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
-    choices = ["general"]
+    choices = ["general", "throughput"]
     parser = argparse.ArgumentParser(description="Run the specified test.")
     parser.add_argument(
         "--test",
@@ -141,7 +141,7 @@ def main() -> None:
             time.sleep(2)
             run_command(
                 f"examples/{args.test}_test.py",
-                f"--batch_size {BATCH_SIZE} --batch_number {BATCH_NUMBER} --app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
+                f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
                 env_variables,
             )
 

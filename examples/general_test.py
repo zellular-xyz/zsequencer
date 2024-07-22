@@ -14,22 +14,14 @@ from requests.exceptions import RequestException
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from zsequencer.common.logger import zlogger
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+BATCH_SIZE = 100_000
+BATCH_NUMBER = 1
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Simulate a simple app using Zsequencer."
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=100_000,
-        help="Size of each transaction batch.",
-    )
-    parser.add_argument(
-        "--batch_number", type=int, default=1, help="Number of transaction batches."
     )
     parser.add_argument(
         "--app_name", type=str, default="simple_app", help="Name of the application."
@@ -108,14 +100,14 @@ def main() -> None:
     """Run the simple app."""
     args = parse_args()
     transaction_batches: list[dict[str, Any]] = generate_dummy_transactions(
-        args.app_name, args.batch_size, args.batch_number
+        args.app_name, BATCH_SIZE, BATCH_NUMBER
     )
     sender_thread = threading.Thread(
         target=sending_transactions, args=[transaction_batches, args.node_url]
     )
     sync_thread = threading.Thread(
         target=check_state,
-        args=[args.app_name, args.node_url, args.batch_number, args.batch_size],
+        args=[args.app_name, args.node_url, BATCH_NUMBER, BATCH_SIZE],
     )
 
     sender_thread.start()
