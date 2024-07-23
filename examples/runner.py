@@ -27,11 +27,11 @@ APP_NAME: str = "simple_app"
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
-    choices = ["general", "throughput"]
     parser = argparse.ArgumentParser(description="Run the specified test.")
     parser.add_argument(
         "--test",
-        choices=choices,
+        required=True,
+        choices=["general", "throughput"],
         help="the test name.",
     )
     return parser.parse_args()
