@@ -16,7 +16,7 @@ from zsequencer.common.logger import zlogger
 INITIAL_RATE: int = 5000
 RATE_INCREMENT: float = 0.1
 TEST_DURATION: int = 30
-LATENCY: int = 2
+LATENCY: int = 3
 
 previous_finalized_index: int = 0
 
@@ -126,13 +126,14 @@ def main() -> None:
             test_duration=TEST_DURATION,
             latency=LATENCY,
         )
-        zlogger.warning(
-            f"Input rate: {input_rate} txs/sec, Output rate: {output_rate:.2f} txs/sec => increase input rate {RATE_INCREMENT * 100}%"
-        )
 
         if output_rate < input_rate:
             zlogger.warning(f"Maximum input rate reached: {input_rate} txs/sec")
             break
+
+        zlogger.warning(
+            f"Input rate: {input_rate} txs/sec, Output rate: {output_rate:.2f} txs/sec => increase input rate {RATE_INCREMENT * 100}%"
+        )
 
         input_rate += int(input_rate * RATE_INCREMENT)
 
