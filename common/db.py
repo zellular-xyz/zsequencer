@@ -261,7 +261,7 @@ class InMemoryDB:
             return
 
         transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        for tx in transactions.values():
+        for tx in list(transactions.values()):
             if tx["state"] == "sequenced" and tx["index"] <= sig_data["index"]:
                 tx["state"] = "locked"
 
@@ -276,10 +276,9 @@ class InMemoryDB:
         ):
             return
 
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-
         snapshot_indexes: list[int] = []
-        for tx in transactions.values():
+        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
+        for tx in list(transactions.values()):
             if tx["state"] == "locked" and tx["index"] <= sig_data["index"]:
                 tx["state"] = "finalized"
 
