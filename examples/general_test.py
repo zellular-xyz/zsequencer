@@ -1,134 +1,122 @@
-"""This script sets up and runs a simple app network for testing."""
+"""This script simulates a simple app which uses Zsequencer."""
 
-import hashlib
+import argparse
 import json
 import os
-import secrets
-import shutil
-import subprocess
+import sys
+import threading
 import time
 from typing import Any
 
-from fastecdsa import curve, keys
-from fastecdsa.encoding.sec1 import SEC1Encoder
-from web3 import Account
+import requests
+from requests.exceptions import RequestException
 
-NUM_INSTANCES: int = 3
-BASE_PORT: int = 6000
-THRESHOLD_NUMBER: int = 2
-DST_DIR: str = "/tmp/zellular_dev_net"
-NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
-APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from zsequencer.common.logger import zlogger
+
 BATCH_SIZE: int = 100_000
 BATCH_NUMBER: int = 1
-APP_NAME: str = "simple_app"
+CHECK_STATE_INTERVAL: float = 0.05
 
 
-def generate_privates_and_nodes_info() -> tuple[list[int], dict[str, Any]]:
-    """Generate private keys and nodes information for the network."""
-    previous_key: int = (
-        71940701385098721223324549130922930535689437869965850741649618196713151413648
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(
+        description="Simulate a simple app using Zsequencer."
     )
-    nodes_info_dict: dict[str, Any] = {}
-    privates_list: list[int] = []
-    for i in range(NUM_INSTANCES):
-        key_bytes: bytes = previous_key.to_bytes(32, "big")
-        hashed: bytes = hashlib.sha256(key_bytes).digest()
-        new_private: int = int.from_bytes(hashed, byteorder="big") % curve.secp256k1.q
-        previous_key = new_private
-        public_key: keys.Point = keys.get_public_key(new_private, curve.secp256k1)
-        compressed_pub_key: int = int(
-            SEC1Encoder.encode_public_key(public_key, True).hex(), 16
-        )
-        address: str = Account().from_key(new_private).address
-        nodes_info_dict[str(i + 1)] = {
-            "id": str(i + 1),
-            "public_key": compressed_pub_key,
-            "address": address,
-            "host": "127.0.0.1",
-            "port": str(BASE_PORT + i + 1),
-        }
-        privates_list.append(new_private)
-    return privates_list, nodes_info_dict
+    parser.add_argument(
+        "--app_name", type=str, default="simple_app", help="Name of the application."
+    )
+    parser.add_argument(
+        "--node_url", type=str, default="http://localhost:6003", help="URL of the node."
+    )
+    return parser.parse_args()
 
 
-def run_command(
-    command_name: str, command_args: str, env_variables: dict[str, str]
+def check_state(
+    app_name: str, node_url: str, batch_number: int, batch_size: int
 ) -> None:
-    """Run a command in a new terminal tab."""
-    script_dir: str = os.path.dirname(os.path.abspath(__file__))
-    parent_dir: str = os.path.dirname(script_dir)
-    os.chdir(parent_dir)
+    """Continuously check the node state until all the transactions are finalized."""
+    start_time: float = time.time()
+    while True:
+        try:
+            response: requests.Response = requests.get(
+                f"{node_url}/node/{app_name}/transactions/finalized/last"
+            )
+            response.raise_for_status()
+            last_finalized_tx: dict[str, Any] = response.json()
+            last_finalized_index: int = last_finalized_tx["data"].get("index", 0)
+            zlogger.info(
+                f"Last finalized index: {last_finalized_index} -  ({time.time() - start_time} s)"
+            )
+            if last_finalized_index == batch_number * batch_size:
+                break
+        except RequestException as error:
+            zlogger.error(f"Error checking state: {error}")
+        time.sleep(CHECK_STATE_INTERVAL)
 
-    command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
-    launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
-    with subprocess.Popen(args=launch_command, env=env_variables) as process:
-        process.wait()
+
+def sending_transactions(
+    transaction_batches: list[dict[str, Any]], node_url: str
+) -> None:
+    """Send batches of transactions to the node."""
+    for i, batch in enumerate(transaction_batches):
+        zlogger.info(f'sending {len(batch["transactions"])} new operations (batch {i})')
+        try:
+            json_data: str = json.dumps(batch)
+            response: requests.Response = requests.put(
+                url=f"{node_url}/node/transactions",
+                data=json_data,
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+        except RequestException as error:
+            zlogger.error(f"Error sending transactions: {error}")
+
+
+def generate_dummy_transactions(
+    app_name: str, batch_size: int, batch_number: int
+) -> list[dict[str, Any]]:
+    """Create batches of transactions."""
+    timestamp: int = int(time.time())
+    return [
+        {
+            "app_name": app_name,
+            "transactions": [
+                json.dumps(
+                    {
+                        "operation": "foo",
+                        "serial": f"{batch_num}_{tx_num}",
+                        "version": 6,
+                    }
+                )
+                for tx_num in range(batch_size)
+            ],
+            "timestamp": timestamp,
+        }
+        for batch_num in range(batch_number)
+    ]
 
 
 def main() -> None:
-    """Main function to run the setup and launch nodes and run the test."""
-    privates_list, nodes_info_dict = generate_privates_and_nodes_info()
+    """Run the simple app."""
+    args: argparse.Namespace = parse_args()
+    transaction_batches: list[dict[str, Any]] = generate_dummy_transactions(
+        args.app_name, BATCH_SIZE, BATCH_NUMBER
+    )
+    sender_thread: threading.Thread = threading.Thread(
+        target=sending_transactions, args=[transaction_batches, args.node_url]
+    )
+    sync_thread: threading.Thread = threading.Thread(
+        target=check_state,
+        args=[args.app_name, args.node_url, BATCH_NUMBER, BATCH_SIZE],
+    )
 
-    if not os.path.exists(DST_DIR):
-        os.makedirs(DST_DIR)
+    sender_thread.start()
+    sync_thread.start()
 
-    script_dir: str = os.path.dirname(os.path.abspath(__file__))
-    parent_dir: str = os.path.dirname(script_dir)
-    os.chdir(parent_dir)
-
-    with open(file=NODES_FILE, mode="w", encoding="utf-8") as file:
-        file.write(json.dumps(nodes_info_dict))
-
-    with open(file=APPS_FILE, mode="w", encoding="utf-8") as file:
-        file.write(json.dumps({f"{APP_NAME}": {"url": "", "public_keys": []}}))
-
-    for i in range(NUM_INSTANCES):
-        data_dir: str = f"{DST_DIR}/db_{i + 1}"
-        try:
-            shutil.rmtree(data_dir)
-        except FileNotFoundError:
-            pass
-
-        # Create environment variables for a node instance
-        environment_variables: dict[str, str] = {
-            "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
-            "ZSEQUENCER_SECRET_KEY": secrets.token_hex(24),
-            "ZSEQUENCER_PUBLIC_KEY": str(nodes_info_dict[str(i + 1)]["public_key"]),
-            "ZSEQUENCER_PRIVATE_KEY": str(privates_list[i]),
-            "ZSEQUENCER_NODES_FILE": NODES_FILE,
-            "ZSEQUENCER_APPS_FILE": APPS_FILE,
-            "ZSEQUENCER_SNAPSHOT_CHUNK": "10000000",
-            "ZSEQUENCER_REMOVE_CHUNK_BORDER": "3",
-            "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
-            "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
-            "ZSEQUENCER_SEND_TXS_INTERVAL": "0.1",
-            "ZSEQUENCER_SYNC_INTERVAL": "0.1",
-            "ZSEQUENCER_MIN_NONCES": "10",
-            "ZSEQUENCER_FINALIZATION_TIME_BORDER": "120",
-            "ZSEQUENCER_ENV_PATH": f"{DST_DIR}/node{i + 1}",
-        }
-
-        with open(
-            file=f"{DST_DIR}/node{i + 1}.env", mode="w", encoding="utf-8"
-        ) as file:
-            for key, value in environment_variables.items():
-                file.write(f"{key}={value}\n")
-
-        env_variables: dict[str, str] = os.environ.copy()
-        env_variables.update(environment_variables)
-
-        run_command("run.py", f"{i + 1}", env_variables)
-
-        time.sleep(2)
-        if i == NUM_INSTANCES - 1:
-            run_command("examples/init_network.py", "", env_variables)
-            time.sleep(2)
-            run_command(
-                "examples/simple_app.py",
-                f"--batch_size {BATCH_SIZE} --batch_number {BATCH_NUMBER} --app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
-                env_variables,
-            )
+    sender_thread.join()
+    sync_thread.join()
 
 
 if __name__ == "__main__":
