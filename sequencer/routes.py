@@ -19,15 +19,12 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 @utils.sequencer_only
 def put_transactions() -> Response:
     """Endpoint to handle the PUT request for transactions."""
-    if not request.is_json:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Request must be JSON.")
-
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = [
         "app_name",
         "txs",
         "node_id",
-        "sig",
+        "signature",
         "sequenced_index",
         "sequenced_hash",
         "sequenced_chaining_hash",
@@ -41,11 +38,13 @@ def put_transactions() -> Response:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
     concat_hash: str = "".join(tx["hash"] for tx in req_data["txs"])
-    is_sig_verified: bool = utils.is_sig_verified(
-        sig=req_data["sig"], node_id=req_data["node_id"], msg=concat_hash
+    is_eth_sig_verified: bool = utils.is_eth_sig_verified(
+        signature=req_data["signature"],
+        node_id=req_data["node_id"],
+        message=concat_hash,
     )
     if (
-        not is_sig_verified
+        not is_eth_sig_verified
         or str(req_data["node_id"]) not in zconfig.NODES
         or req_data["app_name"] not in zconfig.APPS
     ):
@@ -57,15 +56,14 @@ def put_transactions() -> Response:
 
 def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the transaction data."""
-    # TODO: check if lock is required
-    zdb.sequencer_init_txs(app_name=req_data["app_name"], txs=req_data["txs"])
+    with zdb.lock:
+        zdb.sequencer_init_txs(app_name=req_data["app_name"], txs=req_data["txs"])
 
     txs: dict[str, Any] = zdb.get_txs(
         app_name=req_data["app_name"],
         states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
-
     last_finalized_tx: dict[str, Any] = zdb.get_last_tx(
         app_name=req_data["app_name"], state="finalized"
     )
@@ -90,20 +88,20 @@ def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
     # if zconfig.NODE["id"] == "1":
     #     txs = {}
 
-    data: dict[str, Any] = {
+    return {
         "txs": list(txs.values()),
         "finalized": {
             "index": last_finalized_tx.get("index", 0),
             "chaining_hash": last_finalized_tx.get("chaining_hash", ""),
             "hash": last_finalized_tx.get("hash", ""),
-            "sig": last_finalized_tx.get("finalization_sig", ""),
+            "signature": last_finalized_tx.get("finalization_signature", ""),
+            "nonsigners": last_finalized_tx.get("nonsigners", []),
         },
         "locked": {
             "index": last_locked_tx.get("index", 0),
             "chaining_hash": last_locked_tx.get("chaining_hash", ""),
             "hash": last_locked_tx.get("hash", ""),
-            "sig": last_locked_tx.get("lock_sig", ""),
+            "signature": last_locked_tx.get("lock_signature", ""),
+            "nonsigners": last_locked_tx.get("nonsigners", []),
         },
     }
-
-    return data

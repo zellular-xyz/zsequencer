@@ -17,12 +17,6 @@ LOG_COLORS: dict = {
     "RESET": "\033[0m",  # Reset to default
 }
 
-# Define the standard formatter
-str_formatter: logging.Formatter = logging.Formatter(
-    fmt="%(asctime)s - %(levelname)s - %(filename)s(%(lineno)d) - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
 
 class ColoredFormatter(logging.Formatter):
     """Custom formatter to add colors to the log output based on the log level."""
@@ -33,16 +27,24 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-# Set up file handler
-file_handler: FileHandler = logging.FileHandler(filename="zellular.log", mode="w")
-file_handler.setFormatter(str_formatter)
-
 # Set up console handler with colored formatter
+console_str_formatter: logging.Formatter = ColoredFormatter(
+    fmt="%(asctime)s.%(msecs)03d - %(message)s",
+    datefmt="%H:%M:%S",
+)
 console_handler: StreamHandler = logging.StreamHandler()
-console_handler.setFormatter(ColoredFormatter())
+console_handler.setFormatter(console_str_formatter)
+
+# Set up file handler
+file_str_formatter: logging.Formatter = logging.Formatter(
+    fmt="%(asctime)s - %(levelname)s - %(filename)s(%(lineno)d) - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+file_handler: FileHandler = logging.FileHandler(filename="zellular.log", mode="w")
+file_handler.setFormatter(file_str_formatter)
 
 # Add handlers to the logger
-zlogger.addHandler(file_handler)
+# zlogger.addHandler(file_handler)
 zlogger.addHandler(console_handler)
 
 if __name__ == "__main__":

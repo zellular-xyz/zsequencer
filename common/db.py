@@ -188,7 +188,7 @@ class InMemoryDB:
             tx_hash: str = utils.gen_hash(body)
             if tx_hash not in transactions:
                 transactions[tx_hash] = {
-                    "app": app_name,
+                    "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
                     "timestamp": now,
                     "state": "initialized",
@@ -207,7 +207,7 @@ class InMemoryDB:
 
         transactions: dict[str, Any] = self.apps[app_name]["transactions"]
         last_sequenced_tx: dict[str, Any] = self.apps[app_name]["last_sequenced_tx"]
-        last_chaining_hash: str = last_sequenced_tx.get("chaining_hash", "")
+        chaining_hash: str = last_sequenced_tx.get("chaining_hash", "")
         index: int = last_sequenced_tx.get("index", 0)
 
         for tx in txs:
@@ -215,15 +215,19 @@ class InMemoryDB:
                 continue
 
             tx_hash: str = utils.gen_hash(tx["body"])
-            assert tx["hash"] == tx_hash, "invalid transaction hash"
+            if tx["hash"] != tx_hash:
+                zlogger.warning(
+                    f"Invalid transaction hash: expected {tx_hash} got {tx['hash']}"
+                )
+                continue
 
             index += 1
-            last_chaining_hash = utils.gen_hash(last_chaining_hash + tx_hash)
+            chaining_hash = utils.gen_hash(chaining_hash + tx_hash)
             tx.update(
                 {
                     "state": "sequenced",
                     "index": index,
-                    "chaining_hash": last_chaining_hash,
+                    "chaining_hash": chaining_hash,
                 }
             )
             transactions[tx_hash] = tx
@@ -235,31 +239,27 @@ class InMemoryDB:
         if not txs:
             return
 
-        last_chaining_hash: str = self.apps[app_name]["last_sequenced_tx"].get(
+        chaining_hash: str = self.apps[app_name]["last_sequenced_tx"].get(
             "chaining_hash", ""
         )
         now: int = int(time.time())
         for tx in txs:
+            # TODO: all nodes should check the hashes
             if tx["node_id"] == zconfig.NODE["id"]:
-                assert (
-                    tx["body"] == transactions[tx["hash"]]["body"]
-                ), "invalid transaction hash"
+                if tx["body"] != transactions[tx["hash"]]["body"]:
+                    zlogger.warning("Invalid transaction hash")
+                    continue
 
-                last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
-                assert (
-                    tx["chaining_hash"] == last_chaining_hash
-                ), "invalid chaining hash"
+                chaining_hash = utils.gen_hash(chaining_hash + tx["hash"])
+                if tx["chaining_hash"] != chaining_hash:
+                    zlogger.warning(
+                        f"Invalid chaining hash: expected {chaining_hash} got {tx['chaining_hash']}"
+                    )
+                    continue
 
-            tx.update(
-                {
-                    "sequenced_timestamp": now,
-                    "state": "sequenced",
-                }
-            )
-
+            tx["sequenced_timestamp"] = now
             transactions[tx["hash"]] = tx
-
-            self.apps[app_name]["last_sequenced_tx"] = tx
+        self.apps[app_name]["last_sequenced_tx"] = tx
 
     def update_locked_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
         """Update transactions to 'locked' state up to a specified index."""
@@ -267,17 +267,17 @@ class InMemoryDB:
             return
 
         transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        for tx in transactions.values():
+        for tx in list(transactions.values()):
             if tx["state"] == "sequenced" and tx["index"] <= sig_data["index"]:
                 tx["state"] = "locked"
 
         target_tx: dict[str, Any] = transactions[sig_data["hash"]]
-        target_tx["lock_sig"] = sig_data["sig"]
+        target_tx["lock_signature"] = sig_data["signature"]
         self.apps[app_name]["last_locked_tx"] = target_tx
 
     def update_finalized_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
         """Update transactions to 'finalized' state up to a specified index and save snapshots."""
-        if sig_data["index"] <= self.apps[app_name]["last_finalized_tx"].get(
+        if sig_data.get("index", 0) <= self.apps[app_name]["last_finalized_tx"].get(
             "index", 0
         ):
             return
@@ -285,15 +285,15 @@ class InMemoryDB:
         transactions: dict[str, Any] = self.apps[app_name]["transactions"]
 
         snapshot_indexes: list[int] = []
-        for tx in transactions.values():
-            if tx["state"] == "locked" and tx["index"] <= sig_data["index"]:
+        for tx in list(transactions.values()):
+            if tx["index"] <= sig_data["index"]:
                 tx["state"] = "finalized"
 
                 if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     snapshot_indexes.append(tx["index"])
 
         target_tx: dict[str, Any] = transactions[sig_data["hash"]]
-        target_tx["finalization_sig"] = sig_data["sig"]
+        target_tx["finalization_signature"] = sig_data["signature"]
         self.apps[app_name]["last_finalized_tx"] = target_tx
 
         for snapshot_index in snapshot_indexes:
@@ -307,9 +307,9 @@ class InMemoryDB:
         if not node_state["sequenced_index"]:
             return
 
-        self.apps[node_state["app_name"]]["nodes_state"].setdefault(
-            node_state["node_id"], {}
-        ).update(node_state)
+        app_name: str = node_state["app_name"]
+        node_id: str = node_state["node_id"]
+        self.apps[app_name]["nodes_state"][node_id] = node_state
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""
@@ -325,7 +325,8 @@ class InMemoryDB:
             "index": state["index"],
             "chaining_hash": state["chaining_hash"],
             "hash": state["hash"],
-            "sig": state["sig"],
+            "signature": state["signature"],
+            "nonsigners": state["nonsigners"],
         }
 
     def upsert_finalized_sync_point(self, app_name: str, state: dict[str, Any]) -> None:
@@ -334,7 +335,8 @@ class InMemoryDB:
             "index": state["index"],
             "chaining_hash": state["chaining_hash"],
             "hash": state["hash"],
-            "sig": state["sig"],
+            "signature": state["signature"],
+            "nonsigners": state["nonsigners"],
         }
 
     def get_locked_sync_point(self, app_name: str) -> dict[str, Any]:
@@ -344,38 +346,6 @@ class InMemoryDB:
     def get_finalized_sync_point(self, app_name: str) -> dict[str, Any]:
         """Get the finalized sync point for an app."""
         return self.apps[app_name]["nodes_state"].get("finalized_sync_point", {})
-
-    def set_keys(self, public_key: str, private_key: str) -> None:
-        """set the public and private keys."""
-        self.keys["zellular"] = {
-            "public_key": public_key,
-            "private_key": private_key,
-        }
-
-    def get_keys(self) -> dict[str, Any] | None:
-        """Get the public and private keys."""
-        return self.keys.get("zellular")
-
-    def delete_keys(self, public_key: str) -> None:
-        """Delete the keys associated with the given public key."""
-        if self.keys.get("zellular", {}).get("public_key") == public_key:
-            del self.keys["zellular"]
-
-    def set_public_shares(self, data: dict[str, Any]) -> None:
-        """set the public shares data."""
-        self.keys.setdefault("zellular", {}).update(
-            {
-                "public_shares": data["public_shares"],
-                "party": data["party"],
-            }
-        )
-
-    def get_public_shares(self) -> dict[str, Any] | None:
-        """Get the public shares data."""
-        item: dict[str, Any] | None = self.keys.get("zellular")
-        if item and "public_shares" in item:
-            return item
-        return None
 
     def add_missed_txs(self, app_name: str, txs: dict[str, dict[str, Any]]) -> None:
         """Add missed transactions."""
@@ -387,7 +357,7 @@ class InMemoryDB:
 
     def empty_missed_txs(self, app_name: str) -> None:
         """Empty missed transactions."""
-        self.apps[app_name]["missed_txs"].clear()
+        self.apps[app_name]["missed_txs"] = {}
 
     def get_missed_txs(self, app_name: str) -> dict[str, Any]:
         """Get missed transactions."""
@@ -400,36 +370,79 @@ class InMemoryDB:
                 return True
         return False
 
+    def reinitialized_db(
+        self,
+        app_name: str,
+        new_sequencer_id: str,
+        all_nodes_last_finalized_tx: dict[str, Any],
+    ):
+        """Reinitialized the database after a switch in the sequencer."""
+        self.apps[app_name]["last_sequenced_tx"] = all_nodes_last_finalized_tx
+        self.apps[app_name]["last_locked_tx"] = all_nodes_last_finalized_tx
+        self.apps[app_name]["last_finalized_tx"] = all_nodes_last_finalized_tx
+        self.apps[app_name]["nodes_state"] = {}
+        self.apps[app_name]["missed_txs"] = {}
+
+        # TODO: should get the transactions from other nodes if they are missing
+        self.update_finalized_txs(
+            app_name,
+            all_nodes_last_finalized_tx,
+        )
+
+        if zconfig.NODE["id"] == new_sequencer_id:
+            self.resequence_txs(app_name, all_nodes_last_finalized_tx)
+        else:
+            self.reinitialized_txs(app_name, all_nodes_last_finalized_tx)
+
+    def resequence_txs(
+        self, app_name: str, all_nodes_last_finalized_tx: dict[str, Any]
+    ) -> None:
+        """Resequence transactions after a switch in the sequencer."""
+        keys_to_retain: set[str] = {"app_name", "node_id", "timestamp", "hash", "body"}
+        index: int = all_nodes_last_finalized_tx.get("index", 0)
+        chaining_hash: str = all_nodes_last_finalized_tx.get("chaining_hash", "")
+
+        not_finalized_txs: list[Any] = [
+            tx
+            for tx in list(self.apps[app_name]["transactions"].values())
+            if tx.get("state") != "finalized"
+        ]
+        not_finalized_txs.sort(key=lambda x: x.get("index", float("inf")))
+        for tx in not_finalized_txs:
+            filtered_tx = {
+                key: value for key, value in tx.items() if key in keys_to_retain
+            }
+            index += 1
+            chaining_hash = utils.gen_hash(chaining_hash + tx["hash"])
+            filtered_tx.update(
+                {
+                    "index": index,
+                    "state": "sequenced",
+                    "chaining_hash": chaining_hash,
+                }
+            )
+            self.apps[app_name]["transactions"][filtered_tx["hash"]] = filtered_tx
+            self.apps[app_name]["last_sequenced_tx"] = filtered_tx
+
+    def reinitialized_txs(
+        self, app_name: str, all_nodes_last_finalized_tx: dict[str, Any]
+    ) -> None:
+        """Reinitialized transactions after a switch in the sequencer."""
+        keys_to_retain: set[str] = {
+            "app_name",
+            "node_id",
+            "timestamp",
+            "hash",
+            "body",
+        }
+        last_index: int = all_nodes_last_finalized_tx.get("index", 0)
+        for tx_hash, tx in list(self.apps[app_name]["transactions"].items()):
+            if last_index < tx.get("index", float("inf")):
+                filtered_tx = {
+                    key: value for key, value in tx.items() if key in keys_to_retain
+                }
+                filtered_tx["state"] = "initialized"
+                self.apps[app_name]["transactions"][tx_hash] = filtered_tx
+
 
 zdb: InMemoryDB = InMemoryDB()
-
-
-# def update_reinitialized_txs(self, app_name: str, _from: int) -> None:
-#     """Update transactions to 'initialized' state for reinitialization."""
-#     now = int(time.time())
-#     for tx in list(self.apps[app_name].values()):
-#         if _from < tx.get("index", float("inf")):
-#             tx.update({"state": "initialized", "sequenced_timestamp": now})
-
-# def resequence_txs(self, app_name: str, last_finalized_tx: dict[str, Any]) -> None:
-#     """Resequence transactions after a switch in the sequencer."""
-#     index = last_finalized_tx["index"]
-#     last_chaining_hash = last_finalized_tx["chaining_hash"]
-
-#     not_finalized_txs = [
-#         tx for tx in self.apps[app_name].values() if tx.get("state") != "finalized"
-#     ]
-#     not_finalized_txs.sort(key=lambda x: x.get("index", float("inf")))
-
-#     for tx in not_finalized_txs:
-#         index += 1
-#         last_chaining_hash = utils.gen_hash(last_chaining_hash + tx["hash"])
-
-#         tx["state"] = "sequenced"
-#         tx["index"] = index
-#         tx["chaining_hash"] = last_chaining_hash
-#         self.apps[app_name][tx["hash"]] = tx
-
-#     self.apps[app_name] = dict(
-#         sorted(self.apps[app_name].items(), key=lambda item: item[1]["index"])
-#     )

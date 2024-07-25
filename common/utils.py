@@ -8,7 +8,6 @@ from functools import wraps
 from typing import Any
 
 import xxhash
-from eth_account.datastructures import SignedMessage
 from eth_account.messages import SignableMessage, encode_defunct
 from web3 import Account
 
@@ -43,27 +42,22 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 
-def is_frost_sig_verified(sig: str, index: int, chaining_hash: str) -> bool:
-    """Verify a FROST signature."""
-    # TODO: check signature
-    return True
-
-
-def sign(msg: str) -> str:
+def eth_sign(message: str) -> str:
     """Sign a message using the node's private key."""
-    message_encoded: SignableMessage = encode_defunct(text=msg)
-    sig: SignedMessage = Account.sign_message(
-        signable_message=message_encoded, private_key=int(zconfig.NODE["private_key"])
-    )
-    return sig.signature.hex()
+    message_encoded: SignableMessage = encode_defunct(text=message)
+    account_instance: Account = Account()
+    return account_instance.sign_message(
+        signable_message=message_encoded, private_key=zconfig.NODE["private_key"]
+    ).signature.hex()
 
 
-def is_sig_verified(sig: str, node_id: str, msg: str) -> bool:
+def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
     """Verify a signature against the node's public address."""
     try:
-        msg_encoded: SignableMessage = encode_defunct(text=msg)
-        recovered_address: str = Account.recover_message(
-            signable_message=msg_encoded, signature=sig
+        msg_encoded: SignableMessage = encode_defunct(text=message)
+        account_instance: Account = Account()
+        recovered_address: str = account_instance.recover_message(
+            signable_message=msg_encoded, signature=signature
         )
         return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:
@@ -107,7 +101,7 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
         "old_sequencer_id",
         "new_sequencer_id",
         "timestamp",
-        "sig",
+        "signature",
     ]
     if not all(key in proof for key in required_keys):
         return False
@@ -123,10 +117,10 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
     if not now - 600 <= proof["timestamp"] <= now + 60:
         return False
 
-    if not is_sig_verified(
-        proof["sig"],
-        proof["node_id"],
-        f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
+    if not is_eth_sig_verified(
+        signature=proof["signature"],
+        node_id=proof["node_id"],
+        message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
     ):
         return False
 
@@ -153,9 +147,9 @@ def get_switch_parameter_from_proofs(
     return None, None
 
 
-def gen_hash(msg: str) -> str:
+def gen_hash(message: str) -> str:
     """Generate a hash for a given string."""
-    return xxhash.xxh128_hexdigest(msg)
+    return xxhash.xxh128_hexdigest(message)
 
 
 def multi_gen_hash(strings: list[str]) -> list[str]:

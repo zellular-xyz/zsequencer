@@ -2,7 +2,6 @@
 Main script to run Zellular Node and Sequencer tasks.
 """
 
-import argparse
 import asyncio
 import logging
 import os
@@ -20,18 +19,16 @@ from zsequencer.config import zconfig
 from zsequencer.node import tasks as node_tasks
 from zsequencer.node.routes import node_blueprint
 from zsequencer.sequencer import tasks as sequencer_tasks
-from zsequencer.sequencer import tss
 from zsequencer.sequencer.routes import sequencer_blueprint
 
 
-def create_app(tss_blueprint) -> Flask:
+def create_app() -> Flask:
     """Create and configure the Flask application."""
     app: Flask = Flask(__name__)
-    app.secret_key = zconfig.SECRET_KEY
+    app.secret_key = zconfig.FLASK_SECRET_KEY
 
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
-    app.register_blueprint(tss_blueprint, url_prefix="/pyfrost")
     return app
 
 
@@ -83,10 +80,9 @@ def run_flask_app(app: Flask) -> None:
     )
 
 
-def main(node_id) -> None:
+def main() -> None:
     """Main entry point for running the Zellular Node."""
-    tss_node: tss.Node = tss.gen_node(node_id)
-    app: Flask = create_app(tss_node.blueprint)
+    app: Flask = create_app()
 
     # Start periodic task in a thread
     sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
@@ -100,12 +96,4 @@ def main(node_id) -> None:
 
 
 if __name__ == "__main__":
-    parser: argparse.ArgumentParser = argparse.ArgumentParser(
-        description="Run Zellular Node"
-    )
-    parser.add_argument(
-        "node_id", choices=list(zconfig.NODES.keys()), help="The frost node id"
-    )
-    args: argparse.Namespace = parser.parse_args()
-
-    main(args.node_id)
+    main()

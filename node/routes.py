@@ -33,12 +33,12 @@ def get_db() -> dict[str, Any]:
                 "locked": locked_num,
                 "finalized": finalized_num,
                 "all": all_num,
-            }
-            # "nodes_state": zdb.apps[app_name]["nodes_state"],
-            # "transactions": sorted(
-            #     list(zdb.apps[app_name]["transactions"].values()),
-            #     key=lambda m: m["index"],
-            # ),
+            },
+            "nodes_state": zdb.apps[app_name]["nodes_state"],
+            "transactions": sorted(
+                list(zdb.apps[app_name]["transactions"].values()),
+                key=lambda tx: tx.get("index", 0),
+            ),
         }
 
     return apps_data
@@ -48,24 +48,36 @@ def get_db() -> dict[str, Any]:
 @utils.not_sequencer
 def put_transactions() -> Response:
     """Put new transactions into the database."""
+    # TODO: only authorized users should be able to call this route
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = ["app_name", "transactions", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
-    # TODO: check the sender authorization
     zdb.init_txs(req_data["app_name"], req_data["transactions"])
     return success_response(data={}, message="The transactions received successfully.")
+
+
+@node_blueprint.route("/sign_sync_point", methods=["POST"])
+@utils.not_sequencer
+def post_sign_sync_point() -> Response:
+    """Sign a transaction."""
+    # TODO: only the sequencer should be able to call this route
+    req_data: dict[str, Any] = request.get_json(silent=True) or {}
+    required_keys: list[str] = ["app_name", "state", "index", "hash", "chaining_hash"]
+    error_message: str = utils.validate_request(req_data, required_keys)
+    if error_message:
+        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
+
+    req_data["signature"] = tasks.sign_sync_point(req_data)
+    return success_response(data=req_data)
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
 @utils.not_sequencer
 def post_dispute() -> Response:
     """Handle a dispute by initializing transactions if required."""
-    if not request.is_json:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Request must be JSON.")
-
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = ["sequencer_id", "app_name", "txs", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
@@ -82,12 +94,32 @@ def post_dispute() -> Response:
             "old_sequencer_id": zconfig.SEQUENCER["id"],
             "new_sequencer_id": utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
             "timestamp": timestamp,
-            "sig": utils.sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
+            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
 
     zdb.init_txs(req_data["app_name"], req_data["txs"])
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
+
+
+@node_blueprint.route("/switch", methods=["POST"])
+def post_switch_sequencer() -> Response:
+    """Switch the sequencer based on the provided proofs."""
+    req_data: dict[str, Any] = request.get_json(silent=True) or {}
+    required_keys: list[str] = ["timestamp", "proofs"]
+    error_message: str = utils.validate_request(req_data, required_keys)
+    if error_message:
+        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
+
+    if utils.is_switch_approved(req_data["proofs"]):
+        zdb.pause_node.set()
+        old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
+            req_data["proofs"]
+        )
+        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
+        return success_response(data={}, message="The sequencer set successfully.")
+
+    return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
 
 
 @node_blueprint.route("/state", methods=["GET"])
@@ -126,42 +158,6 @@ def get_last_finalized_tx(app_name: str) -> Response:
 
     last_finalized_tx: dict[str, Any] = zdb.get_last_tx(app_name, "finalized")
     return success_response(data=last_finalized_tx)
-
-
-@node_blueprint.route("/distributed_keys", methods=["PUT"])
-def put_distributed_keys() -> Response:
-    """Put distributed keys into the database."""
-    if not request.is_json:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Request must be JSON.")
-
-    req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    if not req_data:
-        return error_response(ErrorCodes.INVALID_REQUEST)
-
-    if zdb.get_public_shares():
-        return error_response(ErrorCodes.PK_ALREADY_SET)
-
-    zdb.set_public_shares(req_data)
-    return success_response(data={}, message="The distributed keys set successfully.")
-
-
-@node_blueprint.route("/switch", methods=["POST"])
-def post_switch_sequencer() -> Response:
-    """Switch the sequencer based on the provided proofs."""
-    if not request.is_json:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Request must be JSON.")
-
-    req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["timestamp", "proofs"]
-    error_message: str = utils.validate_request(req_data, required_keys)
-    if error_message:
-        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
-    if utils.is_switch_approved(req_data["proofs"]):
-        tasks.switch_sequencer(req_data["proofs"], "RECEIVED")
-        return success_response(data={}, message="The sequencer set successfully.")
-
-    return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
 
 
 @node_blueprint.route("/transactions", methods=["GET"])
