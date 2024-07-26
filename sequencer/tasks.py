@@ -1,53 +1,111 @@
-import json
-from typing import Any, Dict, List, Optional, Tuple
+"""
+This module handles synchronization processes for locked and finalized transactions.
+"""
 
-from config import zconfig
+from typing import Any
 
-from ..common.db import zdb
-from ..common.logger import zlogger
-from . import tss
+from zsequencer.common import bls
+from zsequencer.common.db import zdb
+from zsequencer.config import zconfig
 
 
-def find_sync_point() -> Tuple[Dict[str, Any], List[str]]:
-    sorted_states: List[Dict[str, Any]] = zdb.get_nodes_state()
-    for state in sorted_states:
-        party: List[str] = [
-            s["node_id"] for s in sorted_states if s["index"] >= state["index"]
-        ]
+def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
+    """Find the locked sync point for a given app."""
+    nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
+    locked_index: int = zdb.get_locked_sync_point(app_name).get("index", 0)
+    filtered_states: list[dict[str, Any]] = [
+        s for s in nodes_state if s["sequenced_index"] != locked_index
+    ]
+    sorted_filtered_states: list[dict[str, Any]] = sorted(
+        filtered_states,
+        key=lambda x: x["sequenced_index"],
+        reverse=True,
+    )
+    for state in sorted_filtered_states:
+        party: set[str] = {
+            s["node_id"]
+            for s in sorted_filtered_states
+            if s["sequenced_index"] >= state["sequenced_index"]
+        }
         if len(party) >= zconfig.THRESHOLD_NUMBER:
-            return state, party
-    return {}, []
+            return {"state": state, "party": party}
+    return None
+
+
+def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
+    """Find the finalized sync point for a given app."""
+    nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
+    finalized_index: int = zdb.get_finalized_sync_point(app_name).get("index", 0)
+    filtered_states: list[dict[str, Any]] = [
+        s for s in nodes_state if s["locked_index"] != finalized_index
+    ]
+    sorted_filtered_states: list[dict[str, Any]] = sorted(
+        filtered_states,
+        key=lambda x: x["locked_index"],
+        reverse=True,
+    )
+    for state in sorted_filtered_states:
+        party: set[str] = {
+            s["node_id"]
+            for s in sorted_filtered_states
+            if s["locked_index"] >= state["locked_index"]
+        }
+        if len(party) >= zconfig.THRESHOLD_NUMBER:
+            return {"state": state, "party": party}
+    return None
 
 
 async def sync() -> None:
-    zlogger.info("synchronizing...")
+    """Synchronize all apps."""
     if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
         return
 
-    state, party = find_sync_point()
-    if not state.get("index"):
-        return
+    for app_name in zconfig.APPS.keys():
+        await sync_app(app_name)
 
-    del state["node_id"]
-    sig: Optional[Dict[str, Any]] = await tss.request_sig(state, party)
 
-    if not sig:
-        return
-
-    # convert bytes to hex (bytes is not JSON serializable)
-    sig["message_bytes"] = sig["message_bytes"].hex()
-
-    zdb.upsert_sync_point(state, sig)
-    zdb.update_finalized_txs(state["index"])
-    zdb.insert_sync_sig(
-        {
-            "index": state["index"],
-            "chaining_hash": state["chaining_hash"],
-            "hash": state["hash"],
-            "sig": json.dumps(sig),
+async def sync_app(app_name: str) -> None:
+    """Synchronize a specific app."""
+    locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
+    if locked_sync_point:
+        locked_data: dict[str, Any] = {
+            "app_name": app_name,
+            "state": "sequenced",
+            "index": locked_sync_point["state"]["sequenced_index"],
+            "hash": locked_sync_point["state"]["sequenced_hash"],
+            "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
         }
-    )
+        lock_signature: (
+            dict[str, Any] | None
+        ) = await bls.gather_and_aggregate_signatures(
+            data=locked_data, node_ids=locked_sync_point["party"]
+        )
+        if lock_signature:
+            locked_data.update(lock_signature)
+            zdb.upsert_locked_sync_point(app_name=app_name, state=locked_data)
+            zdb.update_locked_txs(
+                app_name=app_name,
+                sig_data=locked_data,
+            )
 
-
-async def request_nonces() -> None:
-    await tss.request_nonces()
+    finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
+    if finalized_sync_point:
+        finalized_data: dict[str, Any] = {
+            "app_name": app_name,
+            "state": "locked",
+            "index": finalized_sync_point["state"]["locked_index"],
+            "hash": finalized_sync_point["state"]["locked_hash"],
+            "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
+        }
+        finalization_signature: (
+            dict[str, Any] | None
+        ) = await bls.gather_and_aggregate_signatures(
+            data=finalized_data, node_ids=finalized_sync_point["party"]
+        )
+        if finalization_signature:
+            finalized_data.update(finalization_signature)
+            zdb.upsert_finalized_sync_point(app_name=app_name, state=finalized_data)
+            zdb.update_finalized_txs(
+                app_name=app_name,
+                sig_data=finalized_data,
+            )

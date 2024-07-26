@@ -1,3 +1,5 @@
+"""This module provides utility functions to generate standardized HTTP responses."""
+
 from typing import Any
 
 from flask import Response, jsonify, make_response
@@ -8,6 +10,7 @@ from .errors import ErrorMessages, HtmlErrorCodes
 def success_response(
     data: Any, message: str = "Operation successful", status: int = 200
 ) -> Response:
+    """Generate a successful HTTP response."""
     return make_response(
         jsonify(
             {
@@ -21,6 +24,7 @@ def success_response(
 
 
 def error_response(error_code: str, error_message: str = "") -> Response:
+    """Generate an error HTTP response."""
     if not error_message:
         error_message = getattr(ErrorMessages, error_code, "An unknown error occurred.")
     http_status = getattr(HtmlErrorCodes, error_code, 500)
