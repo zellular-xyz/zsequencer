@@ -1,8 +1,8 @@
 """This module defines standardized error codes and messages for use across the application."""
 
 
-class HtmlErrorCodes:
-    """HTML error codes to be used for HTTP responses."""
+class HttpErrorCodes:
+    """HTTP error codes to be used for HTTP responses."""
 
     INVALID_REQUEST: int = 400
     IS_SEQUENCER: int = 403

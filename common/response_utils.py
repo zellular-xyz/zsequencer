@@ -4,7 +4,7 @@ from typing import Any
 
 from flask import Response, jsonify, make_response
 
-from .errors import ErrorMessages, HtmlErrorCodes
+from .errors import ErrorMessages, HttpErrorCodes
 
 
 def success_response(
@@ -27,7 +27,7 @@ def error_response(error_code: str, error_message: str = "") -> Response:
     """Generate an error HTTP response."""
     if not error_message:
         error_message = getattr(ErrorMessages, error_code, "An unknown error occurred.")
-    http_status = getattr(HtmlErrorCodes, error_code, 500)
+    http_status = getattr(HttpErrorCodes, error_code, 500)
     return make_response(
         jsonify(
             {
