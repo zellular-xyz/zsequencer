@@ -18,6 +18,8 @@ setup(
         "Flask>=1.1.2",
         "web3>=5.17.0",
         "python-dotenv>=0.15.0",
+        "xxhash",
+        "eigensdk @ git+https://github.com/zellular-xyz/eigensdk-python.git#egg=eigensdk"
     ],
     python_requires=">=3.8",
     entry_points={
