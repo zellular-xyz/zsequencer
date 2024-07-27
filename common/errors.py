@@ -1,34 +1,43 @@
-class HtmlErrorCodes:
-    INVALID_REQUEST = 400
-    IS_SEQUENCER = 403
-    IS_NOT_SEQUENCER = 403
-    INVALID_SEQUENCER = 400
-    ISSUE_NOT_FOUND = 404
-    PK_ALREADY_SET = 403
-    SEQUENCER_CHANGE_NOT_APPROVED = 403
-    PERMISSION_DENIED = 403
-    NOT_FOUND = 404
+"""This module defines standardized error codes and messages for use across the application."""
+
+
+class HttpErrorCodes:
+    """HTTP error codes to be used for HTTP responses."""
+
+    INVALID_REQUEST: int = 400
+    IS_SEQUENCER: int = 403
+    IS_NOT_SEQUENCER: int = 403
+    INVALID_SEQUENCER: int = 400
+    ISSUE_NOT_FOUND: int = 404
+    PK_ALREADY_SET: int = 403
+    SEQUENCER_CHANGE_NOT_APPROVED: int = 403
+    PERMISSION_DENIED: int = 403
+    NOT_FOUND: int = 404
 
 
 class ErrorCodes:
-    INVALID_REQUEST = "invalid_request"
-    IS_SEQUENCER = "is_sequencer"
-    IS_NOT_SEQUENCER = "is_not_sequencer"
-    INVALID_SEQUENCER = "invalid_sequencer"
-    ISSUE_NOT_FOUND = "issue_not_found"
-    PK_ALREADY_SET = "public_shares_already_set"
-    SEQUENCER_CHANGE_NOT_APPROVED = "sequencer_change_not_approved"
-    PERMISSION_DENIED = "permission_denied"
-    NOT_FOUND = "not_found"
+    """Application-specific error codes as strings."""
+
+    INVALID_REQUEST: str = "invalid_request"
+    IS_SEQUENCER: str = "is_sequencer"
+    IS_NOT_SEQUENCER: str = "is_not_sequencer"
+    INVALID_SEQUENCER: str = "invalid_sequencer"
+    ISSUE_NOT_FOUND: str = "issue_not_found"
+    PK_ALREADY_SET: str = "public_shares_already_set"
+    SEQUENCER_CHANGE_NOT_APPROVED: str = "sequencer_change_not_approved"
+    PERMISSION_DENIED: str = "permission_denied"
+    NOT_FOUND: str = "not_found"
 
 
 class ErrorMessages:
-    INVALID_REQUEST = "The request is invalid."
-    IS_SEQUENCER = "This node is sequencer."
-    IS_NOT_SEQUENCER = "This node is not sequencer."
-    INVALID_SEQUENCER = "The sequencer id is invalid."
-    ISSUE_NOT_FOUND = "There is no issue."
-    PK_ALREADY_SET = "The public shares already set."
-    SEQUENCER_CHANGE_NOT_APPROVED = "The sequencer change request is not approved."
-    PERMISSION_DENIED = "The request is not approved."
-    NOT_FOUND = "Not found."
+    """Human-readable error messages corresponding to error codes."""
+
+    INVALID_REQUEST: str = "The request is invalid."
+    IS_SEQUENCER: str = "This node is the sequencer."
+    IS_NOT_SEQUENCER: str = "This node is not the sequencer."
+    INVALID_SEQUENCER: str = "The sequencer ID is invalid."
+    ISSUE_NOT_FOUND: str = "The specified issue was not found."
+    PK_ALREADY_SET: str = "The public shares have already been set."
+    SEQUENCER_CHANGE_NOT_APPROVED: str = "The sequencer change request is not approved."
+    PERMISSION_DENIED: str = "Permission denied."
+    NOT_FOUND: str = "Not found."
