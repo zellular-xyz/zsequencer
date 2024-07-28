@@ -27,7 +27,9 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
             for s in sorted_filtered_states
             if s["sequenced_index"] >= state["sequenced_index"]
         }
-        if len(party) >= zconfig.THRESHOLD_NUMBER:
+        stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
+        stake += zconfig.NODE["stake"]
+        if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
             return {"state": state, "party": party}
     return None
 
@@ -50,7 +52,9 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
             for s in sorted_filtered_states
             if s["locked_index"] >= state["locked_index"]
         }
-        if len(party) >= zconfig.THRESHOLD_NUMBER:
+        stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
+        stake += zconfig.NODE["stake"]
+        if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
             return {"state": state, "party": party}
     return None
 

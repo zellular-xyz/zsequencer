@@ -45,12 +45,12 @@ async def gather_and_aggregate_signatures(
     data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes."""
-    if len(node_ids) < zconfig.THRESHOLD_NUMBER:
+    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
+    if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
         return None
 
     if not node_ids.issubset(set(zconfig.NODES.keys())):
         return None
-
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
 
@@ -69,7 +69,9 @@ async def gather_and_aggregate_signatures(
     signatures: list[dict[str, Any] | None] = await asyncio.gather(*tasks)
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
     nonsigners = [k for k, v in signatures_dict.items() if v is None]
-    if len(signatures) - len(nonsigners) + 1 < zconfig.THRESHOLD_NUMBER:
+    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
+    nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
+    if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
         return None
 
     data["signature"] = bls_sign(message)
@@ -79,7 +81,6 @@ async def gather_and_aggregate_signatures(
         [sig for sig in signatures if sig]
     )
 
-    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
     return {
         "message": message,
         "signature": aggregated_signature,

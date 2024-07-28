@@ -14,7 +14,7 @@ from web3 import Account
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
-THRESHOLD_NUMBER: int = 2
+THRESHOLD_PERCENT: int = 60
 DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
@@ -57,6 +57,7 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
             "address": address,
             "host": "127.0.0.1",
             "port": str(BASE_PORT + i + 1),
+            "stake": 10,
         }
 
     return privates_list, nodes_info_dict
@@ -113,7 +114,7 @@ def main() -> None:
             "ZSEQUENCER_SNAPSHOT_CHUNK": str(ZSEQUENCER_SNAPSHOT_CHUNK),
             "ZSEQUENCER_REMOVE_CHUNK_BORDER": str(ZSEQUENCER_REMOVE_CHUNK_BORDER),
             "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
-            "ZSEQUENCER_THRESHOLD_NUMBER": str(THRESHOLD_NUMBER),
+            "ZSEQUENCER_THRESHOLD_PERCENT": str(THRESHOLD_PERCENT),
             "ZSEQUENCER_SEND_TXS_INTERVAL": str(ZSEQUENCER_SEND_TXS_INTERVAL),
             "ZSEQUENCER_SYNC_INTERVAL": str(ZSEQUENCER_SYNC_INTERVAL),
             "ZSEQUENCER_FINALIZATION_TIME_BORDER": str(
