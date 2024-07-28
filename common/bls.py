@@ -27,8 +27,7 @@ def get_signers_aggregated_public_key(nonsigners: list[str]) -> attestation.G2Po
     """Generate aggregated public key of the signers."""
     aggregated_public_key: attestation.G2Point = zconfig.AGGREGATED_PUBLIC_KEY
     for nonsigner in nonsigners:
-        non_signer_public_key: attestation.G2Point = attestation.new_zero_g2_point()
-        non_signer_public_key.setStr(nonsigner.encode("utf-8"))
+        non_signer_public_key: attestation.G2Point = zconfig.NODES[nonsigner]["public_key_g2"]
         aggregated_public_key = aggregated_public_key - non_signer_public_key
     return aggregated_public_key
 
@@ -51,6 +50,7 @@ async def gather_and_aggregate_signatures(
 
     if not node_ids.issubset(set(zconfig.NODES.keys())):
         return None
+
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
 
@@ -78,6 +78,8 @@ async def gather_and_aggregate_signatures(
     aggregated_signature: str = gen_aggregated_signature(
         [sig for sig in signatures if sig]
     )
+
+    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
     return {
         "message": message,
         "signature": aggregated_signature,
@@ -103,8 +105,8 @@ async def request_signature(
                     msg_bytes=message.encode("utf-8"),
                 ):
                     return None
-
                 return response_json["data"]
+
         except asyncio.TimeoutError:
             zlogger.exception("Request timeout:")
         except Exception:
