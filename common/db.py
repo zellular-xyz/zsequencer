@@ -265,14 +265,13 @@ class InMemoryDB:
         """Update transactions to 'locked' state up to a specified index."""
         if sig_data["index"] <= self.apps[app_name]["last_locked_tx"].get("index", 0):
             return
-
         transactions: dict[str, Any] = self.apps[app_name]["transactions"]
         for tx in list(transactions.values()):
             if tx["state"] == "sequenced" and tx["index"] <= sig_data["index"]:
                 tx["state"] = "locked"
-
         target_tx: dict[str, Any] = transactions[sig_data["hash"]]
         target_tx["lock_signature"] = sig_data["signature"]
+        target_tx["nonsigners"] = sig_data["nonsigners"]
         self.apps[app_name]["last_locked_tx"] = target_tx
 
     def update_finalized_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
@@ -294,6 +293,7 @@ class InMemoryDB:
 
         target_tx: dict[str, Any] = transactions[sig_data["hash"]]
         target_tx["finalization_signature"] = sig_data["signature"]
+        target_tx["nonsigners"] = sig_data["nonsigners"]
         self.apps[app_name]["last_finalized_tx"] = target_tx
 
         for snapshot_index in snapshot_indexes:
