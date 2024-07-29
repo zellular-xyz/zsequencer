@@ -31,6 +31,7 @@ def send_txs() -> None:
     """Send transactions for all apps."""
     for app_name in zconfig.APPS:
         send_app_txs(app_name)
+    zdb.is_sequencer_down = False
 
 
 def send_app_txs(app_name: str) -> None:
@@ -81,6 +82,7 @@ def send_app_txs(app_name: str) -> None:
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
+        zdb.is_sequencer_down = True
 
     check_finalization()
 
@@ -195,14 +197,13 @@ def is_sync_point_signature_verified(
 
 def send_dispute_requests() -> None:
     """Send dispute requests if there are missed transactions."""
-    if not zdb.has_missed_txs() or zdb.pause_node.is_set():
+    if (not zdb.has_missed_txs() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
         return
 
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"]
     )
-
     proofs: list[dict[str, Any]] = []
     proofs.append(
         {
@@ -220,7 +221,7 @@ def send_dispute_requests() -> None:
 
         for app_name in zconfig.APPS.keys():
             missed_txs: dict[str, Any] = zdb.get_missed_txs(app_name)
-            if not missed_txs:
+            if len(missed_txs) == 0:
                 continue
 
             try:
@@ -234,6 +235,17 @@ def send_dispute_requests() -> None:
             except Exception:
                 zlogger.exception("An unexpected error occurred:")
 
+        if zdb.is_sequencer_down:
+            try:
+                response: dict[str, Any] | None = send_dispute_request(
+                    node, app_name = '', missed_txs = []
+                )
+        
+                if response:
+                    proofs.append(response)
+            except Exception:
+                zlogger.exception("An unexpected error occurred:")
+        
     if utils.is_switch_approved(proofs):
         zdb.pause_node.set()
         old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(

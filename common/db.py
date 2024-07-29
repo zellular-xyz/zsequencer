@@ -32,6 +32,7 @@ class InMemoryDB:
 
         self.apps: dict[str, Any] = {}
         self.keys: dict[str, Any] = {}
+        self.is_sequencer_down: bool = False
         self.load_state()
 
     def load_state(self) -> None:

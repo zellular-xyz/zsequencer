@@ -47,7 +47,7 @@ class Config:
             "ZSEQUENCER_SNAPSHOT_CHUNK",
             "ZSEQUENCER_REMOVE_CHUNK_BORDER",
             "ZSEQUENCER_SNAPSHOT_PATH",
-            "ZSEQUENCER_THRESHOLD_NUMBER",
+            "ZSEQUENCER_THRESHOLD_PERCENT",
             "ZSEQUENCER_SEND_TXS_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
@@ -97,8 +97,8 @@ class Config:
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(node["public_key"].encode("utf-8"))
 
-        self.THRESHOLD_NUMBER: int = int(
-            os.getenv("ZSEQUENCER_THRESHOLD_NUMBER", str(len(self.NODES)))
+        self.THRESHOLD_PERCENT: int = float(
+            os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
         )
         self.NODE: dict[str, Any] = next(
             (n for n in self.NODES.values() if n["public_key"] == self.PUBLIC_KEY), {}
@@ -111,6 +111,7 @@ class Config:
         self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = (
             self.get_aggregated_public_key()
         )
+        self.TOTAL_STAKE = sum([node['stake'] for node in self.NODES.values()])
 
         self.SEQUENCER: dict[str, Any] = self.NODES["1"]
 

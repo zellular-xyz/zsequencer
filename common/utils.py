@@ -90,8 +90,9 @@ def get_next_sequencer_id(old_sequencer_id: str) -> str:
 
 def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
     """Check if the switch to a new sequencer is approved."""
-    approvals: int = sum(1 for proof in proofs if is_dispute_approved(proof))
-    return approvals >= zconfig.THRESHOLD_NUMBER
+    node_ids = [proof['node_id'] for proof in proofs if is_dispute_approved(proof)]
+    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
+    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
 
 
 def is_dispute_approved(proof: dict[str, Any]) -> bool:

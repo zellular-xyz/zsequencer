@@ -54,7 +54,6 @@ def put_transactions() -> Response:
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
     zdb.init_txs(req_data["app_name"], req_data["transactions"])
     return success_response(data={}, message="The transactions received successfully.")
 
@@ -86,8 +85,7 @@ def post_dispute() -> Response:
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
-
-    if zdb.has_missed_txs():
+    if zdb.has_missed_txs() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
             "node_id": zconfig.NODE["id"],
@@ -97,10 +95,9 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-
     zdb.init_txs(req_data["app_name"], req_data["txs"])
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
-
+    
 
 @node_blueprint.route("/switch", methods=["POST"])
 def post_switch_sequencer() -> Response:
