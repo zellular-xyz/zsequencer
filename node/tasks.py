@@ -29,6 +29,7 @@ def check_finalization() -> None:
 
 def send_txs() -> None:
     """Send transactions for all apps."""
+    zdb.is_sequencer_down = False
     for app_name in zconfig.APPS:
         send_app_txs(app_name)
 
@@ -80,9 +81,7 @@ def send_app_txs(app_name: str) -> None:
         )
     except Exception:
         zlogger.exception("An unexpected error occurred:")
-        if len(initialized_txs) != 0:
-            zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
-            return
+        zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
         zdb.is_sequencer_down = True
 
     check_finalization()
@@ -328,7 +327,6 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             )
 
         time.sleep(10)
-        zdb.is_sequencer_down = False
         zdb.pause_node.clear()
         return True
 

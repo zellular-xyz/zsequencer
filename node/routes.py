@@ -85,7 +85,7 @@ def post_dispute() -> Response:
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
-    if zdb.has_missed_txs() or (req_data['app_name'] == '' and zdb.is_sequencer_down):
+    if zdb.has_missed_txs() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
             "node_id": zconfig.NODE["id"],
@@ -95,8 +95,7 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-    if req_data['app_name'] != '':
-        zdb.init_txs(req_data["app_name"], req_data["txs"])
+    zdb.init_txs(req_data["app_name"], req_data["txs"])
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
     
 
