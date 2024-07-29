@@ -29,9 +29,9 @@ def check_finalization() -> None:
 
 def send_txs() -> None:
     """Send transactions for all apps."""
-    zdb.is_sequencer_down = False
     for app_name in zconfig.APPS:
         send_app_txs(app_name)
+    zdb.is_sequencer_down = False
 
 
 def send_app_txs(app_name: str) -> None:
