@@ -54,8 +54,8 @@ async def gather_and_aggregate_signatures(
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
 
-    tasks: list[asyncio.Task] = [
-        asyncio.create_task(
+    tasks = {
+        node_id: asyncio.create_task(
             request_signature(
                 node_id=node_id,
                 url=f'http://{zconfig.NODES[node_id]["host"]}:{zconfig.NODES[node_id]["port"]}/node/sign_sync_point',
@@ -65,8 +65,38 @@ async def gather_and_aggregate_signatures(
             )
         )
         for node_id in node_ids
-    ]
-    signatures: list[dict[str, Any] | None] = await asyncio.gather(*tasks)
+    }
+
+    aggregate_timeout = 10 # in seconds
+    completed_results = []
+    pending_tasks = list(tasks.values())
+    stake = 0
+    start_time = asyncio.get_event_loop().time()
+
+    try:
+        while 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
+            elapsed_time = asyncio.get_event_loop().time() - start_time
+            remaining_time = aggregate_timeout - elapsed_time
+
+            if remaining_time <= 0:
+                raise asyncio.TimeoutError
+
+            done, pending = await asyncio.wait(pending_tasks, timeout=remaining_time, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                for node_id, node_task in tasks.items():
+                    if node_task == task:
+                        completed_results.append(task.result())
+                        stake += zconfig.NODES[node_id]['stake'] 
+                        break
+                if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
+                    for task in pending:
+                        task.cancel()
+                    break
+            pending_tasks = pending
+    except asyncio.TimeoutError:
+        return None
+    
+    signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
     nonsigners = [k for k, v in signatures_dict.items() if v is None]
     nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
