@@ -51,6 +51,7 @@ class Config:
             "ZSEQUENCER_SEND_TXS_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
+            "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT"
         ]
 
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
@@ -90,6 +91,9 @@ class Config:
         self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
         self.FINALIZATION_TIME_BORDER: int = int(
             os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
+        )
+        self.AGGREGATION_TIMEOUT: int = int(
+            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "120")
         )
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
         self.NODES: dict[str, dict[str, Any]] = self.load_json_file(self.NODES_FILE)

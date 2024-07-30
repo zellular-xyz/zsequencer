@@ -40,7 +40,27 @@ def is_bls_sig_verified(
     signature.setStr(signature_hex.encode("utf-8"))
     return signature.verify(public_key, message.encode("utf-8"))
 
-
+async def gather_signatures(
+        sign_tasks: dict[asyncio.Task, str]
+) -> dict[str, Any] | None:
+    """Gather signatures from nodes until the stake of nodes reaches the threshold"""
+    completed_results = []
+    pending_tasks = list(sign_tasks.keys())
+    stake_percent = 0
+    try:
+        while stake_percent < zconfig.THRESHOLD_PERCENT:
+            done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                node_id = sign_tasks[task]
+                completed_results.append(task.result())
+                stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+                break
+            pending_tasks = pending
+        return completed_results
+    except Exception as error:
+        zlogger.exception(f"An unexpected error occurred: {error}")
+        return completed_results
+    
 async def gather_and_aggregate_signatures(
     data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
@@ -54,8 +74,8 @@ async def gather_and_aggregate_signatures(
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
 
-    tasks = {
-        node_id: asyncio.create_task(
+    sign_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(
             request_signature(
                 node_id=node_id,
                 url=f'http://{zconfig.NODES[node_id]["host"]}:{zconfig.NODES[node_id]["port"]}/node/sign_sync_point',
@@ -63,38 +83,10 @@ async def gather_and_aggregate_signatures(
                 message=message,
                 timeout=120,
             )
-        )
+        ) : node_id 
         for node_id in node_ids
     }
-
-    aggregate_timeout = 10 # in seconds
-    completed_results = []
-    pending_tasks = list(tasks.values())
-    stake = 0
-    start_time = asyncio.get_event_loop().time()
-
-    try:
-        while 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
-            elapsed_time = asyncio.get_event_loop().time() - start_time
-            remaining_time = aggregate_timeout - elapsed_time
-
-            if remaining_time <= 0:
-                raise asyncio.TimeoutError
-
-            done, pending = await asyncio.wait(pending_tasks, timeout=remaining_time, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                for node_id, node_task in tasks.items():
-                    if node_task == task:
-                        completed_results.append(task.result())
-                        stake += zconfig.NODES[node_id]['stake'] 
-                        break
-                if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
-                    for task in pending:
-                        task.cancel()
-                    break
-            pending_tasks = pending
-    except asyncio.TimeoutError:
-        return None
+    completed_results = await asyncio.wait_for(gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
     
     signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
