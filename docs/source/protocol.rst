@@ -1,50 +1,74 @@
 The Protocol
 ============
 
+Design Principles
+-----------------
+
+We present Zellular, a leader-based Byzantine Fault Tolerant (BFT) replication protocol, with unique design principles compared to PBFT, Tendermint, and HotStuff.
+
+No Proposer Rotation
+~~~~~~~~~~~~~~~~~~~~
+
+In other protocols, the proposer role rotates among nodes to distribute block formation tasks and incentivize participation. However, Zellular focuses on switching the sequencer only in the event of a fault, removing the need for rotation and reward distribution based on processing.
+
+No Gossip Propagation
+~~~~~~~~~~~~~~~~~~~~~
+
+Other solutions use the Gossip protocol for transaction propagation, which lacks an upper limit on the number of rounds needed. The proposer must resend transactions to all nodes, resulting in at least ``(n + 1)`` rounds where ``n`` is at least ``1``. In contrast, Zellular eliminates the need for rotation of proposer by using a single sequencer. The node receiving the transaction sends it to the sequencer, and all nodes get the latest transactions from the sequencer upon request. This ensures transaction propagation in exactly two rounds, making the process more efficient and deterministic.
+
+The Workflow
+------------
+
 Posting
--------
+~~~~~~~
 
-* A node gets user transactions and stores them with the state set to the **initialised**.
+* **Receiving Transactions:** A node receives user transactions and sets their state to *initialised*.
 
-* It then puts its **initialised** transactions to the Sequencer node and gets a list of sequenced transactions as the response. The returned list includes all the transactions sent by the node and the transactions sent by others. It specifies the index of each transaction. The node upserts the transactions list with the corresponding index and sets the state of the transactions to **sequenced**.
+* **Posting to Sequencer:** The node sends its *initialised* transactions to the Sequencer and receives a list of sequenced transactions, including its own and others', each with an index. The node updates its transactions with these indices and changes their state to *sequenced*.
 
-* All nodes include the index of the last transaction they have received from the Sequencer every time they put their **initialised** transactions to the Sequencer to receive **sequenced** transactions after that index.
+* **Tracking Last Index:** Each node includes the index of the last received transaction from the Sequencer in their posts to ensure they receive only newly sequenced transactions.
+
+* **Regular Posting:** Nodes must regularly post requests to the Sequencer, even without new transactions, to stay updated on transactions from other nodes.
 
 Finalising
-----------
+~~~~~~~~~~
 
-* For each transaction with index ``n``, the node calculates the chaining hash as h\ :sub:`n` = hash( h\ :sub:`n-1` + hash(tx\ :sub:`n` ) ) to verify that all nodes have a consistent order of transactions.
+* **Calculate Chaining Hash:** For each transaction with index ``n``, the node computes the chaining hash as h\ :sub:`n` = hash( h\ :sub:`n-1` + hash(tx\ :sub:`n` ) ) to ensure a consistent transaction order across all nodes.
 
-* The sequencer stores the latest index that is returned to each node in response to its put request.
+* **Store Latest Index:** The sequencer keeps track of the latest index returned to each node after a post request.
 
-* The sequencer regularly calculates the syncing point which is the index that is reached by a threshold number of nodes and requests a threshold signature from them on the chaining hash of the that index.
+* **Determine Syncing Point:** The sequencer periodically calculates the syncing point, the index reached by a threshold number of nodes, and requests a signature from them on the chaining hash of that index to indicate readiness to lock transactions.
 
-* When nodes put transactions to the Sequencer, the threshold signature above is returned as the finalising proof of the index. Nodes then update the states of all transactions up to the index to **finalised**.
+* **Aggregate Locking Signatures:** Upon receiving locking signatures from the nodes, the sequencer aggregates them and sends the aggregated locking signature back to the nodes. Nodes verify and update the state of all transactions up to that index to *locked* and respond with a finalising signature.
 
-* All nodes must post a request to the Sequencer regularly, regardless of the existence of any **initialised** transactions they intend to send. This enables receiving all transactions the Sequencer receives from other nodes and the constant update of its finalising proofs.
+* **Aggregate Finalising Signatures:** The sequencer aggregates the finalising signatures received from the nodes and sends the aggregated finalising signature back. Nodes then verify and update the state of all transactions up to that index to *finalised*.
+
+* **Simultaneous Requests:** To enhance efficiency, the sequencer simultaneously requests locking signatures for a current index and finalising signatures for an older index (for which it has already received locking signatures) in each request.
+
+.. figure:: images/image2.png
+  :align: center
+  :width: 800
+  :alt: Finalising Process
 
 Disputing
----------
+~~~~~~~~~
 
-* If a node detects malfunctions in the Sequencer through any of the following scenarios, it initiates a dispute against the Sequencer node:
+* **Initiating a Dispute:** A node initiates a dispute against the Sequencer if:
 
-  * If the Sequencer fails to respond to the node's requests, indicating potential offline status.
-  * If the Sequencer excludes any transactions submitted by the node from its response to the same request, suggesting transaction censorship.
-  * If the Sequencer does not update the finalization proof within a predefined period, hinting at the possibility of sending inconsistent transaction orders to different nodes.
+  * The Sequencer fails to respond, indicating it may be offline.
 
-* To dispute against the Sequencer, the node shares the transactions for which it encountered sequencing issues with other nodes and gathers signatures from them confirming the malfunction of the Sequencer. If the threshold number of nodes confirms the problem, the node triggers the switching process by sending those signatures to all other nodes.
+  * The Sequencer excludes the node's transactions, suggesting censorship.
+
+  * The Sequencer does not update the finalisation proof within a predefined period, implying possible inconsistency in transaction orders.
+
+* **Sharing Evidence:** The node shares the problematic transactions with other nodes and collects their signatures to confirm the Sequencer's malfunction.
+
+* **Triggering a Switch:** If the threshold number of nodes confirms the issue, the node sends the collected signatures to all nodes to initiate the switching process.
 
 Switching
----------
+~~~~~~~~~
 
-* Upon receiving a switch request, nodes reset all **sequenced** transactions to **initialised** and then switch to the next sequencer.
+* **Resetting Transactions:** Upon receiving a switch request, nodes reset all *sequenced* transactions to *initialised* and switch to the next Sequencer.
 
-* The new sequencer should query all nodes for their latest **finalised** transaction and sync with the one having the highest **finalised** index before starting to serve the requests posted by nodes.
+* **New Sequencer Sync:** The new Sequencer queries all nodes for their latest *locked* and *finalised* transactions and syncs with the node having the highest index before processing new requests.
 
-
-Possible Attack Vectors
------------------------
-
-* A malicious Sequencer hides a finalisation proof from other nodes. And waits for them to reset some of their **sequenced** transactions to **initialised** and generate a new finalisation proof using the newly switched Sequencer. it then reveals the hidden finalisation proof to prove that the finalisation has been broken. This is prevented if we consider these proofs as internal proofs for syncing nodes not external proof for clients. Clients can only consider a transaction as **finalised** if they get a threshold signature from nodes showing that they have updated the state of the transaction to **finalised** in their database.
-
-* ``n - t`` malicious nodes (including the malicious Sequencer) create a finalisation proof with a group of honest nodes and a different one with another group. This is prevented by requiring ``t > (n - t) * 2`` or ``t > 2/3 * n``.
