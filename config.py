@@ -93,7 +93,7 @@ class Config:
             os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
         )
         self.AGGREGATION_TIMEOUT: int = int(
-            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "120")
+            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
         )
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
         self.NODES: dict[str, dict[str, Any]] = self.load_json_file(self.NODES_FILE)
