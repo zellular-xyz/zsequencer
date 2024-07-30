@@ -85,7 +85,10 @@ async def gather_and_aggregate_signatures(
         ) : node_id 
         for node_id in node_ids
     }
-    completed_results = await asyncio.wait_for(gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+    try:
+        completed_results = await asyncio.wait_for(gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+    except asyncio.TimeoutError:
+        return None
     
     signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
