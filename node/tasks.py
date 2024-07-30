@@ -175,6 +175,11 @@ def is_sync_point_signature_verified(
     nonsigners: list[str],
 ) -> bool:
     """Verify the BLS signature of a synchronization point."""
+    nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
+    if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
+        zlogger.exception("Invalid signature from sequencer")
+        return False
+
     public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners)
     message: str = utils.gen_hash(
         json.dumps(
