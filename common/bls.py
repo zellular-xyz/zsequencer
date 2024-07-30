@@ -54,7 +54,6 @@ async def gather_signatures(
                 node_id = sign_tasks[task]
                 completed_results.append(task.result())
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
-                break
             pending_tasks = pending
         return completed_results
     except Exception as error:
