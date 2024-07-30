@@ -88,6 +88,7 @@ async def gather_and_aggregate_signatures(
     try:
         completed_results = await asyncio.wait_for(gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
+        zlogger.exception(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return None
     
     signatures: list[dict[str, Any] | None] = completed_results
