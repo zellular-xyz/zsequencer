@@ -1,0 +1,11 @@
+services:
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zsequencer-node
+    ports:
+      - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
+    volumes:
+      - "${ZSEQUENCER_NODES_FILE}:/app/nodes.json:ro"
+      - "${ZSEQUENCER_APPS_FILE}:/app/apps.json:ro"
