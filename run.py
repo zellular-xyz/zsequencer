@@ -43,7 +43,7 @@ def run_node_tasks() -> None:
             continue
 
         node_tasks.send_txs()
-        node_tasks.send_dispute_requests()
+        asyncio.run(node_tasks.send_dispute_requests())
 
 
 def run_sequencer_tasks() -> None:

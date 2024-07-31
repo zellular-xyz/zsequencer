@@ -3,11 +3,13 @@ This module handles node tasks like sending transactions, synchronization with t
 dispute handling, and switching sequencers.
 """
 
+import asyncio
 import json
 import threading
 import time
 from typing import Any
 
+import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 
@@ -201,12 +203,12 @@ def is_sync_point_signature_verified(
     )
 
 
-def send_dispute_requests() -> None:
+async def send_dispute_requests(timeout:int = 10) -> None:
     """Send dispute requests if there are missed transactions."""
     if (not zdb.has_missed_txs() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
         return
 
-    timestamp: int = int(time.time())
+    timestamp: int = int(asyncio.get_event_loop().time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"]
     )
@@ -231,17 +233,17 @@ def send_dispute_requests() -> None:
     
     if not check_missed_txs and not zdb.is_sequencer_down:
         return
-    print (zdb.is_sequencer_down)
-    for node in zconfig.NODES.values():
-        try:
-            response: dict[str, Any] | None = send_dispute_request(
-                node, apps_missed_txs, zdb.is_sequencer_down
-            )
-            if not response:
-                continue
-            proofs.append(response)
-        except Exception:
-            zlogger.exception("An unexpected error occurred:")
+    
+    tasks = [send_dispute_request(node, apps_missed_txs, zdb.is_sequencer_down) 
+            for node in zconfig.NODES.values()]
+    try:
+        completed = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+        for response in completed:
+            if response:
+                proofs.append(response)
+    except asyncio.TimeoutError:
+        zlogger.warning("Timeout occurred while sending dispute requests.")
+        return
         
     if utils.is_switch_approved(proofs):
         zdb.pause_node.set()
@@ -252,7 +254,7 @@ def send_dispute_requests() -> None:
         send_switch_requests(proofs)
 
 
-def send_dispute_request(
+async def send_dispute_request(
     node: dict[str, Any], apps_missed_txs: dict[str, Any], is_sequencer_down: bool
     ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
@@ -267,16 +269,14 @@ def send_dispute_request(
     )
     url: str = f'http://{node["host"]}:{node["port"]}/node/dispute'
     try:
-        response: requests.Response = requests.post(
-            url=url, data=data, headers=zconfig.HEADERS
-        )
-        response_json: dict[str, Any] = response.json()
-        if response_json["status"] == "success":
-            return response_json.get("data")
-        return None
-    except requests.RequestException as error:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, data=data, headers=zconfig.HEADERS) as response:
+                response_json: dict[str, Any] = await response.json()
+                if response_json["status"] == "success":
+                    return response_json.get("data")
+    except aiohttp.ClientError as error:
         zlogger.exception(f"Error sending dispute request to {node['id']}: {error}")
-        return None
+    return None
 
 
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
