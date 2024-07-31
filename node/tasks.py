@@ -31,7 +31,7 @@ def send_txs() -> None:
     """Send transactions for all apps."""
     for app_name in zconfig.APPS:
         send_app_txs(app_name)
-    zdb.is_sequencer_down = False
+    
 
 
 def send_app_txs(app_name: str) -> None:
@@ -79,6 +79,7 @@ def send_app_txs(app_name: str) -> None:
             initialized_txs=initialized_txs,
             sequencer_response=response["data"],
         )
+        zdb.is_sequencer_down = False
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
@@ -219,37 +220,28 @@ def send_dispute_requests() -> None:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     )
+    apps_missed_txs:dict[str, Any] = {}
 
+    check_missed_txs = False
+    for app_name in zconfig.APPS.keys():
+        app_missed_txs = zdb.get_missed_txs(app_name)
+        apps_missed_txs[app_name] = app_missed_txs
+        if not check_missed_txs and len(app_missed_txs) != 0:
+            check_missed_txs = True
+    
+    if not check_missed_txs and not zdb.is_sequencer_down:
+        return
+    print (zdb.is_sequencer_down)
     for node in zconfig.NODES.values():
-        if node["id"] in {zconfig.NODE["id"], zconfig.SEQUENCER["id"]}:
-            continue
-
-        for app_name in zconfig.APPS.keys():
-            missed_txs: dict[str, Any] = zdb.get_missed_txs(app_name)
-            if len(missed_txs) == 0:
+        try:
+            response: dict[str, Any] | None = send_dispute_request(
+                node, apps_missed_txs, zdb.is_sequencer_down
+            )
+            if not response:
                 continue
-
-            try:
-                response: dict[str, Any] | None = send_dispute_request(
-                    node, app_name, [tx["body"] for tx in missed_txs.values()]
-                )
-                if not response:
-                    continue
-
-                proofs.append(response)
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-
-        if zdb.is_sequencer_down:
-            try:
-                response: dict[str, Any] | None = send_dispute_request(
-                    node, app_name = '', missed_txs = []
-                )
-        
-                if response:
-                    proofs.append(response)
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
+            proofs.append(response)
+        except Exception:
+            zlogger.exception("An unexpected error occurred:")
         
     if utils.is_switch_approved(proofs):
         zdb.pause_node.set()
@@ -261,15 +253,15 @@ def send_dispute_requests() -> None:
 
 
 def send_dispute_request(
-    node: dict[str, Any], app_name: str, missed_txs: list[str]
-) -> dict[str, Any] | None:
+    node: dict[str, Any], apps_missed_txs: dict[str, Any], is_sequencer_down: bool
+    ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "app_name": app_name,
-            "txs": missed_txs,
+            "apps_missed_txs": apps_missed_txs,
+            "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
     )
