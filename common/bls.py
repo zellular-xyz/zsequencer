@@ -17,7 +17,7 @@ from .logger import zlogger
 
 def bls_sign(message: str) -> str:
     """Sign a message using BLS."""
-    signature: attestation.Signature = zconfig.NODE["key_pair"].sign_message(
+    signature: attestation.Signature = zconfig.NODE["bls_key_pair"].sign_message(
         message.encode("utf-8")
     )
     return signature.getStr(10).decode("utf-8")
