@@ -14,18 +14,19 @@ from flask import Flask
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from zsequencer.common.db import zdb
-from zsequencer.config import zconfig
-from zsequencer.node import tasks as node_tasks
-from zsequencer.node.routes import node_blueprint
-from zsequencer.sequencer import tasks as sequencer_tasks
-from zsequencer.sequencer.routes import sequencer_blueprint
+import secrets
+from common.db import zdb
+from config import zconfig
+from node import tasks as node_tasks
+from node.routes import node_blueprint
+from sequencer import tasks as sequencer_tasks
+from sequencer.routes import sequencer_blueprint
 
 
 def create_app() -> Flask:
     """Create and configure the Flask application."""
     app: Flask = Flask(__name__)
-    app.secret_key = zconfig.FLASK_SECRET_KEY
+    app.secret_key = secrets.token_hex(32)
 
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")

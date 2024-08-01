@@ -47,7 +47,7 @@ def eth_sign(message: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=message)
     account_instance: Account = Account()
     return account_instance.sign_message(
-        signable_message=message_encoded, private_key=zconfig.NODE["private_key"]
+        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"]
     ).signature.hex()
 
 
