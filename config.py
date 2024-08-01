@@ -76,44 +76,25 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
-        self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
-        self.REMOVE_CHUNK_BORDER: int = int(
-            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
-        )
+        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
+        self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "apps.json")
         self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
-        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
         bls_key_store_path: str = os.getenv("ZSEQUENCER_BLS_KEY_FILE", "")
+        ecdsa_key_store_path: str = os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", "")
+
         bls_key_password: str = os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", "")
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
             bls_key_store_path, bls_key_password)
         bls_public_key: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
         bls_private_key: str = bls_key_pair.priv_key.getStr(10).decode('utf-8')
 
-        ecdsa_key_store_path: str = os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", "")
         ecdsa_key_password: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(encrypted_json, ecdsa_key_password)
 
-        self.SEND_TXS_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
-        )
-        self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
-        self.FINALIZATION_TIME_BORDER: int = int(
-            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
-        )
-        self.AGGREGATION_TIMEOUT: int = int(
-            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
-        )
-        self.THRESHOLD_PERCENT: int = float(
-            os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
-        )
-
-        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
         self.NODES: dict[str, dict[str, Any]] = self.load_json_file(self.NODES_FILE)
-
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
@@ -129,6 +110,27 @@ class Config:
         self.NODE["ecdsa_private_key"] = ecdsa_private_key
         self.NODE["bls_key_pair"] = bls_key_pair
 
+        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
+
+        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
+        self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
+        self.REMOVE_CHUNK_BORDER: int = int(
+            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
+        )
+
+        self.SEND_TXS_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
+        )
+        self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
+        self.FINALIZATION_TIME_BORDER: int = int(
+            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
+        )
+        self.AGGREGATION_TIMEOUT: int = int(
+            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
+        )
+        self.THRESHOLD_PERCENT: int = float(
+            os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
+        )
 
         self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = (
             self.get_aggregated_public_key()
@@ -137,7 +139,6 @@ class Config:
 
         self.SEQUENCER: dict[str, Any] = self.NODES["1"]
 
-        self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "apps.json")
         self.APPS: dict[str, dict[str, Any]] = self.load_json_file(self.APPS_FILE)
 
         self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}

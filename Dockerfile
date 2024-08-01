@@ -31,8 +31,12 @@ COPY requirements.txt /app/
 # Install the Python dependencies
 RUN pip3 install --break-system-packages -r requirements.txt
 
-# Copy the entire project to the working directory
-COPY . /app/
+# Copy the required project files to the working directory
+COPY node /app/zsequencer/node
+COPY sequencer /app/zsequencer/sequencer
+COPY common /app/zsequencer/common
+COPY config.py /app/zsequencer/config.py
+COPY run.py /app/zsequencer/run.py
 
 # Command to run the application
-CMD ["python3", "run.py"]
+CMD ["python3", "zsequencer/run.py"]
