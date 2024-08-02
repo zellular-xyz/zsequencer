@@ -6,6 +6,6 @@ A PoC implementation of the [Zellular BFT Protocol](https://docs.zellular.xyz/pr
 
 ## Running
 
-- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Run-EigenLayer-Holesky-Node) to run EigenLayer holesky node using docker.
+- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Run-EigenLayer-Holesky-Node) to run an EigenLayer holesky node using docker.
 
-- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Node-Installation-Guide) to install and run the node using the source code. 
+- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Node-Installation-Guide) to install and run a node using the source code. 
