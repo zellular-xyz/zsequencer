@@ -78,7 +78,7 @@ def post_sign_sync_point() -> Response:
 def post_dispute() -> Response:
     """Handle a dispute by initializing transactions if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "app_name", "txs", "timestamp"]
+    required_keys: list[str] = ["sequencer_id", "apps_missed_txs", "is_sequencer_down", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
@@ -95,7 +95,10 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-    zdb.init_txs(req_data["app_name"], req_data["txs"])
+    
+    for app_name, missed_txs in req_data["apps_missed_txs"].items():
+        txs = [tx["body"] for tx in missed_txs.values()]
+        zdb.init_txs(app_name, txs)
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
     
 
