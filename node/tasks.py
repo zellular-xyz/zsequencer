@@ -219,12 +219,12 @@ async def gather_disputes(
             stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
     return results
 
-async def send_dispute_requests(timeout:int = 10) -> None:
+async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed transactions."""
     if (not zdb.has_missed_txs() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
         return
 
-    timestamp: int = int(asyncio.get_event_loop().time())
+    timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"]
     )

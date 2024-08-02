@@ -14,7 +14,7 @@ from web3 import Account
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
-THRESHOLD_PERCENT: int = 60
+THRESHOLD_PERCENT: int = 67
 DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
