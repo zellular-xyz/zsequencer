@@ -2,8 +2,6 @@ services:
   zsequencer:
     container_name: zsequencer-node
     image: zellular/zsequencer:latest
-    restart: always
-    init: true
     network_mode: host
     ports:
       - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
