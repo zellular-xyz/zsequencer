@@ -6,13 +6,13 @@ import cProfile
 import functools
 import json
 import os
+import sys
 import pstats
 from typing import Any
 
 from dotenv import load_dotenv
 from eigensdk.crypto.bls import attestation
 from web3 import Account
-
 
 class Config:
     _instance = None
@@ -75,7 +75,6 @@ class Config:
         if os.path.exists(".env"):
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
-
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "apps.json")
         self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
@@ -88,7 +87,7 @@ class Config:
             bls_key_store_path, bls_key_password)
         bls_public_key: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
         bls_private_key: str = bls_key_pair.priv_key.getStr(10).decode('utf-8')
-
+        print(f"BLS Public Key G2: {bls_public_key}")
         ecdsa_key_password: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
@@ -103,9 +102,10 @@ class Config:
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
         if not self.NODE:
-            raise EnvironmentError(
-                f"A node with public key {bls_public_key} not found in nodes.json"
+            print(
+                "A node with this public key not found in nodes.json"
             )
+            sys.exit()
 
         self.NODE["ecdsa_private_key"] = ecdsa_private_key
         self.NODE["bls_key_pair"] = bls_key_pair

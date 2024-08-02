@@ -4,19 +4,3 @@ services:
       context: .
       dockerfile: Dockerfile
     image: zellular/zsequencer:latest
-    ports:
-      - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
-    volumes:
-      - "${ZSEQUENCER_BLS_KEY_FILE}:/app/bls_key.json"
-      - "${ZSEQUENCER_ECDSA_KEY_FILE}:/app/ecdsa_key.json"
-      - "${ZSEQUENCER_NODES_FILE}:/app/nodes.json"
-      - "${ZSEQUENCER_APPS_FILE}:/app/apps.json"
-      - "${ZSEQUENCER_SNAPSHOT_PATH}:/db"
-    environment:
-      - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
-      - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
-      - ZSEQUENCER_NODES_FILE=/app/nodes.json
-      - ZSEQUENCER_APPS_FILE=/app/apps.json
-      - ZSEQUENCER_SNAPSHOT_PATH=/db
-    env_file:
-      - .env
