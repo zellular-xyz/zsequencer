@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: zsequencer-node
+    image: zellular/zsequencer:latest
     ports:
       - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
     volumes:
