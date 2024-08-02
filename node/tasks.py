@@ -208,7 +208,7 @@ async def gather_disputes(
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
     results = []
     pending_tasks = list(dispute_tasks.keys())
-    stake_percent = 100 * zconfig.NODE[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
+    stake_percent = 100 * zconfig.NODES[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
