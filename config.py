@@ -104,7 +104,7 @@ class Config:
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
         if not self.NODE:
             raise EnvironmentError(
-                f"A node with public key {public_key_g2} not found in nodes.json"
+                f"A node with public key {bls_public_key} not found in nodes.json"
             )
 
         self.NODE["ecdsa_private_key"] = ecdsa_private_key
