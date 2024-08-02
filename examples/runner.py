@@ -22,7 +22,7 @@ ZSEQUENCER_SNAPSHOT_CHUNK: int = 1_000_000
 ZSEQUENCER_REMOVE_CHUNK_BORDER: int = 3
 ZSEQUENCER_SEND_TXS_INTERVAL: float = 0.01
 ZSEQUENCER_SYNC_INTERVAL: float = 0.01
-ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 120
+ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 10
 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT = 5
 APP_NAME: str = "simple_app"
 
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--test",
         required=True,
-        choices=["general", "throughput"],
+        choices=["general"],
         help="the test name.",
     )
     return parser.parse_args()
@@ -144,12 +144,12 @@ def main() -> None:
         run_command("run.py", f"{i + 1}", env_variables)
         time.sleep(2)
 
-        if i == NUM_INSTANCES - 1:
-            run_command(
-                f"examples/{args.test}_test.py",
-                f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
-                env_variables,
-            )
+    time.sleep(5)
+    run_command(
+        f"examples/{args.test}_test.py",
+        f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
+        env_variables,
+    )
 
 
 if __name__ == "__main__":
