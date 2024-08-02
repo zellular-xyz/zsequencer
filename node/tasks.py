@@ -203,30 +203,21 @@ def is_sync_point_signature_verified(
     )
 
 async def gather_disputes(
-        dispute_tasks: dict[asyncio.Task, str], initial_proof: dict[str, Any]
+    dispute_tasks: dict[asyncio.Task, str]
 ) -> dict[str, Any] | None:
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
-    completed_results = []
+    results = []
     pending_tasks = list(dispute_tasks.keys())
-    stake_percent = 0
-    if utils.is_dispute_approved(initial_proof):
-        stake_percent += 100 * zconfig.NODE[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
-    try:
-        while stake_percent < zconfig.THRESHOLD_PERCENT:
-            done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                if not task.result() or not utils.is_dispute_approved(task.result()):
-                    continue
-                node_id = dispute_tasks[task]
-                completed_results.append(task.result())
-                stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
-            pending_tasks = pending
-            if len(pending_tasks) == 0 and stake_percent < zconfig.THRESHOLD_PERCENT:
-                return None
-        return completed_results
-    except Exception as error:
-        zlogger.exception(f"An unexpected error occurred: {error}")
-        return None
+    stake_percent = 100 * zconfig.NODE[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if not task.result() or not utils.is_dispute_approved(task.result()):
+                continue
+            results.append(task.result())
+            node_id = dispute_tasks[task]
+            stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+    return results
 
 async def send_dispute_requests(timeout:int = 10) -> None:
     """Send dispute requests if there are missed transactions."""
@@ -249,15 +240,10 @@ async def send_dispute_requests(timeout:int = 10) -> None:
     )
     apps_missed_txs:dict[str, Any] = {}
 
-    check_missed_txs = False
     for app_name in zconfig.APPS.keys():
         app_missed_txs = zdb.get_missed_txs(app_name)
-        apps_missed_txs[app_name] = app_missed_txs
-        if not check_missed_txs and len(app_missed_txs) != 0:
-            check_missed_txs = True
-    
-    if not check_missed_txs and not zdb.is_sequencer_down:
-        return
+        if len(app_missed_txs) > 0:
+            apps_missed_txs[app_name] = app_missed_txs
 
     dispute_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(
@@ -266,14 +252,17 @@ async def send_dispute_requests(timeout:int = 10) -> None:
         for node in zconfig.NODES.values() if node['id'] != zconfig.NODE['id']
     }
     try:
-        completed_responses = await asyncio.wait_for(gather_disputes(dispute_tasks, proofs[0]), timeout=zconfig.AGGREGATION_TIMEOUT)
+        responses = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
         zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
-    if not completed_responses:
+    except Exception as error:
+        zlogger.exception(f"An unexpected error occurred: {error}")
+        return None
+
+    if not responses:
         return
-    for response in completed_responses:
-        proofs.append(response)
+    proofs.extend(responses)
 
     zdb.pause_node.set()
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
