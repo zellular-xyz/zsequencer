@@ -317,7 +317,7 @@ class InMemoryDB:
         return [
             v
             for k, v in self.apps[app_name]["nodes_state"].items()
-            if k in zconfig.NODES
+            if k in list(zconfig.NODES.keys())
         ]
 
     def upsert_locked_sync_point(self, app_name: str, state: dict[str, Any]) -> None:
@@ -366,7 +366,7 @@ class InMemoryDB:
 
     def has_missed_txs(self) -> bool:
         """Check if there are missed transactions across any app."""
-        for app_name in zconfig.APPS:
+        for app_name in list(zconfig.APPS.keys()):
             if self.apps[app_name]["missed_txs"]:
                 return True
         return False

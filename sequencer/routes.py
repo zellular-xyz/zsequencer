@@ -45,8 +45,8 @@ def put_transactions() -> Response:
     )
     if (
         not is_eth_sig_verified
-        or str(req_data["node_id"]) not in zconfig.NODES
-        or req_data["app_name"] not in zconfig.APPS
+        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
+        or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 

@@ -65,7 +65,7 @@ async def sync() -> None:
     if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
         return
 
-    for app_name in zconfig.APPS.keys():
+    for app_name in list(zconfig.APPS.keys()):
         await sync_app(app_name)
 
 

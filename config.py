@@ -54,7 +54,9 @@ class Config:
             "ZSEQUENCER_SEND_TXS_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
-            "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT"
+            "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT",
+            "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL",
+            "ZSEQUENCER_FETCH_APPS_AND_NODES_URL"
         ]
 
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
@@ -85,9 +87,9 @@ class Config:
         bls_key_password: str = os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", "")
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
             bls_key_store_path, bls_key_password)
-        bls_public_key: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
+        self.bls_public_key: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
         bls_private_key: str = bls_key_pair.priv_key.getStr(10).decode('utf-8')
-        print(f"BLS Public Key G2: {bls_public_key}")
+        print(f"BLS Public Key G2: {self.bls_public_key}")
         ecdsa_key_password: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
@@ -97,7 +99,7 @@ class Config:
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
-            if public_key_g2 == bls_public_key:
+            if public_key_g2 == self.bls_public_key:
                 self.NODE = node
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
@@ -127,6 +129,12 @@ class Config:
         )
         self.AGGREGATION_TIMEOUT: int = int(
             os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
+        )
+        self.FETCH_APPS_AND_NODES_URL: str = os.getenv(
+            "ZSEQUENCER_FETCH_APPS_AND_NODES_URL", "http://127.0.0.1:5003/"
+        )
+        self.FETCH_APPS_AND_NODES_INTERVAL: int = int (
+            os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
         )
         self.THRESHOLD_PERCENT: int = float(
             os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
