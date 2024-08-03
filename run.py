@@ -119,20 +119,20 @@ def fetch_nodes_and_apps() -> None:
 
 def main() -> None:
     """Main entry point for running the Zellular Node."""
-    # app: Flask = create_app()
+    app: Flask = create_app()
 
-    # # Start periodic task in a thread
-    # sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
-    # sync_thread.start()
+    # Start periodic task in a thread
+    sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
+    sync_thread.start()
 
-    # node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
-    # node_tasks_thread.start()
+    node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
+    node_tasks_thread.start()
 
     fetch_nodes_and_apps_thread: threading.Thread = threading.Thread(target=fetch_nodes_and_apps)
     fetch_nodes_and_apps_thread.start()
 
-    # # Start the Zellular node Flask application
-    # run_flask_app(app)
+    # Start the Zellular node Flask application
+    run_flask_app(app)
 
 
 if __name__ == "__main__":
