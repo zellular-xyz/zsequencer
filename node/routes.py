@@ -5,11 +5,11 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
-from zsequencer.common import utils
-from zsequencer.common.db import zdb
-from zsequencer.common.errors import ErrorCodes
-from zsequencer.common.response_utils import error_response, success_response
-from zsequencer.config import zconfig
+from common import utils
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.response_utils import error_response, success_response
+from config import zconfig
 
 from . import tasks
 

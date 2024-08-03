@@ -13,10 +13,10 @@ import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.common import bls, utils
-from zsequencer.common.db import zdb
-from zsequencer.common.logger import zlogger
-from zsequencer.config import zconfig
+from common import bls, utils
+from common.db import zdb
+from common.logger import zlogger
+from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
 

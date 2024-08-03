@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.config import zconfig
+from config import zconfig
 
 from . import utils
 from .logger import zlogger
