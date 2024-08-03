@@ -16,7 +16,9 @@ from flask import Flask
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb, zconfig
+from common.db import zdb
+from config import Config, zconfig
+from common import utils
 from common.logger import zlogger
 from node import tasks as node_tasks
 from node.routes import node_blueprint
@@ -83,59 +85,54 @@ def run_flask_app(app: Flask) -> None:
     )
 
 
-async def fetch_nodes_and_apps() -> None:
+def fetch_nodes_and_apps() -> None:
     while True:
-        await asyncio.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(
-                    zconfig.FETCH_APPS_AND_NODES_URL+'/apps.json', timeout=5
-                    ) as response:
-                    response_json = await response.json()
-                    zconfig.APPS.update(response_json)
-                
-                async with session.get(
-                    zconfig.FETCH_APPS_AND_NODES_URL+'/nodes.json', timeout=5
-                    ) as response:
-                    response_json = await response.json()
-                    zconfig.NODES.update(response_json)
-                    
-                    for node in list(zconfig.NODES.values()):
-                        public_key_g2: str = node["public_key_g2"]
-                        if public_key_g2 == zconfig.bls_public_key:
-                            zconfig.NODE.update(node)
-                        node["public_key_g2"] = attestation.new_zero_g2_point()
-                        node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+        time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
+        try:
+            apps_data = Config.get_file_content(zconfig.APPS_FILE)
+            zconfig.APPS.update(apps_data)
+        except Exception:
+            zlogger.exception("An unexpected error occurred:")
+        
+        try:
+            if zconfig.NODE_SOURCE == 'FILE':
 
-            except asyncio.TimeoutError:
-                zlogger.exception("Fetch Request timeout:")
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
+                nodes_data = utils.get_file_content(zconfig.NODES_FILE)
+                zconfig.NODES.update(nodes_data)
+            else:
+                nodes_data = Config.fetch_eigenlayer_nodes_data(
+                zconfig.SUBGRAPH_URL, zconfig.RPC_NODE, 
+                zconfig.REGISTRY_COORDINATOR, zconfig.OPERATOR_STATE_RETRIEVER
+                )
+            zconfig.NODES.update(nodes_data)
+            
+            for node in list(zconfig.NODES.values()):
+                public_key_g2: str = node["public_key_g2"]
+                if public_key_g2 == zconfig.bls_public_key:
+                    zconfig.NODE.update(node)
+                node["public_key_g2"] = attestation.new_zero_g2_point()
+                node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+        except Exception:
+            zlogger.exception("An unexpected error occurred:")
 
-    
 
-def run_fetch_data_tasks() -> None:
-    """Run sequencer tasks in an asynchronous event loop."""
-    loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(fetch_nodes_and_apps())
 
 def main() -> None:
     """Main entry point for running the Zellular Node."""
-    app: Flask = create_app()
+    # app: Flask = create_app()
 
-    # Start periodic task in a thread
-    sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
-    sync_thread.start()
+    # # Start periodic task in a thread
+    # sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
+    # sync_thread.start()
 
-    node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
-    node_tasks_thread.start()
+    # node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
+    # node_tasks_thread.start()
 
-    fetch_nodes_and_apps_thread: threading.Thread = threading.Thread(target=run_fetch_data_tasks)
+    fetch_nodes_and_apps_thread: threading.Thread = threading.Thread(target=fetch_nodes_and_apps)
     fetch_nodes_and_apps_thread.start()
 
-    # Start the Zellular node Flask application
-    run_flask_app(app)
+    # # Start the Zellular node Flask application
+    # run_flask_app(app)
 
 
 if __name__ == "__main__":
