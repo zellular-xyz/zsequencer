@@ -100,7 +100,7 @@ async def gather_and_aggregate_signatures(
     signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
     nonsigners = [k for k, v in signatures_dict.items() if v is None]
-    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
+    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set([zconfig.NODE["id"]]))
     nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
     if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
         return None
