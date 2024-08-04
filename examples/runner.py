@@ -25,11 +25,6 @@ ZSEQUENCER_SYNC_INTERVAL: float = 0.01
 ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 10
 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT = 5
 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 1
-ZSEQUENCER_SUBGRAPH_URL='https://api.studio.thegraph.com/query/85556/bls_apk_registry/version/latest'
-ZSEQUENCER_RPC_NODE='https://holesky.infura.io/v3/ba262008fcdc4324b86692d0851dd33a'
-ZSEQUENCER_REGISTRY_COORDINATOR='0xa19A698e512240Fe51b8FBf8c3BD86EEC3306379'
-ZSEQUENCER_OPERATOR_STATE_RETRIEVER='0x8ce7f30F2c11e61AEBbAaD3938E201AE33332950'
-
 APP_NAME: str = "simple_app"
 
 
@@ -66,8 +61,7 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
             "id": str(i + 1),
             "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
             "address": address,
-            "host": "127.0.0.1",
-            "port": str(BASE_PORT + i + 1),
+            "socket": f"http://127.0.0.1:{str(BASE_PORT + i + 1)}",
             "stake": 10,
         }
 
@@ -147,10 +141,7 @@ def main() -> None:
                 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT),
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
-            "ZSEQUENCER_SUBGRAPH_URL": str(ZSEQUENCER_SUBGRAPH_URL),
-            "ZSEQUENCER_RPC_NODE": str(ZSEQUENCER_RPC_NODE),
-            "ZSEQUENCER_REGISTRY_COORDINATOR": str(ZSEQUENCER_REGISTRY_COORDINATOR),
-            "ZSEQUENCER_OPERATOR_STATE_RETRIEVER": str(ZSEQUENCER_OPERATOR_STATE_RETRIEVER),
+            "ZSEQUENCER_SUBGRAPH_URL": ""
         })
 
         run_command("run.py", f"{i + 1}", env_variables)

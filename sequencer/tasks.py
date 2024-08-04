@@ -4,9 +4,9 @@ This module handles synchronization processes for locked and finalized transacti
 
 from typing import Any
 
-from zsequencer.common import bls
-from zsequencer.common.db import zdb
-from zsequencer.config import zconfig
+from common import bls
+from common.db import zdb
+from config import zconfig
 
 
 def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:

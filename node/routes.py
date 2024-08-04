@@ -5,11 +5,11 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
-from zsequencer.common import utils
-from zsequencer.common.db import zdb
-from zsequencer.common.errors import ErrorCodes
-from zsequencer.common.response_utils import error_response, success_response
-from zsequencer.config import zconfig
+from common import utils
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.response_utils import error_response, success_response
+from config import zconfig
 
 from . import tasks
 
@@ -139,7 +139,7 @@ def get_state() -> Response:
         last_locked_tx = zdb.get_last_tx(app_name, "locked")
         last_finalized_tx = zdb.get_last_tx(app_name, "finalized")
 
-        data[app_name] = {
+        data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_tx.get("index", 0),
             "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
             "last_locked_index": last_locked_tx.get("index", 0),

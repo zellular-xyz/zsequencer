@@ -85,35 +85,6 @@ def run_flask_app(app: Flask) -> None:
     )
 
 
-def fetch_nodes_and_apps() -> None:
-    while True:
-        time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
-        try:
-            apps_data = Config.get_file_content(zconfig.APPS_FILE)
-            zconfig.APPS.update(apps_data)
-        except Exception:
-            zlogger.exception("An unexpected error occurred:")
-        
-        try:
-            if zconfig.NODE_SOURCE == 'FILE':
-
-                nodes_data = utils.get_file_content(zconfig.NODES_FILE)
-                zconfig.NODES.update(nodes_data)
-            else:
-                nodes_data = Config.fetch_eigenlayer_nodes_data(
-                zconfig.SUBGRAPH_URL, zconfig.RPC_NODE, 
-                zconfig.REGISTRY_COORDINATOR, zconfig.OPERATOR_STATE_RETRIEVER
-                )
-            zconfig.NODES.update(nodes_data)
-            
-            for node in list(zconfig.NODES.values()):
-                public_key_g2: str = node["public_key_g2"]
-                if public_key_g2 == zconfig.bls_public_key:
-                    zconfig.NODE.update(node)
-                node["public_key_g2"] = attestation.new_zero_g2_point()
-                node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-        except Exception:
-            zlogger.exception("An unexpected error occurred:")
 
 
 
@@ -127,9 +98,6 @@ def main() -> None:
 
     node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
     node_tasks_thread.start()
-
-    fetch_nodes_and_apps_thread: threading.Thread = threading.Thread(target=fetch_nodes_and_apps)
-    fetch_nodes_and_apps_thread.start()
 
     # Start the Zellular node Flask application
     run_flask_app(app)

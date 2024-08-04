@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.config import zconfig
+from config import zconfig
 
 from . import utils
 from .logger import zlogger
@@ -78,7 +78,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f'http://{zconfig.NODES[node_id]["host"]}:{zconfig.NODES[node_id]["port"]}/node/sign_sync_point',
+                url=f'{zconfig.NODES[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,

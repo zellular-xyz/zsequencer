@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any
 
-from zsequencer.config import zconfig
+from config import zconfig
 
 from . import utils
 from .logger import zlogger

@@ -13,10 +13,10 @@ import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.common import bls, utils
-from zsequencer.common.db import zdb
-from zsequencer.common.logger import zlogger
-from zsequencer.config import zconfig
+from common import bls, utils
+from common.db import zdb
+from common.logger import zlogger
+from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -66,8 +66,7 @@ def send_app_txs(app_name: str) -> None:
         }
     )
 
-    sequencer_address: str = f'{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["port"]}'
-    url: str = f"http://{sequencer_address}/sequencer/transactions"
+    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/transactions'
     try:
         response: dict[str, Any] = requests.put(
             url=url, data=data, headers=zconfig.HEADERS
@@ -285,7 +284,7 @@ async def send_dispute_request(
             "timestamp": timestamp,
         }
     )
-    url: str = f'http://{node["host"]}:{node["port"]}/node/dispute'
+    url: str = f'{node["socket"]}/node/dispute'
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, data=data, headers=zconfig.HEADERS) as response:
@@ -310,7 +309,7 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
                 "timestamp": int(time.time()),
             }
         )
-        url: str = f'http://{node["host"]}:{node["port"]}/node/switch'
+        url: str = f'{node["socket"]}/node/switch'
         try:
             requests.post(url=url, data=data, headers=zconfig.HEADERS)
         except Exception as error:
@@ -356,8 +355,7 @@ def find_all_nodes_last_finalized_tx(app_name: str) -> dict[str, Any]:
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        node_address: str = f'http://{node["host"]}:{node["port"]}'
-        url: str = f"{node_address}/node/{app_name}/transactions/finalized/last"
+        url: str = f'{node["socket"]}/node/{app_name}/transactions/finalized/last'
         try:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
