@@ -5,7 +5,7 @@ This module defines the Flask blueprint for sequencer-related routes.
 from typing import Any
 
 from flask import Blueprint, Response, request
-
+import os
 from common import utils
 from common.db import zdb
 from common.errors import ErrorCodes
@@ -20,6 +20,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 def put_transactions() -> Response:
     """Endpoint to handle the PUT request for transactions."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
+
     required_keys: list[str] = [
         "app_name",
         "txs",

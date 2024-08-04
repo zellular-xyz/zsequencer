@@ -52,10 +52,14 @@ async def gather_signatures(
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                node_id = sign_tasks[task]
                 completed_results.append(task.result())
+                if not task.result():
+                    continue
+                node_id = sign_tasks[task]
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
             pending_tasks = pending
+        return completed_results
+    except ValueError:
         return completed_results
     except Exception as error:
         zlogger.exception(f"An unexpected error occurred: {error}")
@@ -66,6 +70,7 @@ async def gather_and_aggregate_signatures(
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes."""
     stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
+    stake += zconfig.NODE['stake']
     if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
         return None
 
