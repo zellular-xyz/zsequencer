@@ -81,6 +81,8 @@ class Config:
         response = requests.post(subgraph_url, json={ "query": query })
         data = response.json()
         registrations = data['data']['newPubkeyRegistrations']
+        for registration in registrations:
+            registration['operator'] = registration['operator'].lower()
         nodes_raw_data = { registration['operator']: registration for registration in registrations }
 
         config = BuildAllConfig(
@@ -269,7 +271,7 @@ class Config:
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(encrypted_json, ecdsa_key_password)
-        self.ADDRESS = Account.from_key(ecdsa_private_key).address
+        self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
         self.NODE_SOURCE = os.getenv("ZSEQUENCER_NODES_SOURCE")
         if self.NODE_SOURCE == 'eigenlayer':
