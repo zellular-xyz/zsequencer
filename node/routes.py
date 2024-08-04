@@ -22,7 +22,7 @@ def get_db() -> dict[str, Any]:
     """Get the state of the in-memory database."""
     apps_data: dict[str, Any] = {}
 
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         sequenced_num: int = zdb.get_last_tx(app_name, "sequenced").get("index", 0)
         locked_num: int = zdb.get_last_tx(app_name, "locked").get("index", 0)
         finalized_num: int = zdb.get_last_tx(app_name, "finalized").get("index", 0)
@@ -129,17 +129,17 @@ def get_state() -> Response:
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
-        "public_key": str(zconfig.NODE["public_key"]),
+        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
         "address": zconfig.NODE["address"],
         "apps": {},
     }
 
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         last_sequenced_tx = zdb.get_last_tx(app_name, "sequenced")
         last_locked_tx = zdb.get_last_tx(app_name, "locked")
         last_finalized_tx = zdb.get_last_tx(app_name, "finalized")
 
-        data[app_name] = {
+        data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_tx.get("index", 0),
             "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
             "last_locked_index": last_locked_tx.get("index", 0),

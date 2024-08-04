@@ -26,6 +26,7 @@ def bls_sign(message: str) -> str:
 def get_signers_aggregated_public_key(nonsigners: list[str]) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     aggregated_public_key: attestation.G2Point = zconfig.AGGREGATED_PUBLIC_KEY
+    # TODO: Maybe have some problem with public_key_g2 when updating the nodes info.
     for nonsigner in nonsigners:
         non_signer_public_key: attestation.G2Point = zconfig.NODES[nonsigner]["public_key_g2"]
         aggregated_public_key = aggregated_public_key - non_signer_public_key
@@ -82,7 +83,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f'http://{zconfig.NODES[node_id]["host"]}:{zconfig.NODES[node_id]["port"]}/node/sign_sync_point',
+                url=f'{zconfig.NODES[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,

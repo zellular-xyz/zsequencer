@@ -23,7 +23,7 @@ switch_lock: threading.Lock = threading.Lock()
 
 def check_finalization() -> None:
     """Check and add not finalized transactions to missed transactions."""
-    for app_name in zconfig.APPS.keys():
+    for app_name in list(zconfig.APPS.keys()):
         not_finalized_txs: dict[str, Any] = zdb.get_not_finalized_txs(app_name)
         if not_finalized_txs:
             zdb.add_missed_txs(app_name=app_name, txs=not_finalized_txs)
@@ -31,7 +31,7 @@ def check_finalization() -> None:
 
 def send_txs() -> None:
     """Send transactions for all apps."""
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         send_app_txs(app_name)
     
 
@@ -66,8 +66,7 @@ def send_app_txs(app_name: str) -> None:
         }
     )
 
-    sequencer_address: str = f'{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["port"]}'
-    url: str = f"http://{sequencer_address}/sequencer/transactions"
+    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/transactions'
     try:
         response: dict[str, Any] = requests.put(
             url=url, data=data, headers=zconfig.HEADERS
@@ -240,7 +239,7 @@ async def send_dispute_requests() -> None:
     )
     apps_missed_txs:dict[str, Any] = {}
 
-    for app_name in zconfig.APPS.keys():
+    for app_name in list(zconfig.APPS.keys()):
         app_missed_txs = zdb.get_missed_txs(app_name)
         if len(app_missed_txs) > 0:
             apps_missed_txs[app_name] = app_missed_txs
@@ -249,7 +248,7 @@ async def send_dispute_requests() -> None:
         asyncio.create_task(
             send_dispute_request(node, apps_missed_txs, zdb.is_sequencer_down)
         ) : node['id'] 
-        for node in zconfig.NODES.values() if node['id'] != zconfig.NODE['id']
+        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
     }
     try:
         responses = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
@@ -285,7 +284,7 @@ async def send_dispute_request(
             "timestamp": timestamp,
         }
     )
-    url: str = f'http://{node["host"]}:{node["port"]}/node/dispute'
+    url: str = f'{node["socket"]}/node/dispute'
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url=url, data=data, headers=zconfig.HEADERS) as response:
@@ -300,7 +299,7 @@ async def send_dispute_request(
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     """Send switch requests to all nodes except self."""
     zlogger.info("sending switch requests...")
-    for node in zconfig.NODES.values():
+    for node in list(zconfig.NODES.values()):
         if node["id"] == zconfig.NODE["id"]:
             continue
 
@@ -310,7 +309,7 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
                 "timestamp": int(time.time()),
             }
         )
-        url: str = f'http://{node["host"]}:{node["port"]}/node/switch'
+        url: str = f'{node["socket"]}/node/switch'
         try:
             requests.post(url=url, data=data, headers=zconfig.HEADERS)
         except Exception as error:
@@ -333,7 +332,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             zdb.pause_node.clear()
             return False
 
-        for app_name in zconfig.APPS.keys():
+        for app_name in list(zconfig.APPS.keys()):
             all_nodes_last_finalized_tx: dict[str, Any] = (
                 find_all_nodes_last_finalized_tx(app_name)
             )
@@ -352,12 +351,11 @@ def find_all_nodes_last_finalized_tx(app_name: str) -> dict[str, Any]:
         app_name=app_name, state="finalized"
     )
 
-    for node in zconfig.NODES.values():
+    for node in list(zconfig.NODES.values()):
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        node_address: str = f'http://{node["host"]}:{node["port"]}'
-        url: str = f"{node_address}/node/{app_name}/transactions/finalized/last"
+        url: str = f'{node["socket"]}/node/{app_name}/transactions/finalized/last'
         try:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
