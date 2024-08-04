@@ -58,6 +58,8 @@ async def gather_signatures(
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
             pending_tasks = pending
         return completed_results
+    except ValueError:
+        return completed_results
     except Exception as error:
         zlogger.exception(f"An unexpected error occurred: {error}")
         return completed_results
