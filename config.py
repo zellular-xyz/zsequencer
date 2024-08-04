@@ -10,6 +10,7 @@ import sys
 import pstats
 import time
 import requests
+from random import randbytes
 from threading import Thread
 from typing import Any
 
@@ -158,6 +159,26 @@ class Config:
             except Exception:
                 zlogger.exception("An unexpected error occurred:")
 
+    def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
+        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
+        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
+        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
+
+        config = BuildAllConfig(
+            eth_http_url=rpc_node,
+            registry_coordinator_addr=registry_coordinator,
+            operator_state_retriever_addr=operator_state_retriever,
+        )
+
+        clients = build_all(config, ecdsa_private_key)
+        clients.avs_registry_writer.register_operator_in_quorum_with_avs_registry_coordinator(
+            operator_ecdsa_private_key=ecdsa_private_key,
+            operator_to_avs_registration_sig_salt=randbytes(32),
+            operator_to_avs_registration_sig_expiry=int(time.time()) + 60,
+            bls_key_pair=bls_key_pair,
+            quorum_numbers=[0],
+            socket=os.getenv('ZSEQUENCER_REGISTER_SOCKET'),
+        )
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
@@ -262,7 +283,15 @@ class Config:
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
-        self.NODE = self.NODES[self.ADDRESS]
+        if self.ADDRESS in self.NODES:
+            self.NODE = self.NODES[self.ADDRESS]
+        else:
+            if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
+                self.register_operator(ecdsa_private_key, bls_key_pair)
+                zlogger.warning("Operator registration transaction sent.")
+            zlogger.warning("Operator not found in the nodes' list")
+            sys.exit()
+
         self.NODE["ecdsa_private_key"] = ecdsa_private_key
         self.NODE["bls_key_pair"] = bls_key_pair
 
