@@ -9,22 +9,17 @@ import sys
 import threading
 import time
 
-import aiohttp
 from flask import Flask
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb
-from config import Config, zconfig
-from common import utils
-from common.logger import zlogger
+from common.db import zdb, zconfig
 from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
 from sequencer.routes import sequencer_blueprint
-from eigensdk.crypto.bls import attestation
 
 
 def create_app() -> Flask:
@@ -83,9 +78,6 @@ def run_flask_app(app: Flask) -> None:
         threaded=True,
         use_reloader=False,
     )
-
-
-
 
 
 def main() -> None:
