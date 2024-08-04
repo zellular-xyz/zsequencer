@@ -15,8 +15,7 @@ from flask import Flask
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb
-from config import zconfig
+from common.db import zdb, zconfig
 from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
@@ -44,7 +43,7 @@ def run_node_tasks() -> None:
             continue
 
         node_tasks.send_txs()
-        node_tasks.send_dispute_requests()
+        asyncio.run(node_tasks.send_dispute_requests())
 
 
 def run_sequencer_tasks() -> None:
@@ -73,7 +72,7 @@ def run_flask_app(app: Flask) -> None:
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
     app.run(
-        host="localhost",
+        host="0.0.0.0",
         port=zconfig.PORT,
         debug=False,
         threaded=True,

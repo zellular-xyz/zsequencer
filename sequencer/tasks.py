@@ -4,9 +4,9 @@ This module handles synchronization processes for locked and finalized transacti
 
 from typing import Any
 
-from zsequencer.common import bls
-from zsequencer.common.db import zdb
-from zsequencer.config import zconfig
+from common import bls
+from common.db import zdb
+from config import zconfig
 
 
 def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
@@ -14,7 +14,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
     nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
     locked_index: int = zdb.get_locked_sync_point(app_name).get("index", 0)
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["sequenced_index"] != locked_index
+        s for s in nodes_state if s["sequenced_index"] >= locked_index
     ]
     sorted_filtered_states: list[dict[str, Any]] = sorted(
         filtered_states,
@@ -39,8 +39,9 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
     nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
     finalized_index: int = zdb.get_finalized_sync_point(app_name).get("index", 0)
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["locked_index"] != finalized_index
+        s for s in nodes_state if s["locked_index"] >= finalized_index
     ]
+
     sorted_filtered_states: list[dict[str, Any]] = sorted(
         filtered_states,
         key=lambda x: x["locked_index"],
@@ -64,7 +65,7 @@ async def sync() -> None:
     if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
         return
 
-    for app_name in zconfig.APPS.keys():
+    for app_name in list(zconfig.APPS.keys()):
         await sync_app(app_name)
 
 
@@ -84,6 +85,7 @@ async def sync_app(app_name: str) -> None:
         ) = await bls.gather_and_aggregate_signatures(
             data=locked_data, node_ids=locked_sync_point["party"]
         )
+
         if lock_signature:
             locked_data.update(lock_signature)
             zdb.upsert_locked_sync_point(app_name=app_name, state=locked_data)

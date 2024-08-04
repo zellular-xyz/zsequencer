@@ -5,11 +5,11 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
-from zsequencer.common import utils
-from zsequencer.common.db import zdb
-from zsequencer.common.errors import ErrorCodes
-from zsequencer.common.response_utils import error_response, success_response
-from zsequencer.config import zconfig
+from common import utils
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.response_utils import error_response, success_response
+from config import zconfig
 
 from . import tasks
 
@@ -22,7 +22,7 @@ def get_db() -> dict[str, Any]:
     """Get the state of the in-memory database."""
     apps_data: dict[str, Any] = {}
 
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         sequenced_num: int = zdb.get_last_tx(app_name, "sequenced").get("index", 0)
         locked_num: int = zdb.get_last_tx(app_name, "locked").get("index", 0)
         finalized_num: int = zdb.get_last_tx(app_name, "finalized").get("index", 0)
@@ -78,7 +78,7 @@ def post_sign_sync_point() -> Response:
 def post_dispute() -> Response:
     """Handle a dispute by initializing transactions if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "app_name", "txs", "timestamp"]
+    required_keys: list[str] = ["sequencer_id", "apps_missed_txs", "is_sequencer_down", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
@@ -95,7 +95,10 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-    zdb.init_txs(req_data["app_name"], req_data["txs"])
+    
+    for app_name, missed_txs in req_data["apps_missed_txs"].items():
+        txs = [tx["body"] for tx in missed_txs.values()]
+        zdb.init_txs(app_name, txs)
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
     
 
@@ -126,17 +129,17 @@ def get_state() -> Response:
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
-        "public_key": str(zconfig.NODE["public_key"]),
+        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
         "address": zconfig.NODE["address"],
         "apps": {},
     }
 
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         last_sequenced_tx = zdb.get_last_tx(app_name, "sequenced")
         last_locked_tx = zdb.get_last_tx(app_name, "locked")
         last_finalized_tx = zdb.get_last_tx(app_name, "finalized")
 
-        data[app_name] = {
+        data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_tx.get("index", 0),
             "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
             "last_locked_index": last_locked_tx.get("index", 0),

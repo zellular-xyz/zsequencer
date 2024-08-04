@@ -5,12 +5,12 @@ This module defines the Flask blueprint for sequencer-related routes.
 from typing import Any
 
 from flask import Blueprint, Response, request
-
-from zsequencer.common import utils
-from zsequencer.common.db import zdb
-from zsequencer.common.errors import ErrorCodes
-from zsequencer.common.response_utils import error_response, success_response
-from zsequencer.config import zconfig
+import os
+from common import utils
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.response_utils import error_response, success_response
+from config import zconfig
 
 sequencer_blueprint = Blueprint("sequencer", __name__)
 
@@ -20,6 +20,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 def put_transactions() -> Response:
     """Endpoint to handle the PUT request for transactions."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
+
     required_keys: list[str] = [
         "app_name",
         "txs",
@@ -45,8 +46,8 @@ def put_transactions() -> Response:
     )
     if (
         not is_eth_sig_verified
-        or str(req_data["node_id"]) not in zconfig.NODES
-        or req_data["app_name"] not in zconfig.APPS
+        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
+        or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 

@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.config import zconfig
+from config import zconfig
 
 from . import utils
 from .logger import zlogger
@@ -26,6 +26,7 @@ def bls_sign(message: str) -> str:
 def get_signers_aggregated_public_key(nonsigners: list[str]) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     aggregated_public_key: attestation.G2Point = zconfig.AGGREGATED_PUBLIC_KEY
+    # TODO: Maybe have some problem with public_key_g2 when updating the nodes info.
     for nonsigner in nonsigners:
         non_signer_public_key: attestation.G2Point = zconfig.NODES[nonsigner]["public_key_g2"]
         aggregated_public_key = aggregated_public_key - non_signer_public_key
@@ -51,10 +52,14 @@ async def gather_signatures(
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                node_id = sign_tasks[task]
                 completed_results.append(task.result())
+                if not task.result():
+                    continue
+                node_id = sign_tasks[task]
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
             pending_tasks = pending
+        return completed_results
+    except ValueError:
         return completed_results
     except Exception as error:
         zlogger.exception(f"An unexpected error occurred: {error}")
@@ -65,6 +70,7 @@ async def gather_and_aggregate_signatures(
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes."""
     stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
+    stake += zconfig.NODE['stake']
     if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
         return None
 
@@ -77,7 +83,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f'http://{zconfig.NODES[node_id]["host"]}:{zconfig.NODES[node_id]["port"]}/node/sign_sync_point',
+                url=f'{zconfig.NODES[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,
@@ -94,7 +100,7 @@ async def gather_and_aggregate_signatures(
     signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
     nonsigners = [k for k, v in signatures_dict.items() if v is None]
-    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set(zconfig.NODE["id"]))
+    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set([zconfig.NODE["id"]]))
     nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
     if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
         return None

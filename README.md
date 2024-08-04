@@ -4,23 +4,8 @@
 
 A PoC implementation of the [Zellular BFT Protocol](https://docs.zellular.xyz/protocol.html) in Python.
 
-## Install
+## Running
 
-### Dependencies
-- Python 3
+- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Run-EigenLayer-Holesky-Node) to run an EigenLayer holesky node using docker.
 
-```
-wget https://github.com/zellular-xyz/zsequencer/archive/refs/tags/latest.zip
-unzip latest.zip
-cd zsequencer-latest
-pip install .
-```
-
-## Test
-
-Use the following command to run a test network with 3 nodes where confirmation from 2 is enough to finalize txs and send 100k txs to be sequenced:
-
-```
-python examples/runner.py --test general
-```
-The number of nodes, threshold, number of txs and other parameters can be adjusted by editing the `examples/runner.py`
+- Use [these instructions](https://github.com/zellular-xyz/zsequencer/wiki/Node-Installation-Guide) to install and run a node using the source code. 

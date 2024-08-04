@@ -3,25 +3,27 @@ This module handles node tasks like sending transactions, synchronization with t
 dispute handling, and switching sequencers.
 """
 
+import asyncio
 import json
 import threading
 import time
 from typing import Any
 
+import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 
-from zsequencer.common import bls, utils
-from zsequencer.common.db import zdb
-from zsequencer.common.logger import zlogger
-from zsequencer.config import zconfig
+from common import bls, utils
+from common.db import zdb
+from common.logger import zlogger
+from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
 
 
 def check_finalization() -> None:
     """Check and add not finalized transactions to missed transactions."""
-    for app_name in zconfig.APPS.keys():
+    for app_name in list(zconfig.APPS.keys()):
         not_finalized_txs: dict[str, Any] = zdb.get_not_finalized_txs(app_name)
         if not_finalized_txs:
             zdb.add_missed_txs(app_name=app_name, txs=not_finalized_txs)
@@ -29,9 +31,9 @@ def check_finalization() -> None:
 
 def send_txs() -> None:
     """Send transactions for all apps."""
-    for app_name in zconfig.APPS:
+    for app_name in list(zconfig.APPS.keys()):
         send_app_txs(app_name)
-    zdb.is_sequencer_down = False
+    
 
 
 def send_app_txs(app_name: str) -> None:
@@ -64,8 +66,7 @@ def send_app_txs(app_name: str) -> None:
         }
     )
 
-    sequencer_address: str = f'{zconfig.SEQUENCER["host"]}:{zconfig.SEQUENCER["port"]}'
-    url: str = f"http://{sequencer_address}/sequencer/transactions"
+    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/transactions'
     try:
         response: dict[str, Any] = requests.put(
             url=url, data=data, headers=zconfig.HEADERS
@@ -79,6 +80,7 @@ def send_app_txs(app_name: str) -> None:
             initialized_txs=initialized_txs,
             sequencer_response=response["data"],
         )
+        zdb.is_sequencer_down = False
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
@@ -199,8 +201,24 @@ def is_sync_point_signature_verified(
         public_key=public_key,
     )
 
+async def gather_disputes(
+    dispute_tasks: dict[asyncio.Task, str]
+) -> dict[str, Any] | None:
+    """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
+    results = []
+    pending_tasks = list(dispute_tasks.keys())
+    stake_percent = 100 * zconfig.NODES[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if not task.result() or not utils.is_dispute_approved(task.result()):
+                continue
+            results.append(task.result())
+            node_id = dispute_tasks[task]
+            stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+    return results
 
-def send_dispute_requests() -> None:
+async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed transactions."""
     if (not zdb.has_missed_txs() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
         return
@@ -219,78 +237,69 @@ def send_dispute_requests() -> None:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     )
+    apps_missed_txs:dict[str, Any] = {}
 
-    for node in zconfig.NODES.values():
-        if node["id"] in {zconfig.NODE["id"], zconfig.SEQUENCER["id"]}:
-            continue
+    for app_name in list(zconfig.APPS.keys()):
+        app_missed_txs = zdb.get_missed_txs(app_name)
+        if len(app_missed_txs) > 0:
+            apps_missed_txs[app_name] = app_missed_txs
 
-        for app_name in zconfig.APPS.keys():
-            missed_txs: dict[str, Any] = zdb.get_missed_txs(app_name)
-            if len(missed_txs) == 0:
-                continue
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(
+            send_dispute_request(node, apps_missed_txs, zdb.is_sequencer_down)
+        ) : node['id'] 
+        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
+    }
+    try:
+        responses = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+    except asyncio.TimeoutError:
+        zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
+        return
+    except Exception as error:
+        zlogger.exception(f"An unexpected error occurred: {error}")
+        return None
 
-            try:
-                response: dict[str, Any] | None = send_dispute_request(
-                    node, app_name, [tx["body"] for tx in missed_txs.values()]
-                )
-                if not response:
-                    continue
+    if not responses:
+        return
+    proofs.extend(responses)
 
-                proofs.append(response)
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-
-        if zdb.is_sequencer_down:
-            try:
-                response: dict[str, Any] | None = send_dispute_request(
-                    node, app_name = '', missed_txs = []
-                )
-        
-                if response:
-                    proofs.append(response)
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-        
-    if utils.is_switch_approved(proofs):
-        zdb.pause_node.set()
-        old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
-            proofs
-        )
-        switch_sequencer(old_sequencer_id, new_sequencer_id)
-        send_switch_requests(proofs)
+    zdb.pause_node.set()
+    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
+        proofs
+    )
+    switch_sequencer(old_sequencer_id, new_sequencer_id)
+    send_switch_requests(proofs)
 
 
-def send_dispute_request(
-    node: dict[str, Any], app_name: str, missed_txs: list[str]
-) -> dict[str, Any] | None:
+async def send_dispute_request(
+    node: dict[str, Any], apps_missed_txs: dict[str, Any], is_sequencer_down: bool
+    ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "app_name": app_name,
-            "txs": missed_txs,
+            "apps_missed_txs": apps_missed_txs,
+            "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
     )
-    url: str = f'http://{node["host"]}:{node["port"]}/node/dispute'
+    url: str = f'{node["socket"]}/node/dispute'
     try:
-        response: requests.Response = requests.post(
-            url=url, data=data, headers=zconfig.HEADERS
-        )
-        response_json: dict[str, Any] = response.json()
-        if response_json["status"] == "success":
-            return response_json.get("data")
-        return None
-    except requests.RequestException as error:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url=url, data=data, headers=zconfig.HEADERS) as response:
+                response_json: dict[str, Any] = await response.json()
+                if response_json["status"] == "success":
+                    return response_json.get("data")
+    except aiohttp.ClientError as error:
         zlogger.exception(f"Error sending dispute request to {node['id']}: {error}")
-        return None
+    return None
 
 
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     """Send switch requests to all nodes except self."""
     zlogger.info("sending switch requests...")
-    for node in zconfig.NODES.values():
+    for node in list(zconfig.NODES.values()):
         if node["id"] == zconfig.NODE["id"]:
             continue
 
@@ -300,7 +309,7 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
                 "timestamp": int(time.time()),
             }
         )
-        url: str = f'http://{node["host"]}:{node["port"]}/node/switch'
+        url: str = f'{node["socket"]}/node/switch'
         try:
             requests.post(url=url, data=data, headers=zconfig.HEADERS)
         except Exception as error:
@@ -323,7 +332,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             zdb.pause_node.clear()
             return False
 
-        for app_name in zconfig.APPS.keys():
+        for app_name in list(zconfig.APPS.keys()):
             all_nodes_last_finalized_tx: dict[str, Any] = (
                 find_all_nodes_last_finalized_tx(app_name)
             )
@@ -342,12 +351,11 @@ def find_all_nodes_last_finalized_tx(app_name: str) -> dict[str, Any]:
         app_name=app_name, state="finalized"
     )
 
-    for node in zconfig.NODES.values():
+    for node in list(zconfig.NODES.values()):
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        node_address: str = f'http://{node["host"]}:{node["port"]}'
-        url: str = f"{node_address}/node/{app_name}/transactions/finalized/last"
+        url: str = f'{node["socket"]}/node/{app_name}/transactions/finalized/last'
         try:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS

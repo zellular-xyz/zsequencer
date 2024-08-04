@@ -11,7 +11,7 @@ import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from web3 import Account
 
-from zsequencer.config import zconfig
+from config import zconfig
 
 from . import errors, response_utils
 
