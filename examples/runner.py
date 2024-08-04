@@ -57,8 +57,8 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
         ecdsa_private_key: str = secrets.token_hex(32)
         ecdsa_privates_list.append(ecdsa_private_key)
         address: str = Account().from_key(ecdsa_private_key).address
-        nodes_info_dict[str(i + 1)] = {
-            "id": str(i + 1),
+        nodes_info_dict[address] = {
+            "id": address,
             "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
             "address": address,
             "socket": f"http://127.0.0.1:{str(BASE_PORT + i + 1)}",
@@ -141,7 +141,8 @@ def main() -> None:
                 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT),
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
-            "ZSEQUENCER_SUBGRAPH_URL": ""
+            "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
+            "ZSEQUENCER_NODES_SOURCE": "file"
         })
 
         run_command("run.py", f"{i + 1}", env_variables)

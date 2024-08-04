@@ -129,7 +129,7 @@ def get_state() -> Response:
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
-        "public_key": str(zconfig.NODE["public_key"]),
+        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
         "address": zconfig.NODE["address"],
         "apps": {},
     }

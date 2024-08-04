@@ -59,9 +59,13 @@ class Config:
             raise ValueError("The source provided is neither a valid URL nor a valid file path.")
     
     @staticmethod
-    def fetch_eigenlayer_nodes_data(subgraph_url: str, rpc_node: str, registry_coordinator: str,
-                               operator_state_retriever: str) -> dict[str, Any]:
+    def fetch_eigenlayer_nodes_data() -> dict[str, Any]:
         """Retrieve nodes data from Eigenlayer"""
+        subgraph_url = os.getenv('ZSEQUENCER_SUBGRAPH_URL')
+        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
+        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
+        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
+
         query = """query MyQuery {
             newPubkeyRegistrations {
                 pubkeyG2_X
@@ -72,6 +76,7 @@ class Config:
             }
         }
         """
+
         response = requests.post(subgraph_url, json={ "query": query })
         data = response.json()
         registrations = data['data']['newPubkeyRegistrations']
@@ -127,19 +132,17 @@ class Config:
         
     def fetch_nodes(self):
         """Fetchs the nodes data."""
-        if self.NODE_SOURCE == 'FILE':
-            nodes_data = Config.get_file_content(self.NODES_FILE)
+        if self.NODE_SOURCE == 'eigenlayer':
+            nodes_data = Config.fetch_eigenlayer_nodes_data()
         else:
-            nodes_data = Config.fetch_eigenlayer_nodes_data(
-            self.SUBGRAPH_URL, self.RPC_NODE, 
-            self.REGISTRY_COORDINATOR, self.OPERATOR_STATE_RETRIEVER
-            )
+            nodes_data = Config.get_file_content(self.NODES_FILE)
+
         for node_data in nodes_data.values():
             public_key_g2: str = node_data["public_key_g2"]
             node_data["public_key_g2"] = attestation.new_zero_g2_point()
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-            if public_key_g2 == self.BLS_PUBLIC_KEY:
-                self.NODE.update(node_data)
+
+        self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
     
     def fetch_nodes_and_apps(self) -> None:
@@ -164,11 +167,11 @@ class Config:
         for node_id in list(self.NODES.keys()):
             url: str = f'{self.NODES[node_id]["socket"]}/node/state'
             try:
-                response_json = requests.get(url=url, headers=self.HEADERS).json()
-                sequencer_id = response_json['sequencer_id']
+                response = requests.get(url=url, headers=self.HEADERS)
+                sequencer_id = response.json()['data']['sequencer_id']
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
             except Exception:
-                zlogger.exception(f"Error sending state request to {node_id}:")
+                zlogger.warning(f"Unable to get state from {node_id}:")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE['stake']
         if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT:
@@ -195,7 +198,8 @@ class Config:
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
             "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT",
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL",
-            "ZSEQUENCER_INIT_SEQUENCER_ID"
+            "ZSEQUENCER_INIT_SEQUENCER_ID",
+            "ZSEQUENCER_NODES_SOURCE"
         ]
         eigenlayer_vars: list[str] = [
             "ZSEQUENCER_SUBGRAPH_URL",
@@ -204,14 +208,12 @@ class Config:
             "ZSEQUENCER_OPERATOR_STATE_RETRIEVER"
         ]
 
-        if not all(os.getenv(var) for var in eigenlayer_vars) and not os.getenv("ZSEQUENCER_NODES_FILE"):
-            raise EnvironmentError(
-                "Either Eigenlayer node variables or ZSEQUENCER_NODES_FILE must be set to configure Nodes File."
-            )
+        if os.getenv("ZSEQUENCER_NODES_SOURCE") == 'eigenlayer':
+            required_vars.extend(eigenlayer_vars)
+        else:
+            required_vars.append("ZSEQUENCER_NODES_FILE")
         
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
-
-        missing_vars
         if missing_vars:
             raise EnvironmentError(
                 f"Missing environment variables: {', '.join(missing_vars)}"
@@ -240,50 +242,27 @@ class Config:
         bls_key_password: str = os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", "")
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
             bls_key_store_path, bls_key_password)
-        self.BLS_PUBLIC_KEY: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
         bls_private_key: str = bls_key_pair.priv_key.getStr(10).decode('utf-8')
-        print(f"BLS Public Key G2: {self.BLS_PUBLIC_KEY}")
+
         ecdsa_key_password: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(encrypted_json, ecdsa_key_password)
-        self.NODE_SOURCE = 'FILE'
-        if os.getenv('ZSEQUENCER_SUBGRAPH_URL'):
-            self.NODE_SOURCE = 'EIGENLAYER'
-            self.SUBGRAPH_URL = os.getenv('ZSEQUENCER_SUBGRAPH_URL')
-            self.RPC_NODE = os.getenv('ZSEQUENCER_RPC_NODE')
-            self.REGISTRY_COORDINATOR = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
-            self.OPERATOR_STATE_RETRIEVER = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
-            try:
-                self.NODES = Config.fetch_eigenlayer_nodes_data(
-                    self.SUBGRAPH_URL, self.RPC_NODE, self.REGISTRY_COORDINATOR, self.OPERATOR_STATE_RETRIEVER
-                )
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-                sys.exit()
-                
+        self.ADDRESS = Account.from_key(ecdsa_private_key).address
+
+        self.NODE_SOURCE = os.getenv("ZSEQUENCER_NODES_SOURCE")
+        if self.NODE_SOURCE == 'eigenlayer':
+            self.NODES: dict[str, dict[str, Any]] = Config.fetch_eigenlayer_nodes_data()
         else:
-            try:
-                print('local method')
-                self.NODES: dict[str, dict[str, Any]] = Config.get_file_content(self.NODES_FILE)
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-                sys.exit()
-        
+            self.NODES: dict[str, dict[str, Any]] = Config.get_file_content(self.NODES_FILE)
         
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
-            if public_key_g2 == self.BLS_PUBLIC_KEY:
-                self.NODE = node
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
-        if not self.NODE:
-            print(
-                "A node with this public key not found in nodes data."
-            )
-            sys.exit()
 
+        self.NODE = self.NODES[self.ADDRESS]
         self.NODE["ecdsa_private_key"] = ecdsa_private_key
         self.NODE["bls_key_pair"] = bls_key_pair
 
