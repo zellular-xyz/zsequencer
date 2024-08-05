@@ -94,8 +94,8 @@ def sync_with_sequencer(
 ) -> None:
     """Sync transactions with the sequencer."""
     zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
-
-    if sequencer_response["locked"]["index"]:
+    last_locked_index: str = zdb.apps[app_name]["last_locked_tx"].get("index", 0)
+    if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
@@ -109,8 +109,11 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["locked"],
             )
+        else:
+            zlogger.error("Invalid locking signature received from sequencer")
 
-    if sequencer_response["finalized"]["index"]:
+    last_finalized_index: str = zdb.apps[app_name]["last_finalized_tx"].get("index", 0)
+    if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
@@ -124,6 +127,9 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["finalized"],
             )
+        else:
+            zlogger.error("Invalid finalizing signature received from sequencer")
+
 
     check_censorship(
         app_name=app_name,
@@ -179,22 +185,22 @@ def is_sync_point_signature_verified(
     """Verify the BLS signature of a synchronization point."""
     nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
     if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
-        zlogger.exception("Invalid signature from sequencer")
+        zlogger.exception("signature with invalid stake from sequencer")
         return False
 
     public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners)
-    message: str = utils.gen_hash(
-        json.dumps(
-            {
-                "app_name": app_name,
-                "state": state,
-                "index": index,
-                "hash": tx_hash,
-                "chaining_hash": chaining_hash,
-            },
-            sort_keys=True,
-        )
+    data: str = json.dumps(
+        {
+            "app_name": app_name,
+            "state": state,
+            "index": index,
+            "hash": tx_hash,
+            "chaining_hash": chaining_hash,
+        },
+        sort_keys=True,
     )
+    message: str = utils.gen_hash(data)
+    zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return bls.is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
