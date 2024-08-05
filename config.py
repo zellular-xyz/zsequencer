@@ -94,7 +94,8 @@ class Config:
         response = requests.post(subgraph_url, json={ "query": query })
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
-        sockets = { update['operatorId']: update['socket'] for update in updates }
+        add_http = lambda socket: f"http://{socket}" if not socket.startswith('http') else socket
+        sockets = { update['operatorId']: add_http(update['socket']) for update in updates }
         for operator in nodes_raw_data:
             stake = stakes.get(operator, {}).get('stake', 0)
             nodes_raw_data[operator]['stake'] = stake
@@ -103,8 +104,8 @@ class Config:
 
         nodes: dict[str, dict[str, Any]] = {}
         for node_id, data in nodes_raw_data.items():
-            pub_g2 = '1 ' + data['pubkeyG2_X'][0] + ' ' + data['pubkeyG2_X'][1] + ' '\
-                            + data['pubkeyG2_Y'][0] + ' ' + data['pubkeyG2_Y'][1]
+            pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
+                            + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
             nodes[node_id] = {
                 'id': node_id,
                 'public_key_g2': pub_g2,
@@ -276,6 +277,10 @@ class Config:
 
         if self.ADDRESS in self.NODES:
             self.NODE = self.NODES[self.ADDRESS]
+            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
+            public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
+            error_msg: str = "the bls key pair public key does not match public of the node in the nodes list"
+            assert public_key_g2 == public_key_g2_from_private, error_msg
         else:
             if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
                 self.register_operator(ecdsa_private_key, bls_key_pair)

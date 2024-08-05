@@ -94,8 +94,8 @@ def sync_with_sequencer(
 ) -> None:
     """Sync transactions with the sequencer."""
     zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
-
-    if sequencer_response["locked"]["index"]:
+    last_locked_index: str = zdb.apps[app_name]["last_locked_tx"].get("index", 0)
+    if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
@@ -109,8 +109,11 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["locked"],
             )
+        else:
+            zlogger.error("Invalid locking signature received from sequencer")
 
-    if sequencer_response["finalized"]["index"]:
+    last_finalized_index: str = zdb.apps[app_name]["last_finalized_tx"].get("index", 0)
+    if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
@@ -124,6 +127,9 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["finalized"],
             )
+        else:
+            zlogger.error("Invalid finalizing signature received from sequencer")
+
 
     check_censorship(
         app_name=app_name,
@@ -179,22 +185,22 @@ def is_sync_point_signature_verified(
     """Verify the BLS signature of a synchronization point."""
     nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
     if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
-        zlogger.exception("Invalid signature from sequencer")
+        zlogger.exception("signature with invalid stake from sequencer")
         return False
 
     public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners)
-    message: str = utils.gen_hash(
-        json.dumps(
-            {
-                "app_name": app_name,
-                "state": state,
-                "index": index,
-                "hash": tx_hash,
-                "chaining_hash": chaining_hash,
-            },
-            sort_keys=True,
-        )
+    data: str = json.dumps(
+        {
+            "app_name": app_name,
+            "state": state,
+            "index": index,
+            "hash": tx_hash,
+            "chaining_hash": chaining_hash,
+        },
+        sort_keys=True,
     )
+    message: str = utils.gen_hash(data)
+    zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return bls.is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
@@ -216,7 +222,7 @@ async def gather_disputes(
             results.append(task.result())
             node_id = dispute_tasks[task]
             stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
-    return results
+    return results, stake_percent
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed transactions."""
@@ -251,7 +257,7 @@ async def send_dispute_requests() -> None:
         for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
     }
     try:
-        responses = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+        responses, stake_percent = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
         zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
@@ -259,7 +265,7 @@ async def send_dispute_requests() -> None:
         zlogger.exception(f"An unexpected error occurred: {error}")
         return None
 
-    if not responses:
+    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
         return
     proofs.extend(responses)
 
@@ -292,8 +298,7 @@ async def send_dispute_request(
                 if response_json["status"] == "success":
                     return response_json.get("data")
     except aiohttp.ClientError as error:
-        zlogger.exception(f"Error sending dispute request to {node['id']}: {error}")
-    return None
+        zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
 
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
@@ -339,8 +344,11 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             zdb.reinitialized_db(
                 app_name, new_sequencer_id, all_nodes_last_finalized_tx
             )
-
-        time.sleep(10)
+        if zconfig.NODE['id'] == zconfig.SEQUENCER['id']:
+            time.sleep(3)
+        else:
+            time.sleep(10)
+        
         zdb.pause_node.clear()
         return True
 
