@@ -175,6 +175,8 @@ class Config:
             node_id: 0 for node_id in list(self.NODES.keys())
         }
         for node_id in list(self.NODES.keys()):
+            if node_id == self.NODE['id']:
+                continue
             url: str = f'{self.NODES[node_id]["socket"]}/node/state'
             try:
                 response = requests.get(url=url, headers=self.HEADERS)
