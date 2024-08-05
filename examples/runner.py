@@ -56,7 +56,7 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
         )
         ecdsa_private_key: str = secrets.token_hex(32)
         ecdsa_privates_list.append(ecdsa_private_key)
-        address: str = Account().from_key(ecdsa_private_key).address
+        address: str = Account().from_key(ecdsa_private_key).address.lower()
         nodes_info_dict[address] = {
             "id": address,
             "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
