@@ -104,8 +104,8 @@ class Config:
 
         nodes: dict[str, dict[str, Any]] = {}
         for node_id, data in nodes_raw_data.items():
-            pub_g2 = '1 ' + data['pubkeyG2_X'][0] + ' ' + data['pubkeyG2_X'][1] + ' '\
-                            + data['pubkeyG2_Y'][0] + ' ' + data['pubkeyG2_Y'][1]
+            pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
+                            + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
             nodes[node_id] = {
                 'id': node_id,
                 'public_key_g2': pub_g2,
