@@ -277,6 +277,10 @@ class Config:
 
         if self.ADDRESS in self.NODES:
             self.NODE = self.NODES[self.ADDRESS]
+            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
+            public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
+            error_msg: str = "the bls key pair public key does not match public of the node in the nodes list"
+            assert public_key_g2 == public_key_g2_from_private, error_msg
         else:
             if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
                 self.register_operator(ecdsa_private_key, bls_key_pair)

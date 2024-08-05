@@ -94,8 +94,8 @@ def sync_with_sequencer(
 ) -> None:
     """Sync transactions with the sequencer."""
     zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
-
-    if sequencer_response["locked"]["index"]:
+    last_locked_index: str = zdb.apps[app_name]["last_locked_tx"].get("index", 0)
+    if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
@@ -112,8 +112,8 @@ def sync_with_sequencer(
         else:
             zlogger.error("Invalid locking signature received from sequencer")
 
-    if sequencer_response["finalized"]["index"]:
-
+    last_finalized_index: str = zdb.apps[app_name]["last_finalized_tx"].get("index", 0)
+    if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
