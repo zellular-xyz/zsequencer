@@ -94,7 +94,8 @@ class Config:
         response = requests.post(subgraph_url, json={ "query": query })
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
-        sockets = { update['operatorId']: update['socket'] for update in updates }
+        add_http = lambda socket: f"http://{socket}" if not socket.startswith('http') else socket
+        sockets = { update['operatorId']: add_http(update['socket']) for update in updates }
         for operator in nodes_raw_data:
             stake = stakes.get(operator, {}).get('stake', 0)
             nodes_raw_data[operator]['stake'] = stake
