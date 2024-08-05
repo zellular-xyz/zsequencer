@@ -5,7 +5,7 @@ from logging import FileHandler, Logger, StreamHandler
 
 # Set up the logger
 zlogger: Logger = logging.getLogger("zellular_logger")
-zlogger.setLevel(logging.DEBUG)
+zlogger.setLevel(logging.ERROR)
 
 # Define log colors for different levels
 LOG_COLORS: dict = {

@@ -292,8 +292,7 @@ async def send_dispute_request(
                 if response_json["status"] == "success":
                     return response_json.get("data")
     except aiohttp.ClientError as error:
-        zlogger.exception(f"Error sending dispute request to {node['id']}: {error}")
-    return None
+        zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
 
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
