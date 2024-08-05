@@ -216,7 +216,7 @@ async def gather_disputes(
             results.append(task.result())
             node_id = dispute_tasks[task]
             stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
-    return results
+    return results, stake_percent
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed transactions."""
@@ -251,7 +251,7 @@ async def send_dispute_requests() -> None:
         for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
     }
     try:
-        responses = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+        responses, stake_percent = await asyncio.wait_for(gather_disputes(dispute_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
         zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
@@ -259,7 +259,7 @@ async def send_dispute_requests() -> None:
         zlogger.exception(f"An unexpected error occurred: {error}")
         return None
 
-    if not responses:
+    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
         return
     proofs.extend(responses)
 
