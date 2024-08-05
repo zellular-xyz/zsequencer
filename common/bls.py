@@ -45,19 +45,19 @@ async def gather_signatures(
         sign_tasks: dict[asyncio.Task, str]
 ) -> dict[str, Any] | None:
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
-    completed_results = []
+    completed_results = {}
     pending_tasks = list(sign_tasks.keys())
     stake_percent = 100 * zconfig.NODE['stake'] / zconfig.TOTAL_STAKE
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
-            done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+            done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
-                completed_results.append(task.result())
                 if not task.result():
                     continue
                 node_id = sign_tasks[task]
+                completed_results[node_id] = task.result()
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
-            pending_tasks = pending
+
     except Exception as error:
         if not isinstance(error, ValueError): # For empty list
             zlogger.exception(f"An unexpected error occurred: {error}")
@@ -89,27 +89,22 @@ async def gather_and_aggregate_signatures(
         for node_id in node_ids
     }
     try:
-        completed_results, stake_percent = await asyncio.wait_for(
+        signatures, stake_percent = await asyncio.wait_for(
             gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT
         )
     except asyncio.TimeoutError:
         zlogger.exception(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return None
+
     if stake_percent < zconfig.THRESHOLD_PERCENT:
-        return None
-    signatures: list[dict[str, Any] | None] = completed_results
-    signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
-    nonsigners = [k for k, v in signatures_dict.items() if v is None]
-    nonsigners += list(set(zconfig.NODES.keys()) - node_ids - set([zconfig.NODE["id"]]))
-    nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
-    if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
         return None
 
     data["signature"] = bls_sign(message)
-    signatures.append(data)
+    signatures[zconfig.NODE['id']] = data
 
+    nonsigners = list(set(zconfig.NODES.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(
-        [sig for sig in signatures if sig]
+        list(signatures.values())
     )
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return {
