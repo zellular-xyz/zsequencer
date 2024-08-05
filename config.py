@@ -33,19 +33,6 @@ class Config:
         return cls._instance
 
     @staticmethod
-    def load_json_file(file_path: str) -> dict[str, Any]:
-        """Load JSON data from a file."""
-        try:
-            with open(file=file_path, mode="r", encoding="utf-8") as json_file:
-                return json.load(json_file)
-        except FileNotFoundError:
-            print(f"File not found: {file_path}")
-            return {}
-        except json.JSONDecodeError:
-            print(f"Error decoding JSON from file: {file_path}")
-            return {}
-    
-    @staticmethod
     def get_file_content(source: str) -> str:
         """Get the json contents of a file"""
         if source.startswith('http://') or source.startswith('https://'):
@@ -291,6 +278,7 @@ class Config:
             if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
                 self.register_operator(ecdsa_private_key, bls_key_pair)
                 zlogger.warning("Operator registration transaction sent.")
+            print(self.NODES, self.ADDRESS)
             zlogger.warning("Operator not found in the nodes' list")
             sys.exit()
 
@@ -332,7 +320,7 @@ class Config:
 
         self.init_sequencer()
 
-        self.APPS: dict[str, dict[str, Any]] = self.load_json_file(self.APPS_FILE)
+        self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
