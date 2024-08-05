@@ -33,19 +33,6 @@ class Config:
         return cls._instance
 
     @staticmethod
-    def load_json_file(file_path: str) -> dict[str, Any]:
-        """Load JSON data from a file."""
-        try:
-            with open(file=file_path, mode="r", encoding="utf-8") as json_file:
-                return json.load(json_file)
-        except FileNotFoundError:
-            print(f"File not found: {file_path}")
-            return {}
-        except json.JSONDecodeError:
-            print(f"Error decoding JSON from file: {file_path}")
-            return {}
-    
-    @staticmethod
     def get_file_content(source: str) -> str:
         """Get the json contents of a file"""
         if source.startswith('http://') or source.startswith('https://'):
@@ -188,6 +175,8 @@ class Config:
             node_id: 0 for node_id in list(self.NODES.keys())
         }
         for node_id in list(self.NODES.keys()):
+            if node_id == self.NODE['id']:
+                continue
             url: str = f'{self.NODES[node_id]["socket"]}/node/state'
             try:
                 response = requests.get(url=url, headers=self.HEADERS)
@@ -332,7 +321,7 @@ class Config:
 
         self.init_sequencer()
 
-        self.APPS: dict[str, dict[str, Any]] = self.load_json_file(self.APPS_FILE)
+        self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""

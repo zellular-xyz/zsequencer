@@ -14,7 +14,7 @@ from web3 import Account
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
-THRESHOLD_PERCENT: int = 60
+THRESHOLD_PERCENT: int = 67
 DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
@@ -22,9 +22,9 @@ ZSEQUENCER_SNAPSHOT_CHUNK: int = 1_000_000
 ZSEQUENCER_REMOVE_CHUNK_BORDER: int = 3
 ZSEQUENCER_SEND_TXS_INTERVAL: float = 0.7
 ZSEQUENCER_SYNC_INTERVAL: float = 0.7
-ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 30
+ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 10
 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT = 5
-ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 1
+ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 30
 APP_NAME: str = "simple_app"
 
 
@@ -56,7 +56,7 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
         )
         ecdsa_private_key: str = secrets.token_hex(32)
         ecdsa_privates_list.append(ecdsa_private_key)
-        address: str = Account().from_key(ecdsa_private_key).address
+        address: str = Account().from_key(ecdsa_private_key).address.lower()
         nodes_info_dict[address] = {
             "id": address,
             "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
@@ -142,7 +142,8 @@ def main() -> None:
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
-            "ZSEQUENCER_NODES_SOURCE": "file"
+            "ZSEQUENCER_NODES_SOURCE": "file",
+            "ZSEQUENCER_REGISTER_OPERATOR": "false"
         })
 
         run_command("run.py", f"{i + 1}", env_variables)
