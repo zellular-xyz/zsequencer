@@ -47,7 +47,7 @@ async def gather_signatures(
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = []
     pending_tasks = list(sign_tasks.keys())
-    stake_percent = 0
+    stake_percent = 100 * zconfig.NODE['stake'] / zconfig.TOTAL_STAKE
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -58,19 +58,16 @@ async def gather_signatures(
                 node_id = sign_tasks[task]
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
             pending_tasks = pending
-        return completed_results
-    except ValueError:
-        return completed_results
     except Exception as error:
-        zlogger.exception(f"An unexpected error occurred: {error}")
-        return completed_results
+        if not isinstance(error, ValueError): # For empty list
+            zlogger.exception(f"An unexpected error occurred: {error}")
+    return completed_results, stake_percent
     
 async def gather_and_aggregate_signatures(
     data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes."""
-    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
-    stake += zconfig.NODE['stake']
+    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids]) + zconfig.NODE['stake']
     if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
         return None
 
@@ -92,11 +89,14 @@ async def gather_and_aggregate_signatures(
         for node_id in node_ids
     }
     try:
-        completed_results = await asyncio.wait_for(gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT)
+        completed_results, stake_percent = await asyncio.wait_for(
+            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT
+        )
     except asyncio.TimeoutError:
         zlogger.exception(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return None
-    
+    if stake_percent < zconfig.THRESHOLD_PERCENT:
+        return None
     signatures: list[dict[str, Any] | None] = completed_results
     signatures_dict: dict[str, dict[str, Any] | None] = dict(zip(node_ids, signatures))
     nonsigners = [k for k, v in signatures_dict.items() if v is None]
