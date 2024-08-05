@@ -278,7 +278,6 @@ class Config:
             if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
                 self.register_operator(ecdsa_private_key, bls_key_pair)
                 zlogger.warning("Operator registration transaction sent.")
-            print(self.NODES, self.ADDRESS)
             zlogger.warning("Operator not found in the nodes' list")
             sys.exit()
 
