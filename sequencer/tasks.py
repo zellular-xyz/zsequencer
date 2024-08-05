@@ -14,7 +14,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
     nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
     locked_index: int = zdb.get_locked_sync_point(app_name).get("index", 0)
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["sequenced_index"] >= locked_index
+        s for s in nodes_state if s["sequenced_index"] > locked_index
     ]
     sorted_filtered_states: list[dict[str, Any]] = sorted(
         filtered_states,
@@ -39,7 +39,7 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
     nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
     finalized_index: int = zdb.get_finalized_sync_point(app_name).get("index", 0)
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["locked_index"] >= finalized_index
+        s for s in nodes_state if s["locked_index"] > finalized_index
     ]
 
     sorted_filtered_states: list[dict[str, Any]] = sorted(
