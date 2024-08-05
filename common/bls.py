@@ -135,9 +135,9 @@ async def request_signature(
                 return response_json["data"]
 
         except asyncio.TimeoutError:
-            zlogger.exception("Request timeout:")
-        except Exception:
-            zlogger.exception("An unexpected error occurred:")
+            zlogger.warning("Requesting signature from {node_id} timeout.")
+        except Exception as e:
+            zlogger.warning("An unexpected error in requesting signature from {node_id} occurred: {e}")
         return None
 
 
