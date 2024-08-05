@@ -109,6 +109,8 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["locked"],
             )
+        else:
+            zlogger.error("Invalid locking signature received from sequencer")
 
     if sequencer_response["finalized"]["index"]:
         if is_sync_point_signature_verified(
@@ -124,6 +126,9 @@ def sync_with_sequencer(
                 app_name=app_name,
                 sig_data=sequencer_response["finalized"],
             )
+        else:
+            zlogger.error("Invalid finalizing signature received from sequencer")
+
 
     check_censorship(
         app_name=app_name,
