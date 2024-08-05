@@ -111,7 +111,7 @@ async def gather_and_aggregate_signatures(
     aggregated_signature: str = gen_aggregated_signature(
         [sig for sig in signatures if sig]
     )
-
+    zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return {
         "message": message,
         "signature": aggregated_signature,
