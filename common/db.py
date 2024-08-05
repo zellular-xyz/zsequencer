@@ -245,22 +245,18 @@ class InMemoryDB:
         )
         now: int = int(time.time())
         for tx in txs:
-            # TODO: all nodes should check the hashes
-            if tx["node_id"] == zconfig.NODE["id"]:
-                if tx["body"] != transactions[tx["hash"]]["body"]:
-                    zlogger.warning("Invalid transaction hash")
-                    continue
-
+            if chaining_hash or tx["index"] == 1:
                 chaining_hash = utils.gen_hash(chaining_hash + tx["hash"])
                 if tx["chaining_hash"] != chaining_hash:
                     zlogger.warning(
                         f"Invalid chaining hash: expected {chaining_hash} got {tx['chaining_hash']}"
                     )
-                    continue
+                    return
 
             tx["sequenced_timestamp"] = now
             transactions[tx["hash"]] = tx
-        self.apps[app_name]["last_sequenced_tx"] = tx
+        if chaining_hash:
+            self.apps[app_name]["last_sequenced_tx"] = tx
 
     def update_locked_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
         """Update transactions to 'locked' state up to a specified index."""
@@ -274,6 +270,8 @@ class InMemoryDB:
         target_tx["lock_signature"] = sig_data["signature"]
         target_tx["nonsigners"] = sig_data["nonsigners"]
         self.apps[app_name]["last_locked_tx"] = target_tx
+        if not self.apps[app_name]["last_sequenced_tx"]:
+            self.apps[app_name]["last_sequenced_tx"] = target_tx
 
     def update_finalized_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
         """Update transactions to 'finalized' state up to a specified index and save snapshots."""
