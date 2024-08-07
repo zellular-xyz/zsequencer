@@ -285,7 +285,7 @@ class InMemoryDB:
 
         snapshot_indexes: list[int] = []
         for batch in list(batches.values()):
-            if batch["index"] <= sig_data["index"]:
+            if batch["state"] == "locked" and batch["index"] <= sig_data["index"]:
                 batch["state"] = "finalized"
 
                 if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
