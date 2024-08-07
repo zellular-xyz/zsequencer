@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
 def check_state(
     app_name: str, node_url: str, batch_number: int, batch_size: int
 ) -> None:
-    """Continuously check the node state until all the transactions are finalized."""
+    """Continuously check the node state until all the batches are finalized."""
     start_time: float = time.time()
     while True:
         try:
@@ -44,29 +44,33 @@ def check_state(
                 f"{node_url}/node/{app_name}/transactions/finalized/last"
             )
             response.raise_for_status()
-            last_finalized_tx: dict[str, Any] = response.json()
-            last_finalized_index: int = last_finalized_tx["data"].get("index", 0)
+            last_finalized_batch: dict[str, Any] = response.json()
+            last_finalized_index: int = last_finalized_batch["data"].get("index", 0)
             zlogger.info(
                 f"Last finalized index: {last_finalized_index} -  ({time.time() - start_time} s)"
             )
-            if last_finalized_index == batch_number * batch_size:
+            if last_finalized_index == batch_number:
                 break
         except RequestException as error:
             zlogger.error(f"Error checking state: {error}")
         time.sleep(CHECK_STATE_INTERVAL)
 
 
-def sending_transactions(
-    transaction_batches: list[dict[str, Any]], node_url: str
+def sending_batches(
+    app_name: str, transaction_batches: list[dict[str, Any]], node_url: str
 ) -> None:
     """Send batches of transactions to the node."""
     for i, batch in enumerate(transaction_batches):
-        zlogger.info(f'sending {len(batch["transactions"])} new operations (batch {i})')
+        zlogger.info(f'sending {i + 1} new batches with {len(batch["transactions"])} new operations ')
+        params = {
+            "app_name": app_name
+        }
         try:
             json_data: str = json.dumps(batch)
             response: requests.Response = requests.put(
                 url=f"{node_url}/node/transactions",
                 data=json_data,
+                params=params,
                 headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
@@ -75,13 +79,11 @@ def sending_transactions(
 
 
 def generate_dummy_transactions(
-    app_name: str, batch_size: int, batch_number: int
+    batch_size: int, batch_number: int
 ) -> list[dict[str, Any]]:
     """Create batches of transactions."""
-    timestamp: int = int(time.time())
     return [
         {
-            "app_name": app_name,
             "transactions": [
                 json.dumps(
                     {
@@ -92,7 +94,6 @@ def generate_dummy_transactions(
                 )
                 for tx_num in range(batch_size)
             ],
-            "timestamp": timestamp,
         }
         for batch_num in range(batch_number)
     ]
@@ -102,10 +103,10 @@ def main() -> None:
     """Run the simple app."""
     args: argparse.Namespace = parse_args()
     transaction_batches: list[dict[str, Any]] = generate_dummy_transactions(
-        args.app_name, BATCH_SIZE, BATCH_NUMBER
+        BATCH_SIZE, BATCH_NUMBER
     )
     sender_thread: threading.Thread = threading.Thread(
-        target=sending_transactions, args=[transaction_batches, args.node_url]
+        target=sending_batches, args=[args.app_name, transaction_batches, args.node_url]
     )
     sync_thread: threading.Thread = threading.Thread(
         target=check_state,

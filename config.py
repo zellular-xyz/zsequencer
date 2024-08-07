@@ -206,7 +206,7 @@ class Config:
             "ZSEQUENCER_SNAPSHOT_CHUNK",
             "ZSEQUENCER_REMOVE_CHUNK_BORDER",
             "ZSEQUENCER_THRESHOLD_PERCENT",
-            "ZSEQUENCER_SEND_TXS_INTERVAL",
+            "ZSEQUENCER_SEND_BATCH_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
             "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT",
@@ -299,8 +299,8 @@ class Config:
             os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
         )
 
-        self.SEND_TXS_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
+        self.SEND_BATCH_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SEND_BATCH_INTERVAL", "5")
         )
         self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
         self.FINALIZATION_TIME_BORDER: int = int(

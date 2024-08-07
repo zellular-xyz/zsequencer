@@ -12,7 +12,7 @@ from .logger import zlogger
 
 
 class InMemoryDB:
-    """A thread-safe singleton in-memory database class to manage apps transactions and states."""
+    """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
 
     _instance: "InMemoryDB | None" = None
     lock: threading.Lock = threading.Lock()
@@ -40,20 +40,20 @@ class InMemoryDB:
         self.keys = self.load_keys()
 
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_txs: dict[str, dict[str, Any]] = self.load_finalized_txs(app_name)
-            last_finalized_tx: dict[str, Any] = max(
-                (tx for tx in finalized_txs.values()),
-                key=lambda tx: tx["index"],
+            finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
+            last_finalized_batch: dict[str, Any] = max(
+                (batch for batch in finalized_batches.values()),
+                key=lambda batch: batch["index"],
                 default={},
             )
             self.apps[app_name] = {
                 "nodes_state": {},
-                "transactions": finalized_txs,
-                "missed_txs": {},
-                # TODO: store tx hash instead of tx
-                "last_sequenced_tx": last_finalized_tx,
-                "last_locked_tx": last_finalized_tx,
-                "last_finalized_tx": last_finalized_tx,
+                "batches": finalized_batches,
+                "missed_batches": {},
+                # TODO: store batch hash instead of batch
+                "last_sequenced_batch": last_finalized_batch,
+                "last_locked_batch": last_finalized_batch,
+                "last_finalized_batch": last_finalized_batch,
             }
 
     @staticmethod
@@ -67,8 +67,8 @@ class InMemoryDB:
             return {}
 
     @staticmethod
-    def load_finalized_txs(app_name: str, index: int | None = None) -> dict[str, Any]:
-        """Load finalized transactions for a given app from the snapshot file."""
+    def load_finalized_batches(app_name: str, index: int | None = None) -> dict[str, Any]:
+        """Load finalized batches for a given app from the snapshot file."""
         if index == 0:
             return {}
 
@@ -94,14 +94,14 @@ class InMemoryDB:
                 return json.load(file)
         except (OSError, IOError, json.JSONDecodeError) as error:
             zlogger.exception(
-                "An error occurred while loading finalized transactions for %s: %s",
+                "An error occurred while loading finalized batches for %s: %s",
                 app_name,
                 error,
             )
             return {}
 
     def save_snapshot(self, app_name: str, index: int) -> None:
-        """Save a snapshot of the finalized transactions to a file."""
+        """Save a snapshot of the finalized batches to a file."""
         snapshot_border: int = index - zconfig.SNAPSHOT_CHUNK
         remove_border: int = max(
             index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
@@ -111,10 +111,10 @@ class InMemoryDB:
             zconfig.SNAPSHOT_PATH, f"{index}_{app_name}.json.gz"
         )
         try:
-            self.save_transactions_to_file(
+            self.save_batches_to_file(
                 app_name, index, snapshot_border, snapshot_path
             )
-            self.prune_old_transactions(app_name, remove_border)
+            self.prune_old_batches(app_name, remove_border)
             self.save_keys_to_file()
         except Exception as error:
             zlogger.exception(
@@ -124,27 +124,27 @@ class InMemoryDB:
                 error,
             )
 
-    def save_transactions_to_file(
+    def save_batches_to_file(
         self, app_name: str, index: int, snapshot_border: int, snapshot_path: str
     ) -> None:
-        """Helper function to save transactions to a snapshot file."""
+        """Helper function to save batches to a snapshot file."""
         with gzip.open(snapshot_path, "wt", encoding="UTF-8") as file:
             json.dump(
                 {
-                    tx["hash"]: tx
-                    for tx in self.apps[app_name]["transactions"].values()
-                    if tx["state"] == "finalized"
-                    and snapshot_border < tx["index"] <= index
+                    batch["hash"]: batch
+                    for batch in self.apps[app_name]["batches"].values()
+                    if batch["state"] == "finalized"
+                    and snapshot_border < batch["index"] <= index
                 },
                 file,
             )
 
-    def prune_old_transactions(self, app_name: str, remove_border: int) -> None:
-        """Helper function to prune old transactions from memory."""
-        self.apps[app_name]["transactions"] = {
-            tx["hash"]: tx
-            for tx in self.apps[app_name]["transactions"].values()
-            if tx["state"] != "finalized" or tx["index"] > remove_border
+    def prune_old_batches(self, app_name: str, remove_border: int) -> None:
+        """Helper function to prune old batches from memory."""
+        self.apps[app_name]["batches"] = {
+            batch["hash"]: batch
+            for batch in self.apps[app_name]["batches"].values()
+            if batch["state"] != "finalized" or batch["index"] > remove_border
         }
 
     def save_keys_to_file(self) -> None:
@@ -153,147 +153,148 @@ class InMemoryDB:
         with gzip.open(keys_path, "wt", encoding="UTF-8") as file:
             json.dump(self.keys, file)
 
-    def get_txs(
+    def get_batches(
         self, app_name: str, states: set[str], after: float = float("-inf")
     ) -> dict[str, Any]:
-        """Get transactions filtered by state and optionally by index."""
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"].copy()
+        """Get batches filtered by state and optionally by index."""
+        batches: dict[str, Any] = self.apps[app_name]["batches"].copy()
         return {
-            tx_hash: tx
-            for tx_hash, tx in transactions.items()
-            if tx["state"] in states and tx.get("index", 0) > after
+            batch_hash: batch
+            for batch_hash, batch in batches.items()
+            if batch["state"] in states and batch.get("index", 0) > after
         }
 
-    def get_tx(self, app_name: str, tx_hash: str) -> dict[str, Any]:
-        """Get a transaction by its hash."""
-        return self.apps[app_name]["transactions"].get(tx_hash, {})
+    def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
+        """Get a batch by its hash."""
+        return self.apps[app_name]["batches"].get(batch_hash, {})
 
-    def get_not_finalized_txs(self, app_name: str) -> dict[str, dict[str, Any]]:
-        """Get transactions that are not finalized based on the finalization time border."""
+    def get_not_finalized_batches(self, app_name: str) -> dict[str, dict[str, Any]]:
+        """Get batches that are not finalized based on the finalization time border."""
         border: int = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
         return {
-            tx_hash: tx
-            for tx_hash, tx in list(transactions.items())
-            if tx["state"] == "sequenced" and tx["timestamp"] < border
+            batch_hash: batch
+            for batch_hash, batch in list(batches.items())
+            if batch["state"] == "sequenced" and batch["timestamp"] < border
         }
 
-    def init_txs(self, app_name: str, bodies: list[str]) -> None:
-        """Initialize transactions with given bodies."""
+    def init_batches(self, app_name: str, bodies: list[str]) -> None:
+        """Initialize batches of transactions with a given body."""
         if not bodies:
             return
 
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        now: int = int(time.time())
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
         for body in bodies:
-            tx_hash: str = utils.gen_hash(body)
-            if tx_hash not in transactions:
-                transactions[tx_hash] = {
+            now: int = int(time.time())
+            batch_hash: str = utils.gen_hash(body)
+            if batch_hash not in batches:
+                batches[batch_hash] = {
                     "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
                     "timestamp": now,
                     "state": "initialized",
-                    "hash": tx_hash,
+                    "hash": batch_hash,
                     "body": body,
                 }
 
-    def get_last_tx(self, app_name: str, state: str) -> dict[str, Any]:
-        """Get the last transaction for a given state."""
-        return self.apps.get(app_name, {}).get(f"last_{state}_tx", {})
+            
 
-    def sequencer_init_txs(self, app_name: str, txs: list[dict[str, Any]]) -> None:
-        """Initialize and sequence transactions."""
-        if not txs:
+    def get_last_batch(self, app_name: str, state: str) -> dict[str, Any]:
+        """Get the last batch for a given state."""
+        return self.apps.get(app_name, {}).get(f"last_{state}_batch", {})
+
+    def sequencer_init_batches(self, app_name: str, batches_data: list[dict[str, Any]]) -> None:
+        """Initialize and sequence batches."""
+        if not batches_data:
             return
 
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        last_sequenced_tx: dict[str, Any] = self.apps[app_name]["last_sequenced_tx"]
-        chaining_hash: str = last_sequenced_tx.get("chaining_hash", "")
-        index: int = last_sequenced_tx.get("index", 0)
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
+        last_sequenced_batch: dict[str, Any] = self.apps[app_name]["last_sequenced_batch"]
+        chaining_hash: str = last_sequenced_batch.get("chaining_hash", "")
+        index: int = last_sequenced_batch.get("index", 0)
 
-        for tx in txs:
-            if tx["hash"] in transactions:
+        for batch in batches_data:
+            if batch["hash"] in batches:
                 continue
-
-            tx_hash: str = utils.gen_hash(tx["body"])
-            if tx["hash"] != tx_hash:
+            batch_hash: str = utils.gen_hash(batch["body"])
+            if batch["hash"] != batch_hash:
                 zlogger.warning(
-                    f"Invalid transaction hash: expected {tx_hash} got {tx['hash']}"
+                    f"Invalid batch hash: expected {batch_hash} got {batch['hash']}"
                 )
                 continue
 
             index += 1
-            chaining_hash = utils.gen_hash(chaining_hash + tx_hash)
-            tx.update(
+            chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
+            batch.update(
                 {
                     "state": "sequenced",
                     "index": index,
                     "chaining_hash": chaining_hash,
                 }
             )
-            transactions[tx_hash] = tx
-            self.apps[app_name]["last_sequenced_tx"] = tx
+            batches[batch_hash] = batch
+            self.apps[app_name]["last_sequenced_batch"] = batch
 
-    def upsert_sequenced_txs(self, app_name: str, txs: list[dict[str, Any]]) -> None:
-        """Upsert sequenced transactions."""
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        if not txs:
+    def upsert_sequenced_batches(self, app_name: str, batches_data: list[str]) -> None:
+        """Upsert sequenced batches."""
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
+        if not batches_data:
             return
 
-        chaining_hash: str = self.apps[app_name]["last_sequenced_tx"].get(
+        chaining_hash: str = self.apps[app_name]["last_sequenced_batch"].get(
             "chaining_hash", ""
         )
         now: int = int(time.time())
-        for tx in txs:
-            if chaining_hash or tx["index"] == 1:
-                chaining_hash = utils.gen_hash(chaining_hash + tx["hash"])
-                if tx["chaining_hash"] != chaining_hash:
+        for batch in batches_data:
+            if chaining_hash or batch["index"] == 1:
+                chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
+                if batch["chaining_hash"] != chaining_hash:
                     zlogger.warning(
-                        f"Invalid chaining hash: expected {chaining_hash} got {tx['chaining_hash']}"
+                        f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}"
                     )
                     return
 
-            tx["sequenced_timestamp"] = now
-            transactions[tx["hash"]] = tx
+            batch["sequenced_timestamp"] = now
+            batches[batch["hash"]] = batch
         if chaining_hash:
-            self.apps[app_name]["last_sequenced_tx"] = tx
+            self.apps[app_name]["last_sequenced_batch"] = batch
 
-    def update_locked_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
-        """Update transactions to 'locked' state up to a specified index."""
-        if sig_data["index"] <= self.apps[app_name]["last_locked_tx"].get("index", 0):
+    def update_locked_batches(self, app_name: str, sig_data: dict[str, Any]) -> None:
+        """Update batches to 'locked' state up to a specified index."""
+        if sig_data["index"] <= self.apps[app_name]["last_locked_batch"].get("index", 0):
             return
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
-        for tx in list(transactions.values()):
-            if tx["state"] == "sequenced" and tx["index"] <= sig_data["index"]:
-                tx["state"] = "locked"
-        target_tx: dict[str, Any] = transactions[sig_data["hash"]]
-        target_tx["lock_signature"] = sig_data["signature"]
-        target_tx["nonsigners"] = sig_data["nonsigners"]
-        self.apps[app_name]["last_locked_tx"] = target_tx
-        if not self.apps[app_name]["last_sequenced_tx"]:
-            self.apps[app_name]["last_sequenced_tx"] = target_tx
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
+        for batch in list(batches.values()):
+            if batch["state"] == "sequenced" and batch["index"] <= sig_data["index"]:
+                batch["state"] = "locked"
+        target_batch: dict[str, Any] = batches[sig_data["hash"]]
+        target_batch["lock_signature"] = sig_data["signature"]
+        target_batch["nonsigners"] = sig_data["nonsigners"]
+        self.apps[app_name]["last_locked_batch"] = target_batch
+        if not self.apps[app_name]["last_sequenced_batch"]:
+            self.apps[app_name]["last_sequenced_batch"] = target_batch
 
-    def update_finalized_txs(self, app_name: str, sig_data: dict[str, Any]) -> None:
-        """Update transactions to 'finalized' state up to a specified index and save snapshots."""
-        if sig_data.get("index", 0) <= self.apps[app_name]["last_finalized_tx"].get(
+    def update_finalized_batches(self, app_name: str, sig_data: dict[str, Any]) -> None:
+        """Update batches to 'finalized' state up to a specified index and save snapshots."""
+        if sig_data.get("index", 0) <= self.apps[app_name]["last_finalized_batch"].get(
             "index", 0
         ):
             return
 
-        transactions: dict[str, Any] = self.apps[app_name]["transactions"]
+        batches: dict[str, Any] = self.apps[app_name]["batches"]
 
         snapshot_indexes: list[int] = []
-        for tx in list(transactions.values()):
-            if tx["index"] <= sig_data["index"]:
-                tx["state"] = "finalized"
+        for batch in list(batches.values()):
+            if batch["index"] <= sig_data["index"]:
+                batch["state"] = "finalized"
 
-                if tx["index"] % zconfig.SNAPSHOT_CHUNK == 0:
-                    snapshot_indexes.append(tx["index"])
+                if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
+                    snapshot_indexes.append(batch["index"])
 
-        target_tx: dict[str, Any] = transactions[sig_data["hash"]]
-        target_tx["finalization_signature"] = sig_data["signature"]
-        target_tx["nonsigners"] = sig_data["nonsigners"]
-        self.apps[app_name]["last_finalized_tx"] = target_tx
+        target_batch: dict[str, Any] = batches[sig_data["hash"]]
+        target_batch["finalization_signature"] = sig_data["signature"]
+        target_batch["nonsigners"] = sig_data["nonsigners"]
+        self.apps[app_name]["last_finalized_batch"] = target_batch
 
         for snapshot_index in snapshot_indexes:
             self.save_snapshot(app_name, snapshot_index)
@@ -346,87 +347,87 @@ class InMemoryDB:
         """Get the finalized sync point for an app."""
         return self.apps[app_name]["nodes_state"].get("finalized_sync_point", {})
 
-    def add_missed_txs(self, app_name: str, txs: dict[str, dict[str, Any]]) -> None:
-        """Add missed transactions."""
-        self.apps[app_name]["missed_txs"].update(txs)
+    def add_missed_batches(self, app_name: str, batches_data: dict[str, Any]) -> None:
+        """Add missed batches."""
+        self.apps[app_name]["missed_batches"].update(batches_data)
 
-    def set_missed_txs(self, app_name: str, txs: dict[str, dict[str, Any]]) -> None:
-        """set missed transactions."""
-        self.apps[app_name]["missed_txs"] = txs
+    def set_missed_batches(self, app_name: str, batches_data: dict[str, Any]) -> None:
+        """set missed batches."""
+        self.apps[app_name]["missed_batches"] = batches_data
 
-    def empty_missed_txs(self, app_name: str) -> None:
-        """Empty missed transactions."""
-        self.apps[app_name]["missed_txs"] = {}
+    def empty_missed_batches(self, app_name: str) -> None:
+        """Empty missed batches."""
+        self.apps[app_name]["missed_batches"] = {}
 
-    def get_missed_txs(self, app_name: str) -> dict[str, Any]:
-        """Get missed transactions."""
-        return self.apps[app_name]["missed_txs"]
+    def get_missed_batches(self, app_name: str) -> dict[str, Any]:
+        """Get missed batches."""
+        return self.apps[app_name]["missed_batches"]
 
-    def has_missed_txs(self) -> bool:
-        """Check if there are missed transactions across any app."""
+    def has_missed_batches(self) -> bool:
+        """Check if there are missed batches across any app."""
         for app_name in list(zconfig.APPS.keys()):
-            if self.apps[app_name]["missed_txs"]:
+            if self.apps[app_name]["missed_batches"]:
                 return True
         return False
 
-    def reinitialized_db(
+    def reinitialize_db(
         self,
         app_name: str,
         new_sequencer_id: str,
-        all_nodes_last_finalized_tx: dict[str, Any],
+        all_nodes_last_finalized_batch: dict[str, Any],
     ):
-        """Reinitialized the database after a switch in the sequencer."""
-        self.apps[app_name]["last_sequenced_tx"] = all_nodes_last_finalized_tx
-        self.apps[app_name]["last_locked_tx"] = all_nodes_last_finalized_tx
-        self.apps[app_name]["last_finalized_tx"] = all_nodes_last_finalized_tx
+        """Reinitialize the database after a switch in the sequencer."""
+        self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
+        self.apps[app_name]["last_locked_batch"] = all_nodes_last_finalized_batch
+        self.apps[app_name]["last_finalized_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["nodes_state"] = {}
-        self.apps[app_name]["missed_txs"] = {}
+        self.apps[app_name]["missed_batches"] = {}
 
-        # TODO: should get the transactions from other nodes if they are missing
-        self.update_finalized_txs(
+        # TODO: should get the batches from other nodes if they are missing
+        self.update_finalized_batches(
             app_name,
-            all_nodes_last_finalized_tx,
+            all_nodes_last_finalized_batch,
         )
 
         if zconfig.NODE["id"] == new_sequencer_id:
-            self.resequence_txs(app_name, all_nodes_last_finalized_tx)
+            self.resequence_batches(app_name, all_nodes_last_finalized_batch)
         else:
-            self.reinitialized_txs(app_name, all_nodes_last_finalized_tx)
+            self.reinitialize_batches(app_name, all_nodes_last_finalized_batch)
 
-    def resequence_txs(
-        self, app_name: str, all_nodes_last_finalized_tx: dict[str, Any]
+    def resequence_batches(
+        self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
     ) -> None:
-        """Resequence transactions after a switch in the sequencer."""
+        """Resequence batches after a switch in the sequencer."""
         keys_to_retain: set[str] = {"app_name", "node_id", "timestamp", "hash", "body"}
-        index: int = all_nodes_last_finalized_tx.get("index", 0)
-        chaining_hash: str = all_nodes_last_finalized_tx.get("chaining_hash", "")
+        index: int = all_nodes_last_finalized_batch.get("index", 0)
+        chaining_hash: str = all_nodes_last_finalized_batch.get("chaining_hash", "")
 
-        not_finalized_txs: list[Any] = [
-            tx
-            for tx in list(self.apps[app_name]["transactions"].values())
-            if tx.get("state") != "finalized"
+        not_finalized_batches: list[Any] = [
+            batch
+            for batch in list(self.apps[app_name]["batches"].values())
+            if batch.get("state") != "finalized"
         ]
-        not_finalized_txs.sort(key=lambda x: x.get("index", float("inf")))
-        for tx in not_finalized_txs:
-            filtered_tx = {
-                key: value for key, value in tx.items() if key in keys_to_retain
+        not_finalized_batches.sort(key=lambda x: x.get("index", float("inf")))
+        for batch in not_finalized_batches:
+            filtered_batch = {
+                key: value for key, value in batch.items() if key in keys_to_retain
             }
             index += 1
-            chaining_hash = utils.gen_hash(chaining_hash + tx["hash"])
-            filtered_tx.update(
+            chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
+            filtered_batch.update(
                 {
                     "index": index,
                     "state": "sequenced",
                     "chaining_hash": chaining_hash,
                 }
             )
-            self.apps[app_name]["transactions"][filtered_tx["hash"]] = filtered_tx
-            self.apps[app_name]["last_sequenced_tx"] = filtered_tx
+            self.apps[app_name]["batches"][filtered_batch["hash"]] = filtered_batch
+            self.apps[app_name]["last_sequenced_batch"] = filtered_batch
 
-    def reinitialized_txs(
-        self, app_name: str, all_nodes_last_finalized_tx: dict[str, Any]
+    def reinitialize_batches(
+        self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
     ) -> None:
-        """Reinitialized transactions after a switch in the sequencer."""
+        """Reinitialize batches after a switch in the sequencer."""
         keys_to_retain: set[str] = {
             "app_name",
             "node_id",
@@ -434,14 +435,14 @@ class InMemoryDB:
             "hash",
             "body",
         }
-        last_index: int = all_nodes_last_finalized_tx.get("index", 0)
-        for tx_hash, tx in list(self.apps[app_name]["transactions"].items()):
-            if last_index < tx.get("index", float("inf")):
-                filtered_tx = {
-                    key: value for key, value in tx.items() if key in keys_to_retain
+        last_index: int = all_nodes_last_finalized_batch.get("index", 0)
+        for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
+            if last_index < batch.get("index", float("inf")):
+                filtered_batch = {
+                    key: value for key, value in batch.items() if key in keys_to_retain
                 }
-                filtered_tx["state"] = "initialized"
-                self.apps[app_name]["transactions"][tx_hash] = filtered_tx
+                filtered_batch["state"] = "initialized"
+                self.apps[app_name]["batches"][batch_hash] = filtered_batch
 
 
 zdb: InMemoryDB = InMemoryDB()
