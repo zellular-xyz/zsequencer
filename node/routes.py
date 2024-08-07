@@ -23,45 +23,42 @@ def get_db() -> dict[str, Any]:
     apps_data: dict[str, Any] = {}
 
     for app_name in list(zconfig.APPS.keys()):
-        sequenced_num: int = zdb.get_last_tx(app_name, "sequenced").get("index", 0)
-        locked_num: int = zdb.get_last_tx(app_name, "locked").get("index", 0)
-        finalized_num: int = zdb.get_last_tx(app_name, "finalized").get("index", 0)
-        all_num: int = len(zdb.apps[app_name]["transactions"])
+        sequenced_num: int = zdb.get_last_batch(app_name, "sequenced").get("index", 0)
+        locked_num: int = zdb.get_last_batch(app_name, "locked").get("index", 0)
+        finalized_num: int = zdb.get_last_batch(app_name, "finalized").get("index", 0)
+        all_num: int = len(zdb.apps[app_name]["batches"])
         apps_data[app_name] = {
-            "transactions_state": {
+            "batches_state": {
                 "sequenced": sequenced_num,
                 "locked": locked_num,
                 "finalized": finalized_num,
                 "all": all_num,
             },
             "nodes_state": zdb.apps[app_name]["nodes_state"],
-            "transactions": sorted(
-                list(zdb.apps[app_name]["transactions"].values()),
-                key=lambda tx: tx.get("index", 0),
+            "batches": sorted(
+                list(zdb.apps[app_name]["batches"].values()),
+                key=lambda batch: batch.get("index", 0),
             ),
         }
-
     return apps_data
 
 
 @node_blueprint.route("/transactions", methods=["PUT"])
 @utils.not_sequencer
 def put_transactions() -> Response:
-    """Put new transactions into the database."""
-    # TODO: only authorized users should be able to call this route
-    req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["app_name", "transactions", "timestamp"]
-    error_message: str = utils.validate_request(req_data, required_keys)
+    """Put a new batch into the database."""
+    required_keys: list[str] = ["app_name"]
+    error_message: str = utils.validate_request(request.args, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-    zdb.init_txs(req_data["app_name"], req_data["transactions"])
+    zdb.init_batches(request.args.get('app_name'), [request.data.decode('utf-8')])
     return success_response(data={}, message="The transactions received successfully.")
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.not_sequencer
 def post_sign_sync_point() -> Response:
-    """Sign a transaction."""
+    """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = ["app_name", "state", "index", "hash", "chaining_hash"]
@@ -76,16 +73,16 @@ def post_sign_sync_point() -> Response:
 @node_blueprint.route("/dispute", methods=["POST"])
 @utils.not_sequencer
 def post_dispute() -> Response:
-    """Handle a dispute by initializing transactions if required."""
+    """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "apps_missed_txs", "is_sequencer_down", "timestamp"]
+    required_keys: list[str] = ["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
-    if zdb.has_missed_txs() or zdb.is_sequencer_down:
+    if zdb.has_missed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
             "node_id": zconfig.NODE["id"],
@@ -96,9 +93,9 @@ def post_dispute() -> Response:
         }
         return success_response(data=data)
     
-    for app_name, missed_txs in req_data["apps_missed_txs"].items():
-        txs = [tx["body"] for tx in missed_txs.values()]
-        zdb.init_txs(app_name, txs)
+    for app_name, missed_batches in req_data["apps_missed_batches"].items():
+        batches = [batch["body"] for batch in missed_batches.values()]
+        zdb.init_batches(app_name, batches)
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
     
 
@@ -135,34 +132,34 @@ def get_state() -> Response:
     }
 
     for app_name in list(zconfig.APPS.keys()):
-        last_sequenced_tx = zdb.get_last_tx(app_name, "sequenced")
-        last_locked_tx = zdb.get_last_tx(app_name, "locked")
-        last_finalized_tx = zdb.get_last_tx(app_name, "finalized")
+        last_sequenced_batch = zdb.get_last_batch(app_name, "sequenced")
+        last_locked_batch = zdb.get_last_batch(app_name, "locked")
+        last_finalized_batch = zdb.get_last_batch(app_name, "finalized")
 
         data['apps'][app_name] = {
-            "last_sequenced_index": last_sequenced_tx.get("index", 0),
-            "last_sequenced_hash": last_sequenced_tx.get("hash", ""),
-            "last_locked_index": last_locked_tx.get("index", 0),
-            "last_locked_hash": last_locked_tx.get("hash", ""),
-            "last_finalized_index": last_finalized_tx.get("index", 0),
-            "last_finalized_hash": last_finalized_tx.get("hash", ""),
+            "last_sequenced_index": last_sequenced_batch.get("index", 0),
+            "last_sequenced_hash": last_sequenced_batch.get("hash", ""),
+            "last_locked_index": last_locked_batch.get("index", 0),
+            "last_locked_hash": last_locked_batch.get("hash", ""),
+            "last_finalized_index": last_finalized_batch.get("index", 0),
+            "last_finalized_hash": last_finalized_batch.get("hash", ""),
         }
     return success_response(data=data)
 
 
 @node_blueprint.route("/<string:app_name>/transactions/finalized/last", methods=["GET"])
-def get_last_finalized_tx(app_name: str) -> Response:
-    """Get the last finalized transaction for a given app."""
+def get_last_finalized_batch(app_name: str) -> Response:
+    """Get the last finalized batch for a given app."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
 
-    last_finalized_tx: dict[str, Any] = zdb.get_last_tx(app_name, "finalized")
-    return success_response(data=last_finalized_tx)
+    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
+    return success_response(data=last_finalized_batch)
 
 
 @node_blueprint.route("/transactions", methods=["GET"])
-def get_transactions() -> Response:
-    """Get transactions for a given app and states."""
+def get_batches() -> Response:
+    """Get batches for a given app and states."""
     required_keys: list[str] = ["app_name", "states"]
     error_message: str = utils.validate_request(request.args, required_keys)
     if error_message:
@@ -172,22 +169,22 @@ def get_transactions() -> Response:
     after: int | None = request.args.get("after", default=None, type=int)
     states: set[str] = set(request.args.getlist("states", type=str))
 
-    txs: dict[str, Any] = zdb.get_txs(app_name, states, after)
-    return success_response(data=list(txs.values()))
+    batches: dict[str, Any] = zdb.get_batches(app_name, states, after)
+    return success_response(data=list(batches.values()))
 
 
 @node_blueprint.route("/transaction", methods=["GET"])
 def get_transaction() -> Response:
-    """Get a specific transaction by its hash."""
+    """Get a specific batch by its hash."""
     required_keys: list[str] = ["app_name", "hash"]
     error_message: str = utils.validate_request(request.args, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
     app_name: str = request.args["app_name"]
-    tx_hash: str = request.args["hash"]
-    tx: dict[str, Any] = zdb.get_tx(app_name=app_name, tx_hash=tx_hash)
-    if not tx:
+    batch_hash: str = request.args["hash"]
+    batch: dict[str, Any] = zdb.get_batch(app_name=app_name, batch_hash=batch_hash)
+    if not batch:
         return error_response(ErrorCodes.NOT_FOUND)
 
-    return success_response(data=tx)
+    return success_response(data=batch)

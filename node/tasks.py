@@ -1,5 +1,5 @@
 """
-This module handles node tasks like sending transactions, synchronization with the sequencer,
+This module handles node tasks like sending batches of transactions, synchronization with the sequencer,
 dispute handling, and switching sequencers.
 """
 
@@ -22,46 +22,45 @@ switch_lock: threading.Lock = threading.Lock()
 
 
 def check_finalization() -> None:
-    """Check and add not finalized transactions to missed transactions."""
+    """Check and add not finalized batches to missed batches."""
     for app_name in list(zconfig.APPS.keys()):
-        not_finalized_txs: dict[str, Any] = zdb.get_not_finalized_txs(app_name)
-        if not_finalized_txs:
-            zdb.add_missed_txs(app_name=app_name, txs=not_finalized_txs)
+        not_finalized_batches: dict[str, Any] = zdb.get_not_finalized_batches(app_name)
+        if not_finalized_batches:
+            zdb.add_missed_batches(app_name=app_name, batches_data=not_finalized_batches)
 
 
-def send_txs() -> None:
-    """Send transactions for all apps."""
+def send_batches() -> None:
+    """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
-        send_app_txs(app_name)
+        send_app_batches(app_name)
     
 
 
-def send_app_txs(app_name: str) -> None:
-    """Send transactions for a specific app."""
-    initialized_txs: dict[str, Any] = zdb.get_txs(
+def send_app_batches(app_name: str) -> None:
+    """Send batches for a specific app."""
+    initialized_batches: dict[str, Any] = zdb.get_batches(
         app_name=app_name, states={"initialized"}
     )
 
-    last_synced_tx: dict[str, Any] = zdb.get_last_tx(
+    last_synced_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=app_name, state="sequenced"
     )
-    last_locked_tx: dict[str, Any] = zdb.get_last_tx(app_name=app_name, state="locked")
+    last_locked_batch: dict[str, Any] = zdb.get_last_batch(app_name=app_name, state="locked")
 
-    concat_hash: str = "".join(initialized_txs.keys())
+    concat_hash: str = "".join(initialized_batches.keys())
     concat_sig: str = utils.eth_sign(concat_hash)
-
     data: str = json.dumps(
         {
             "app_name": app_name,
-            "txs": list(initialized_txs.values()),
+            "batches": list(initialized_batches.values()),
             "node_id": zconfig.NODE["id"],
             "signature": concat_sig,
-            "sequenced_index": last_synced_tx.get("index", 0),
-            "sequenced_hash": last_synced_tx.get("hash", ""),
-            "sequenced_chaining_hash": last_synced_tx.get("chaining_hash", ""),
-            "locked_index": last_locked_tx.get("index", 0),
-            "locked_hash": last_locked_tx.get("hash", ""),
-            "locked_chaining_hash": last_locked_tx.get("chaining_hash", ""),
+            "sequenced_index": last_synced_batch.get("index", 0),
+            "sequenced_hash": last_synced_batch.get("hash", ""),
+            "sequenced_chaining_hash": last_synced_batch.get("chaining_hash", ""),
+            "locked_index": last_locked_batch.get("index", 0),
+            "locked_hash": last_locked_batch.get("hash", ""),
+            "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "timestamp": int(time.time()),
         }
     )
@@ -72,58 +71,58 @@ def send_app_txs(app_name: str) -> None:
             url=url, data=data, headers=zconfig.HEADERS
         ).json()
         if response["status"] == "error":
-            zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
+            zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
             return
 
         sync_with_sequencer(
             app_name=app_name,
-            initialized_txs=initialized_txs,
+            initialized_batches=initialized_batches,
             sequencer_response=response["data"],
         )
         zdb.is_sequencer_down = False
     except Exception:
         zlogger.exception("An unexpected error occurred:")
-        zdb.add_missed_txs(app_name=app_name, txs=initialized_txs)
+        zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
         zdb.is_sequencer_down = True
 
     check_finalization()
 
 
 def sync_with_sequencer(
-    app_name: str, initialized_txs: dict[str, Any], sequencer_response: dict[str, Any]
+    app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
 ) -> None:
-    """Sync transactions with the sequencer."""
-    zdb.upsert_sequenced_txs(app_name=app_name, txs=sequencer_response["txs"])
-    last_locked_index: str = zdb.apps[app_name]["last_locked_tx"].get("index", 0)
+    """Sync batches with the sequencer."""
+    zdb.upsert_sequenced_batches(app_name=app_name, batches_data=sequencer_response["batches"])
+    last_locked_index: str = zdb.apps[app_name]["last_locked_batch"].get("index", 0)
     if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
             index=sequencer_response["locked"]["index"],
-            tx_hash=sequencer_response["locked"]["hash"],
+            batch_hash=sequencer_response["locked"]["hash"],
             chaining_hash=sequencer_response["locked"]["chaining_hash"],
             signature_hex=sequencer_response["locked"]["signature"],
             nonsigners=sequencer_response["locked"]["nonsigners"],
         ):
-            zdb.update_locked_txs(
+            zdb.update_locked_batches(
                 app_name=app_name,
                 sig_data=sequencer_response["locked"],
             )
         else:
             zlogger.error("Invalid locking signature received from sequencer")
 
-    last_finalized_index: str = zdb.apps[app_name]["last_finalized_tx"].get("index", 0)
+    last_finalized_index: str = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
     if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
             index=sequencer_response["finalized"]["index"],
-            tx_hash=sequencer_response["finalized"]["hash"],
+            batch_hash=sequencer_response["finalized"]["hash"],
             chaining_hash=sequencer_response["finalized"]["chaining_hash"],
             signature_hex=sequencer_response["finalized"]["signature"],
             nonsigners=sequencer_response["finalized"]["nonsigners"],
         ):
-            zdb.update_finalized_txs(
+            zdb.update_finalized_batches(
                 app_name=app_name,
                 sig_data=sequencer_response["finalized"],
             )
@@ -133,40 +132,40 @@ def sync_with_sequencer(
 
     check_censorship(
         app_name=app_name,
-        initialized_txs=initialized_txs,
+        initialized_batches=initialized_batches,
         sequencer_response=sequencer_response,
     )
 
 
 def check_censorship(
-    app_name: str, initialized_txs: dict[str, Any], sequencer_response: dict[str, Any]
+    app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
 ) -> None:
-    """Check for censorship and update missed transactions."""
-    sequenced_hashes: set[str] = set(tx["hash"] for tx in sequencer_response["txs"])
-    censored_txs: dict[str, Any] = {
-        tx_hash: tx
-        for tx_hash, tx in initialized_txs.items()
-        if tx_hash not in sequenced_hashes
+    """Check for censorship and update missed batches."""
+    sequenced_hashes: set[str] = set(batch["hash"] for batch in sequencer_response["batches"])
+    censored_batches: dict[str, Any] = {
+        batch_hash: batch
+        for batch_hash, batch in initialized_batches.items()
+        if batch_hash not in sequenced_hashes
     }
 
-    # remove sequenced transactions from the missed transactions dict
-    missed_txs: dict[str, Any] = {
-        tx_hash: tx
-        for tx_hash, tx in list(zdb.get_missed_txs(app_name).items())
-        if tx_hash not in sequenced_hashes
+    # remove sequenced batches from the missed batches dict
+    missed_batches: dict[str, Any] = {
+        batch_hash: batch
+        for batch_hash, batch in list(zdb.get_missed_batches(app_name).items())
+        if batch_hash not in sequenced_hashes
     }
 
-    # add censored transactions to the missed transactions dict
-    missed_txs.update(censored_txs)
+    # add censored batches to the missed batches dict
+    missed_batches.update(censored_batches)
 
-    zdb.set_missed_txs(app_name=app_name, txs=missed_txs)
+    zdb.set_missed_batches(app_name=app_name, batches_data=missed_batches)
 
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """confirm and sign the sync point"""
-    tx: dict[str, Any] = zdb.get_tx(sync_point["app_name"], sync_point["hash"])
+    batch: dict[str, Any] = zdb.get_batch(sync_point["app_name"], sync_point["hash"])
     for key in ["app_name", "state", "index", "hash", "chaining_hash"]:
-        if tx.get(key) != sync_point[key]:
+        if batch.get(key) != sync_point[key]:
             return ""
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
@@ -177,7 +176,7 @@ def is_sync_point_signature_verified(
     app_name: str,
     state: str,
     index: int,
-    tx_hash: str,
+    batch_hash: str,
     chaining_hash: str,
     signature_hex: str,
     nonsigners: list[str],
@@ -194,7 +193,7 @@ def is_sync_point_signature_verified(
             "app_name": app_name,
             "state": state,
             "index": index,
-            "hash": tx_hash,
+            "hash": batch_hash,
             "chaining_hash": chaining_hash,
         },
         sort_keys=True,
@@ -225,8 +224,8 @@ async def gather_disputes(
     return results, stake_percent
 
 async def send_dispute_requests() -> None:
-    """Send dispute requests if there are missed transactions."""
-    if (not zdb.has_missed_txs() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
+    """Send dispute requests if there are missed batches."""
+    if (not zdb.has_missed_batches() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
         return
 
     timestamp: int = int(time.time())
@@ -243,16 +242,16 @@ async def send_dispute_requests() -> None:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     )
-    apps_missed_txs:dict[str, Any] = {}
+    apps_missed_batches:dict[str, Any] = {}
 
     for app_name in list(zconfig.APPS.keys()):
-        app_missed_txs = zdb.get_missed_txs(app_name)
-        if len(app_missed_txs) > 0:
-            apps_missed_txs[app_name] = app_missed_txs
+        app_missed_batches = zdb.get_missed_batches(app_name)
+        if len(app_missed_batches) > 0:
+            apps_missed_batches[app_name] = app_missed_batches
 
     dispute_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(
-            send_dispute_request(node, apps_missed_txs, zdb.is_sequencer_down)
+            send_dispute_request(node, apps_missed_batches, zdb.is_sequencer_down)
         ) : node['id'] 
         for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
     }
@@ -278,14 +277,14 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-    node: dict[str, Any], apps_missed_txs: dict[str, Any], is_sequencer_down: bool
+    node: dict[str, Any], apps_missed_batches: dict[str, Any], is_sequencer_down: bool
     ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_txs": apps_missed_txs,
+            "apps_missed_batches": apps_missed_batches,
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
@@ -338,11 +337,11 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             return False
 
         for app_name in list(zconfig.APPS.keys()):
-            all_nodes_last_finalized_tx: dict[str, Any] = (
-                find_all_nodes_last_finalized_tx(app_name)
+            all_nodes_last_finalized_batch: dict[str, Any] = (
+                find_all_nodes_last_finalized_batch(app_name)
             )
-            zdb.reinitialized_db(
-                app_name, new_sequencer_id, all_nodes_last_finalized_tx
+            zdb.reinitialize_db(
+                app_name, new_sequencer_id, all_nodes_last_finalized_batch
             )
         if zconfig.NODE['id'] == zconfig.SEQUENCER['id']:
             time.sleep(3)
@@ -353,9 +352,9 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
         return True
 
 
-def find_all_nodes_last_finalized_tx(app_name: str) -> dict[str, Any]:
-    """Find the last finalized transaction from all nodes."""
-    last_finalized_tx: dict[str, Any] = zdb.get_last_tx(
+def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
+    """Find the last finalized batch from all nodes."""
+    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=app_name, state="finalized"
     )
 
@@ -368,10 +367,10 @@ def find_all_nodes_last_finalized_tx(app_name: str) -> dict[str, Any]:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
             ).json()
-            tx: dict[str, Any] = response.get("data", {})
-            if tx.get("index", 0) > last_finalized_tx.get("index", 0):
-                last_finalized_tx = tx
+            batch: dict[str, Any] = response.get("data", {})
+            if batch.get("index", 0) > last_finalized_batch.get("index", 0):
+                last_finalized_batch = batch
         except Exception:
             zlogger.exception("An unexpected error occurred:")
 
-    return last_finalized_tx
+    return last_finalized_batch

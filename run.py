@@ -35,14 +35,14 @@ def create_app() -> Flask:
 def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
-        time.sleep(zconfig.SEND_TXS_INTERVAL)
+        time.sleep(zconfig.SEND_BATCH_INTERVAL)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             continue
 
         if zdb.pause_node.is_set():
             continue
 
-        node_tasks.send_txs()
+        node_tasks.send_batches()
         asyncio.run(node_tasks.send_dispute_requests())
 
 
@@ -70,7 +70,7 @@ def run_flask_app(app: Flask) -> None:
     """Run the Flask application."""
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
-    logger.setLevel(logging.WARNING)
+    logger.setLevel(logging.DEBUG)
     app.run(
         host="0.0.0.0",
         port=zconfig.PORT,
