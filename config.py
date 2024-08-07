@@ -184,7 +184,7 @@ class Config:
                 sequencer_id = response.json()['data']['sequencer_id']
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
             except Exception:
-                zlogger.warning(f"Unable to get state from {node_id}:")
+                zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE['stake']
         if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT:

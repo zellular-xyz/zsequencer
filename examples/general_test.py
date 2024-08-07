@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import time
+import math
 from typing import Any
 
 import requests
@@ -17,7 +18,7 @@ from zsequencer.common.logger import zlogger
 BATCH_SIZE: int = 100_000
 BATCH_NUMBER: int = 1
 CHECK_STATE_INTERVAL: float = 0.05
-
+THREAD_NUMBERS_FOR_SENDING_TXS = 5
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
@@ -56,15 +57,11 @@ def check_state(
         time.sleep(CHECK_STATE_INTERVAL)
 
 
-def sending_batches(
-    app_name: str, transaction_batches: list[dict[str, Any]], node_url: str
-) -> None:
-    """Send batches of transactions to the node."""
-    for i, batch in enumerate(transaction_batches):
-        zlogger.info(f'sending {i + 1} new batches with {len(batch["transactions"])} new operations ')
-        params = {
-            "app_name": app_name
-        }
+def send_batches(app_name: str, batches: list[dict[str, Any]], node_url: str, thread_index: int) -> None:
+    """Send multiple batches of transactions to the node."""
+    for i, batch in enumerate(batches):
+        zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch["transactions"])} transactions')
+        params = {"app_name": app_name}
         try:
             json_data: str = json.dumps(batch)
             response: requests.Response = requests.put(
@@ -75,7 +72,37 @@ def sending_batches(
             )
             response.raise_for_status()
         except RequestException as error:
-            zlogger.error(f"Error sending transactions: {error}")
+            zlogger.error(f"Thread {thread_index}: Error sending transactions: {error}")
+
+def send_batches_with_threads(
+    app_name: str, transaction_batches: list[dict[str, Any]], node_url: str, num_threads: int = 100
+) -> None:
+    """Send batches of transactions to the node using multiple threads."""
+    num_batches = len(transaction_batches)
+    # Adjust number of threads if there are fewer batches than threads
+    if num_batches < num_threads:
+        num_threads = num_batches
+
+    threads = []
+    batches_per_thread = math.ceil(num_batches / num_threads)
+
+    for i in range(num_threads):
+        start_index = i * batches_per_thread
+        end_index = min(start_index + batches_per_thread, num_batches)
+        batch_subset = transaction_batches[start_index:end_index]
+        
+        if not batch_subset:
+            break
+        
+        thread = threading.Thread(target=send_batches, args=(app_name, batch_subset, node_url, i))
+        threads.append(thread)
+        thread.start()
+
+    # Wait for all threads to finish
+    for t in threads:
+        t.join()
+
+    zlogger.info("All batches have been sent.")
 
 
 def generate_dummy_transactions(
@@ -106,7 +133,7 @@ def main() -> None:
         BATCH_SIZE, BATCH_NUMBER
     )
     sender_thread: threading.Thread = threading.Thread(
-        target=sending_batches, args=[args.app_name, transaction_batches, args.node_url]
+        target=send_batches_with_threads, args=[args.app_name, transaction_batches, args.node_url, THREAD_NUMBERS_FOR_SENDING_TXS]
     )
     sync_thread: threading.Thread = threading.Thread(
         target=check_state,
