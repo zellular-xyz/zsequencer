@@ -111,7 +111,7 @@ class Config:
                 'public_key_g2': pub_g2,
                 'address': data['operator'],
                 'socket': data['socket'],
-                'stake': float(data['stake'])/(10**18)
+                'stake': min(float(data['stake'])/(10**18), 1.0)
             }
         return nodes
     
