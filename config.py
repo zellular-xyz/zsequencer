@@ -103,6 +103,12 @@ class Config:
             nodes_raw_data[operator]['socket'] = sockets.get(operator_id, None)
 
         nodes: dict[str, dict[str, Any]] = {}
+        default_nodes_list = {
+            '0x747b80a1c0b0e6031b389e3b7eaf9b5f759f34ed',
+            '0x3eaa1c283dbf13357257e652649784a4cc08078c',
+            '0x906585f83fa7d29b96642aa8f7b4267ab42b7b6c',
+            '0x93d89ade53b8fcca53736be1a0d11d342d71118b'
+        }
         for node_id, data in nodes_raw_data.items():
             pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
                             + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
@@ -111,8 +117,12 @@ class Config:
                 'public_key_g2': pub_g2,
                 'address': data['operator'],
                 'socket': data['socket'],
-                'stake': min(float(data['stake'])/(10**18), 1.0)
             }
+            
+            if node_id not in default_nodes_list:
+                nodes[node_id]['stake'] = min(float(data['stake'])/(10**18), 1.0)
+            else:
+                nodes[node_id]['stake'] = float(data['stake'])/(10**18)
         return nodes
     
     
