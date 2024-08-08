@@ -43,15 +43,13 @@ def get_db() -> dict[str, Any]:
     return apps_data
 
 
-@node_blueprint.route("/transactions", methods=["PUT"])
+@node_blueprint.route("/<string:app_name>/transactions", methods=["PUT"])
 @utils.not_sequencer
-def put_transactions() -> Response:
+def put_transactions(app_name: str) -> Response:
     """Put a new batch into the database."""
-    required_keys: list[str] = ["app_name"]
-    error_message: str = utils.validate_request(request.args, required_keys)
-    if error_message:
-        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-    zdb.init_batches(request.args.get('app_name'), [request.data.decode('utf-8')])
+    if not app_name:
+        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
+    zdb.init_batches(app_name, [request.data.decode('utf-8')])
     return success_response(data={}, message="The transactions received successfully.")
 
 

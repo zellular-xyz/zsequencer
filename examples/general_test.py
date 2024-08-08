@@ -61,13 +61,11 @@ def send_batches(app_name: str, batches: list[dict[str, Any]], node_url: str, th
     """Send multiple batches of transactions to the node."""
     for i, batch in enumerate(batches):
         zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch["transactions"])} transactions')
-        params = {"app_name": app_name}
         try:
-            json_data: str = json.dumps(batch)
+            string_data: str = json.dumps(batch)
             response: requests.Response = requests.put(
-                url=f"{node_url}/node/transactions",
-                data=json_data,
-                params=params,
+                url=f"{node_url}/node/{app_name}/transactions",
+                data=string_data,
                 headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
