@@ -13,6 +13,7 @@ import requests
 from random import randbytes
 from threading import Thread
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from eigensdk.crypto.bls import attestation
@@ -304,6 +305,13 @@ class Config:
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
         self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
+        if self.PORT != urlparse(self.NODE['socket']).port:
+            if self.NODE_SOURCE == 'eigenlayer':
+                data_source = f'{self.NODES_FILE}'
+            else:
+                data_source = 'Eigenlayer network'
+            zlogger.warning(f"The node port in the .env file does not match the node port provided by {data_source}.")
+            sys.exit()
         self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
         self.REMOVE_CHUNK_BORDER: int = int(
             os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
