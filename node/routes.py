@@ -122,6 +122,7 @@ def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
+        "release_version": zconfig.RELEASE_VERSION,
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
         "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
