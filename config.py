@@ -111,7 +111,7 @@ class Config:
                 'public_key_g2': pub_g2,
                 'address': data['operator'],
                 'socket': data['socket'],
-                'stake': float(data['stake'])/(10**18)
+                'stake': min(float(data['stake'])/(10**18), 1.0)
             }
         return nodes
     
@@ -184,7 +184,7 @@ class Config:
                 sequencer_id = response.json()['data']['sequencer_id']
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
             except Exception:
-                zlogger.warning(f"Unable to get state from {node_id}:")
+                zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE['stake']
         if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT:
@@ -206,7 +206,7 @@ class Config:
             "ZSEQUENCER_SNAPSHOT_CHUNK",
             "ZSEQUENCER_REMOVE_CHUNK_BORDER",
             "ZSEQUENCER_THRESHOLD_PERCENT",
-            "ZSEQUENCER_SEND_TXS_INTERVAL",
+            "ZSEQUENCER_SEND_BATCH_INTERVAL",
             "ZSEQUENCER_SYNC_INTERVAL",
             "ZSEQUENCER_FINALIZATION_TIME_BORDER",
             "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT",
@@ -299,8 +299,8 @@ class Config:
             os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
         )
 
-        self.SEND_TXS_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
+        self.SEND_BATCH_INTERVAL: float = float(
+            os.getenv("ZSEQUENCER_SEND_BATCH_INTERVAL", "5")
         )
         self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
         self.FINALIZATION_TIME_BORDER: int = int(

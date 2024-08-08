@@ -23,7 +23,7 @@ def put_transactions() -> Response:
 
     required_keys: list[str] = [
         "app_name",
-        "txs",
+        "batches",
         "node_id",
         "signature",
         "sequenced_index",
@@ -38,7 +38,7 @@ def put_transactions() -> Response:
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
-    concat_hash: str = "".join(tx["hash"] for tx in req_data["txs"])
+    concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified: bool = utils.is_eth_sig_verified(
         signature=req_data["signature"],
         node_id=req_data["node_id"],
@@ -58,17 +58,17 @@ def put_transactions() -> Response:
 def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the transaction data."""
     with zdb.lock:
-        zdb.sequencer_init_txs(app_name=req_data["app_name"], txs=req_data["txs"])
+        zdb.sequencer_init_batches(app_name=req_data["app_name"], batches_data=req_data["batches"])
 
-    txs: dict[str, Any] = zdb.get_txs(
+    batches: dict[str, Any] = zdb.get_batches(
         app_name=req_data["app_name"],
         states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
-    last_finalized_tx: dict[str, Any] = zdb.get_last_tx(
+    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=req_data["app_name"], state="finalized"
     )
-    last_locked_tx: dict[str, Any] = zdb.get_last_tx(
+    last_locked_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=req_data["app_name"], state="locked"
     )
 
@@ -90,19 +90,19 @@ def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
     #     txs = {}
 
     return {
-        "txs": list(txs.values()),
+        "batches": list(batches.values()),
         "finalized": {
-            "index": last_finalized_tx.get("index", 0),
-            "chaining_hash": last_finalized_tx.get("chaining_hash", ""),
-            "hash": last_finalized_tx.get("hash", ""),
-            "signature": last_finalized_tx.get("finalization_signature", ""),
-            "nonsigners": last_finalized_tx.get("nonsigners", []),
+            "index": last_finalized_batch.get("index", 0),
+            "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
+            "hash": last_finalized_batch.get("hash", ""),
+            "signature": last_finalized_batch.get("finalization_signature", ""),
+            "nonsigners": last_finalized_batch.get("nonsigners", []),
         },
         "locked": {
-            "index": last_locked_tx.get("index", 0),
-            "chaining_hash": last_locked_tx.get("chaining_hash", ""),
-            "hash": last_locked_tx.get("hash", ""),
-            "signature": last_locked_tx.get("lock_signature", ""),
-            "nonsigners": last_locked_tx.get("nonsigners", []),
+            "index": last_locked_batch.get("index", 0),
+            "chaining_hash": last_locked_batch.get("chaining_hash", ""),
+            "hash": last_locked_batch.get("hash", ""),
+            "signature": last_locked_batch.get("lock_signature", ""),
+            "nonsigners": last_locked_batch.get("nonsigners", []),
         },
     }
