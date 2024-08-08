@@ -15,9 +15,9 @@ from requests.exceptions import RequestException
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from zsequencer.common.logger import zlogger
 
-BATCH_SIZE: int = 100
-BATCH_NUMBER: int = 1000
-CHECK_STATE_INTERVAL: float = 0.01
+BATCH_SIZE: int = 100_000
+BATCH_NUMBER: int = 1
+CHECK_STATE_INTERVAL: float = 0.05
 THREAD_NUMBERS_FOR_SENDING_TXS = 100
 
 def parse_args() -> argparse.Namespace:
