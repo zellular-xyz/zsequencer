@@ -70,7 +70,7 @@ def run_flask_app(app: Flask) -> None:
     """Run the Flask application."""
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.WARNING)
     app.run(
         host="0.0.0.0",
         port=zconfig.PORT,
