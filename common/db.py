@@ -141,11 +141,10 @@ class InMemoryDB:
 
     def prune_old_batches(self, app_name: str, remove_border: int) -> None:
         """Helper function to prune old batches from memory."""
-        self.apps[app_name]["batches"] = {
-            batch["hash"]: batch
-            for batch in self.apps[app_name]["batches"].values()
-            if batch["state"] != "finalized" or batch["index"] > remove_border
-        }
+        batches = self.apps[app_name]["batches"]
+        for key, batch in list(batches.items()):
+            if batch["state"] == "finalized" and batch["index"] <= remove_border:
+                del batches[key]
 
     def save_keys_to_file(self) -> None:
         """Helper function to save keys to a file."""
