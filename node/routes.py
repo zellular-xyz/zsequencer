@@ -7,6 +7,7 @@ from flask import Blueprint, Response, request
 
 from common import utils
 from common.db import zdb
+from common.logger import zlogger
 from common.errors import ErrorCodes
 from common.response_utils import error_response, success_response
 from config import zconfig
@@ -49,7 +50,9 @@ def put_transactions(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-    zdb.init_batches(app_name, [request.data.decode('utf-8')])
+    data = request.data.decode('utf-8')
+    zlogger.info(f"Transactions added. app: {app_name}, data length: {len(data)}.")
+    zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The transactions received successfully.")
 
 
