@@ -13,6 +13,7 @@ import requests
 from random import randbytes
 from threading import Thread
 from typing import Any
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from eigensdk.crypto.bls import attestation
@@ -103,6 +104,12 @@ class Config:
             nodes_raw_data[operator]['socket'] = sockets.get(operator_id, None)
 
         nodes: dict[str, dict[str, Any]] = {}
+        default_nodes_list = {
+            '0x747b80a1c0b0e6031b389e3b7eaf9b5f759f34ed',
+            '0x3eaa1c283dbf13357257e652649784a4cc08078c',
+            '0x906585f83fa7d29b96642aa8f7b4267ab42b7b6c',
+            '0x93d89ade53b8fcca53736be1a0d11d342d71118b'
+        }
         for node_id, data in nodes_raw_data.items():
             pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
                             + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
@@ -111,8 +118,12 @@ class Config:
                 'public_key_g2': pub_g2,
                 'address': data['operator'],
                 'socket': data['socket'],
-                'stake': min(float(data['stake'])/(10**18), 1.0)
             }
+            
+            if node_id not in default_nodes_list:
+                nodes[node_id]['stake'] = min(float(data['stake'])/(10**18), 1.0)
+            else:
+                nodes[node_id]['stake'] = float(data['stake'])/(10**18)
         return nodes
     
     
@@ -180,7 +191,7 @@ class Config:
                 continue
             url: str = f'{self.NODES[node_id]["socket"]}/node/state'
             try:
-                response = requests.get(url=url, headers=self.HEADERS)
+                response = requests.get(url=url, headers=self.HEADERS, timeout=1)
                 sequencer_id = response.json()['data']['sequencer_id']
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
             except Exception:
@@ -244,6 +255,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
+        self.RELEASE_VERSION = 'v0.0.6'
         self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
@@ -294,6 +306,13 @@ class Config:
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
         self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
+        if self.PORT != urlparse(self.NODE['socket']).port:
+            if self.NODE_SOURCE == 'eigenlayer':
+                data_source = f'{self.NODES_FILE}'
+            else:
+                data_source = 'Eigenlayer network'
+            zlogger.warning(f"The node port in the .env file does not match the node port provided by {data_source}.")
+            sys.exit()
         self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
         self.REMOVE_CHUNK_BORDER: int = int(
             os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
