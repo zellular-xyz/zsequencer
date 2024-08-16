@@ -308,7 +308,7 @@ class Config:
 
         self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
         if self.PORT != urlparse(self.NODE['socket']).port:
-            if self.NODE_SOURCE == 'eigenlayer':
+            if self.NODE_SOURCE != 'eigenlayer':
                 data_source = f'{self.NODES_FILE}'
             else:
                 data_source = 'Eigenlayer network'
