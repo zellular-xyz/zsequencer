@@ -198,7 +198,8 @@ class Config:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE['stake']
-        if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT:
+        if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT and \
+           sequencers_stake[max_stake_id] > self.NODE['stake']:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
