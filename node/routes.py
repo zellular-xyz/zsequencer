@@ -50,7 +50,7 @@ def put_transactions(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-    data = request.data.decode('utf-8')
+    data = request.data.decode('latin-1')
     zlogger.info(f"Transactions added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The transactions received successfully.")
