@@ -191,7 +191,7 @@ class Config:
                 continue
             url: str = f'{self.NODES[node_id]["socket"]}/node/state'
             try:
-                response = requests.get(url=url, headers=self.HEADERS)
+                response = requests.get(url=url, headers=self.HEADERS, timeout=1)
                 sequencer_id = response.json()['data']['sequencer_id']
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
             except Exception:
