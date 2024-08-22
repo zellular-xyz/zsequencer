@@ -15,10 +15,10 @@ from config import zconfig
 sequencer_blueprint = Blueprint("sequencer", __name__)
 
 
-@sequencer_blueprint.route("/transactions", methods=["PUT"])
+@sequencer_blueprint.route("/batches", methods=["PUT"])
 @utils.sequencer_only
-def put_transactions() -> Response:
-    """Endpoint to handle the PUT request for transactions."""
+def put_batches() -> Response:
+    """Endpoint to handle the PUT request for batches."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
 
     required_keys: list[str] = [
@@ -51,12 +51,12 @@ def put_transactions() -> Response:
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
-    data: dict[str, Any] = _put_transactions(req_data)
+    data: dict[str, Any] = _put_batches(req_data)
     return success_response(data=data)
 
 
-def _put_transactions(req_data: dict[str, Any]) -> dict[str, Any]:
-    """Process the transaction data."""
+def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
+    """Process the batches data."""
     with zdb.lock:
         zdb.sequencer_init_batches(app_name=req_data["app_name"], batches_data=req_data["batches"])
 

@@ -44,16 +44,16 @@ def get_db() -> dict[str, Any]:
     return apps_data
 
 
-@node_blueprint.route("/<string:app_name>/transactions", methods=["PUT"])
+@node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
 @utils.not_sequencer
-def put_transactions(app_name: str) -> Response:
+def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
     data = request.data.decode('latin-1')
-    zlogger.info(f"Transactions added. app: {app_name}, data length: {len(data)}.")
+    zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
-    return success_response(data={}, message="The transactions received successfully.")
+    return success_response(data={}, message="The batch is received successfully.")
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
@@ -115,7 +115,7 @@ def post_switch_sequencer() -> Response:
             req_data["proofs"]
         )
         tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
-        return success_response(data={}, message="The sequencer set successfully.")
+        return success_response(data={})
 
     return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
 
@@ -149,7 +149,7 @@ def get_state() -> Response:
     return success_response(data=data)
 
 
-@node_blueprint.route("/<string:app_name>/transactions/finalized/last", methods=["GET"])
+@node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
     if not app_name:
@@ -159,34 +159,9 @@ def get_last_finalized_batch(app_name: str) -> Response:
     return success_response(data=last_finalized_batch)
 
 
-@node_blueprint.route("/transactions", methods=["GET"])
-def get_batches() -> Response:
+@node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
+def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
-    required_keys: list[str] = ["app_name", "states"]
-    error_message: str = utils.validate_request(request.args, required_keys)
-    if error_message:
-        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
-    app_name: str = request.args["app_name"]
-    after: int | None = request.args.get("after", default=None, type=int)
-    states: set[str] = set(request.args.getlist("states", type=str))
-
-    batches: dict[str, Any] = zdb.get_batches(app_name, states, after)
+    after: int | None = request.args.get("after", default=0, type=int)
+    batches: dict[str, Any] = zdb.get_batches(app_name, { state }, after)
     return success_response(data=list(batches.values()))
-
-
-@node_blueprint.route("/transaction", methods=["GET"])
-def get_transaction() -> Response:
-    """Get a specific batch by its hash."""
-    required_keys: list[str] = ["app_name", "hash"]
-    error_message: str = utils.validate_request(request.args, required_keys)
-    if error_message:
-        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
-    app_name: str = request.args["app_name"]
-    batch_hash: str = request.args["hash"]
-    batch: dict[str, Any] = zdb.get_batch(app_name=app_name, batch_hash=batch_hash)
-    if not batch:
-        return error_response(ErrorCodes.NOT_FOUND)
-
-    return success_response(data=batch)

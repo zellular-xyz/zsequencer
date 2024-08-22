@@ -207,6 +207,7 @@ class Config:
     @staticmethod
     def validate_env_variables() -> None:
         """Validate that all required environment variables are set."""
+        # todo: add ZSEQUENCER_API_BATCHES_LIMIT to the list on new versions where .env is changed
         required_vars: list[str] = [
             "ZSEQUENCER_BLS_KEY_FILE",
             "ZSEQUENCER_BLS_KEY_PASSWORD",
@@ -331,6 +332,9 @@ class Config:
         )
         self.FETCH_APPS_AND_NODES_INTERVAL: int = int (
             os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
+        )
+        self.API_BATCHES_LIMIT: int = int (
+            os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100")
         )
         self.INIT_SEQUENCER_ID: str = os.getenv(
             "ZSEQUENCER_INIT_SEQUENCER_ID"
