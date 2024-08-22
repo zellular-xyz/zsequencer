@@ -15,10 +15,10 @@ from requests.exceptions import RequestException
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from zsequencer.common.logger import zlogger
 
-BATCH_SIZE: int = 100_000
-BATCH_NUMBER: int = 1
+BATCH_SIZE: int = 500
+BATCH_NUMBER: int = 200
 CHECK_STATE_INTERVAL: float = 0.05
-THREAD_NUMBERS_FOR_SENDING_TXS = 100
+THREAD_NUMBERS_FOR_SENDING_TXS = 50
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
@@ -60,7 +60,7 @@ def check_state(
 def send_batches(app_name: str, batches: list[dict[str, Any]], node_url: str, thread_index: int) -> None:
     """Send multiple batches of transactions to the node."""
     for i, batch in enumerate(batches):
-        zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch["transactions"])} transactions')
+        zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch)} transactions')
         try:
             string_data: str = json.dumps(batch)
             response: requests.Response = requests.put(
@@ -108,20 +108,12 @@ def generate_dummy_transactions(
 ) -> list[dict[str, Any]]:
     """Create batches of transactions."""
     return [
-        {
-            "transactions": [
-                json.dumps(
-                    {
-                        "operation": "foo",
-                        "serial": f"{batch_num}_{tx_num}",
-                        "version": 6,
-                    }
-                )
-                for tx_num in range(batch_size)
-            ],
-        }
-        for batch_num in range(batch_number)
-    ]
+        [{
+            "operation": "foo",
+            "serial": f"{batch_num}_{tx_num}",
+            "version": 6,
+        } for tx_num in range(batch_size)]
+     for batch_num in range(batch_number)]
 
 
 def main() -> None:

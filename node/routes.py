@@ -152,9 +152,6 @@ def get_state() -> Response:
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
-    if not app_name:
-        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
     return success_response(data=last_finalized_batch)
 
@@ -164,4 +161,5 @@ def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
     after: int | None = request.args.get("after", default=0, type=int)
     batches: dict[str, Any] = zdb.get_batches(app_name, { state }, after)
-    return success_response(data=list(batches.values()))
+    res: list[str] = list([batch['body'] for batch in batches.values()])
+    return success_response(data=res)
