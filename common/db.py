@@ -159,7 +159,7 @@ class InMemoryDB:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
         i = 0
-        for batch_hash, batch in self.apps[app_name]["batches"].items():
+        for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
             if batch["state"] in states and batch.get("index", 0) > after:
                 batches[batch_hash] = batch
                 i += 1
