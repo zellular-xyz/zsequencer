@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Any
 
+from threading import Thread
 from config import zconfig
 
 from . import utils
@@ -23,6 +24,8 @@ class InMemoryDB:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
+                fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
+                fetch_data.start()
             return cls._instance
 
     def _initialize(self) -> None:
@@ -34,6 +37,38 @@ class InMemoryDB:
         self.keys: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
+    
+    def fetch_apps(self) -> None:
+        """Fetchs the apps data."""
+        data = zconfig.get_file_content(zconfig.APPS_FILE)
+        new_apps = {}
+        for app_name in data:
+            if self.apps.get(app_name):
+                new_apps[app_name] = self.apps[app_name]
+                continue
+            new_apps[app_name] = {
+                "nodes_state": {},
+                "batches": {},
+                "missed_batches": {},
+                "last_sequenced_batch": {},
+                "last_locked_batch": {},
+                "last_finalized_batch": {},
+            }
+        zconfig.APPS.update(data)
+        self.apps.update(new_apps)
+    
+    def fetch_nodes_and_apps(self) -> None:
+        """Periodically fetches apps and nodes data."""
+        while True:
+            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
+            try:
+                self.fetch_apps()
+            except Exception:
+                zlogger.exception("An unexpected error occurred:")
+            try:
+                zconfig.fetch_nodes()
+            except Exception:
+                zlogger.exception("An unexpected error occurred:")
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
