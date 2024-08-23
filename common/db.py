@@ -108,11 +108,15 @@ class InMemoryDB:
             return {}
 
         if index is None:
-            snapshots: list[str] = [
-                file
-                for file in os.listdir(zconfig.SNAPSHOT_PATH)
-                if file.endswith(".json.gz")
-            ]
+            snapshots: list[str] = []
+            for file in os.listdir(zconfig.SNAPSHOT_PATH):
+                if file.endswith(".json.gz"):
+                    try:
+                        file_app_name = file.split('_')[1].split('.')[0]
+                        if file_app_name == app_name:
+                            snapshots.append(file)
+                    except IndexError:
+                        continue
             if not snapshots:
                 return {}
 
@@ -127,7 +131,7 @@ class InMemoryDB:
         try:
             with gzip.open(snapshot_path, "rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError) as error:
+        except (OSError, IOError, json.JSONDecodeError, FileNotFoundError) as error:
             zlogger.exception(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
