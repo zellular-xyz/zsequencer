@@ -34,7 +34,6 @@ class InMemoryDB:
         self.pause_node = threading.Event()
 
         self.apps: dict[str, Any] = {}
-        self.keys: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
     
@@ -72,7 +71,6 @@ class InMemoryDB:
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
-        self.keys = self.load_keys()
 
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
@@ -110,9 +108,9 @@ class InMemoryDB:
         if index is None:
             snapshots: list[str] = []
             for file in os.listdir(zconfig.SNAPSHOT_PATH):
-                if file.endswith(".json.gz"):
+                if file.endswith(".json.gz") and file != 'keys.json.gz':
                     try:
-                        file_app_name = file.split('_')[1].split('.')[0]
+                        file_app_name = '_'.join(file.split('_')[1:]).rsplit('.', 2)[0]
                         if file_app_name == app_name:
                             snapshots.append(file)
                     except IndexError:
@@ -154,7 +152,6 @@ class InMemoryDB:
                 app_name, index, snapshot_border, snapshot_path
             )
             self.prune_old_batches(app_name, remove_border)
-            self.save_keys_to_file()
         except Exception as error:
             zlogger.exception(
                 "An error occurred while saving snapshot for %s at index %d: %s",
@@ -186,11 +183,6 @@ class InMemoryDB:
             if batch["state"] != "finalized" or batch["index"] > remove_border
         }
 
-    def save_keys_to_file(self) -> None:
-        """Helper function to save keys to a file."""
-        keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
-        with gzip.open(keys_path, "wt", encoding="UTF-8") as file:
-            json.dump(self.keys, file)
 
     def get_batches(
         self, app_name: str, states: set[str], after: float = float("-inf")
