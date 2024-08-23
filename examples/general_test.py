@@ -15,10 +15,10 @@ from requests.exceptions import RequestException
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from zsequencer.common.logger import zlogger
 
-BATCH_SIZE: int = 100_000
-BATCH_NUMBER: int = 1
+BATCH_SIZE: int = 500
+BATCH_NUMBER: int = 200
 CHECK_STATE_INTERVAL: float = 0.05
-THREAD_NUMBERS_FOR_SENDING_TXS = 100
+THREAD_NUMBERS_FOR_SENDING_TXS = 50
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
@@ -42,7 +42,7 @@ def check_state(
     while True:
         try:
             response: requests.Response = requests.get(
-                f"{node_url}/node/{app_name}/transactions/finalized/last"
+                f"{node_url}/node/{app_name}/batches/finalized/last"
             )
             response.raise_for_status()
             last_finalized_batch: dict[str, Any] = response.json()
@@ -60,23 +60,23 @@ def check_state(
 def send_batches(app_name: str, batches: list[dict[str, Any]], node_url: str, thread_index: int) -> None:
     """Send multiple batches of transactions to the node."""
     for i, batch in enumerate(batches):
-        zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch["transactions"])} transactions')
+        zlogger.info(f'Thread {thread_index}: sending batch {i + 1} with {len(batch)} transactions')
         try:
             string_data: str = json.dumps(batch)
             response: requests.Response = requests.put(
-                url=f"{node_url}/node/{app_name}/transactions",
+                url=f"{node_url}/node/{app_name}/batches",
                 data=string_data,
                 headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
         except RequestException as error:
-            zlogger.error(f"Thread {thread_index}: Error sending transactions: {error}")
+            zlogger.error(f"Thread {thread_index}: Error sending batch of transactions: {error}")
 
 def send_batches_with_threads(
-    app_name: str, transaction_batches: list[dict[str, Any]], node_url: str, num_threads: int = 100
+    app_name: str, batches: list[dict[str, Any]], node_url: str, num_threads: int = 100
 ) -> None:
     """Send batches of transactions to the node using multiple threads."""
-    num_batches = len(transaction_batches)
+    num_batches = len(batches)
     # Adjust number of threads if there are fewer batches than threads
     if num_batches < num_threads:
         num_threads = num_batches
@@ -87,7 +87,7 @@ def send_batches_with_threads(
     for i in range(num_threads):
         start_index = i * batches_per_thread
         end_index = min(start_index + batches_per_thread, num_batches)
-        batch_subset = transaction_batches[start_index:end_index]
+        batch_subset = batches[start_index:end_index]
         
         if not batch_subset:
             break
@@ -108,30 +108,22 @@ def generate_dummy_transactions(
 ) -> list[dict[str, Any]]:
     """Create batches of transactions."""
     return [
-        {
-            "transactions": [
-                json.dumps(
-                    {
-                        "operation": "foo",
-                        "serial": f"{batch_num}_{tx_num}",
-                        "version": 6,
-                    }
-                )
-                for tx_num in range(batch_size)
-            ],
-        }
-        for batch_num in range(batch_number)
-    ]
+        [{
+            "operation": "foo",
+            "serial": f"{batch_num}_{tx_num}",
+            "version": 6,
+        } for tx_num in range(batch_size)]
+     for batch_num in range(batch_number)]
 
 
 def main() -> None:
     """Run the simple app."""
     args: argparse.Namespace = parse_args()
-    transaction_batches: list[dict[str, Any]] = generate_dummy_transactions(
+    batches: list[dict[str, Any]] = generate_dummy_transactions(
         BATCH_SIZE, BATCH_NUMBER
     )
     sender_thread: threading.Thread = threading.Thread(
-        target=send_batches_with_threads, args=[args.app_name, transaction_batches, args.node_url, THREAD_NUMBERS_FOR_SENDING_TXS]
+        target=send_batches_with_threads, args=[args.app_name, batches, args.node_url, THREAD_NUMBERS_FOR_SENDING_TXS]
     )
     sync_thread: threading.Thread = threading.Thread(
         target=check_state,

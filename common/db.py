@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Any
 
+from threading import Thread
 from config import zconfig
 
 from . import utils
@@ -23,6 +24,8 @@ class InMemoryDB:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
+                fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
+                fetch_data.start()
             return cls._instance
 
     def _initialize(self) -> None:
@@ -31,13 +34,43 @@ class InMemoryDB:
         self.pause_node = threading.Event()
 
         self.apps: dict[str, Any] = {}
-        self.keys: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
+    
+    def fetch_apps(self) -> None:
+        """Fetchs the apps data."""
+        data = zconfig.get_file_content(zconfig.APPS_FILE)
+        new_apps = {}
+        for app_name in data:
+            if self.apps.get(app_name):
+                new_apps[app_name] = self.apps[app_name]
+                continue
+            new_apps[app_name] = {
+                "nodes_state": {},
+                "batches": {},
+                "missed_batches": {},
+                "last_sequenced_batch": {},
+                "last_locked_batch": {},
+                "last_finalized_batch": {},
+            }
+        zconfig.APPS.update(data)
+        self.apps.update(new_apps)
+    
+    def fetch_nodes_and_apps(self) -> None:
+        """Periodically fetches apps and nodes data."""
+        while True:
+            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
+            try:
+                self.fetch_apps()
+            except Exception:
+                zlogger.exception("An unexpected error occurred:")
+            try:
+                zconfig.fetch_nodes()
+            except Exception:
+                zlogger.exception("An unexpected error occurred:")
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
-        self.keys = self.load_keys()
 
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
@@ -73,11 +106,15 @@ class InMemoryDB:
             return {}
 
         if index is None:
-            snapshots: list[str] = [
-                file
-                for file in os.listdir(zconfig.SNAPSHOT_PATH)
-                if file.endswith(".json.gz")
-            ]
+            snapshots: list[str] = []
+            for file in os.listdir(zconfig.SNAPSHOT_PATH):
+                if file.endswith(".json.gz") and file != 'keys.json.gz':
+                    try:
+                        file_app_name = '_'.join(file.split('_')[1:]).rsplit('.', 2)[0]
+                        if file_app_name == app_name:
+                            snapshots.append(file)
+                    except IndexError:
+                        continue
             if not snapshots:
                 return {}
 
@@ -92,7 +129,7 @@ class InMemoryDB:
         try:
             with gzip.open(snapshot_path, "rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError) as error:
+        except (OSError, IOError, json.JSONDecodeError, FileNotFoundError) as error:
             zlogger.exception(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
@@ -115,7 +152,6 @@ class InMemoryDB:
                 app_name, index, snapshot_border, snapshot_path
             )
             self.prune_old_batches(app_name, remove_border)
-            self.save_keys_to_file()
         except Exception as error:
             zlogger.exception(
                 "An error occurred while saving snapshot for %s at index %d: %s",
@@ -141,28 +177,25 @@ class InMemoryDB:
 
     def prune_old_batches(self, app_name: str, remove_border: int) -> None:
         """Helper function to prune old batches from memory."""
-        self.apps[app_name]["batches"] = {
-            batch["hash"]: batch
-            for batch in self.apps[app_name]["batches"].values()
-            if batch["state"] != "finalized" or batch["index"] > remove_border
-        }
+        batches = self.apps[app_name]["batches"]
+        for key, batch in list(batches.items()):
+            if batch["state"] == "finalized" and batch["index"] <= remove_border:
+                del batches[key]
 
-    def save_keys_to_file(self) -> None:
-        """Helper function to save keys to a file."""
-        keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
-        with gzip.open(keys_path, "wt", encoding="UTF-8") as file:
-            json.dump(self.keys, file)
 
     def get_batches(
-        self, app_name: str, states: set[str], after: float = float("-inf")
+        self, app_name: str, states: set[str], after: float = -1
     ) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
-        batches: dict[str, Any] = self.apps[app_name]["batches"].copy()
-        return {
-            batch_hash: batch
-            for batch_hash, batch in batches.items()
-            if batch["state"] in states and batch.get("index", 0) > after
-        }
+        batches: dict[str, Any] = {}
+        i = 0
+        for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
+            if batch["state"] in states and batch.get("index", 0) > after:
+                batches[batch_hash] = batch
+                i += 1
+            if i >= zconfig.API_BATCHES_LIMIT:
+                break
+        return batches
 
     def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
         """Get a batch by its hash."""

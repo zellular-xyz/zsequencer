@@ -29,8 +29,6 @@ class Config:
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
             cls._instance.load_environment_variables()
-            fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
-            fetch_data.start()
         return cls._instance
 
     @staticmethod
@@ -126,11 +124,6 @@ class Config:
                 nodes[node_id]['stake'] = float(data['stake'])/(10**18)
         return nodes
     
-    
-    def fetch_apps(self) -> None:
-        """Fetchs the apps data."""
-        apps_data = Config.get_file_content(self.APPS_FILE)
-        self.APPS.update(apps_data)
         
     def fetch_nodes(self):
         """Fetchs the nodes data."""
@@ -147,18 +140,6 @@ class Config:
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
     
-    def fetch_nodes_and_apps(self) -> None:
-        """Periodically fetches apps and nodes data."""
-        while True:
-            time.sleep(self.FETCH_APPS_AND_NODES_INTERVAL)
-            try:
-                self.fetch_apps()
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
-            try:
-                self.fetch_nodes()
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
         rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
@@ -207,6 +188,7 @@ class Config:
     @staticmethod
     def validate_env_variables() -> None:
         """Validate that all required environment variables are set."""
+        # todo: add ZSEQUENCER_API_BATCHES_LIMIT to the list on new versions where .env is changed
         required_vars: list[str] = [
             "ZSEQUENCER_BLS_KEY_FILE",
             "ZSEQUENCER_BLS_KEY_PASSWORD",
@@ -331,6 +313,9 @@ class Config:
         )
         self.FETCH_APPS_AND_NODES_INTERVAL: int = int (
             os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
+        )
+        self.API_BATCHES_LIMIT: int = int (
+            os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100")
         )
         self.INIT_SEQUENCER_ID: str = os.getenv(
             "ZSEQUENCER_INIT_SEQUENCER_ID"

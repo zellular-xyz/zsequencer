@@ -65,7 +65,7 @@ def send_app_batches(app_name: str) -> None:
         }
     )
 
-    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/transactions'
+    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/batches'
     try:
         response: dict[str, Any] = requests.put(
             url=url, data=data, headers=zconfig.HEADERS
@@ -362,7 +362,7 @@ def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
         if node["id"] == zconfig.NODE["id"]:
             continue
 
-        url: str = f'{node["socket"]}/node/{app_name}/transactions/finalized/last'
+        url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
         try:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
