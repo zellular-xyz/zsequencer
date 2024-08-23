@@ -1,5 +1,5 @@
 """
-This module handles synchronization processes for locked and finalized transactions.
+This module handles synchronization processes for locked and finalized batches.
 """
 
 from typing import Any

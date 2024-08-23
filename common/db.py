@@ -185,15 +185,18 @@ class InMemoryDB:
 
 
     def get_batches(
-        self, app_name: str, states: set[str], after: float = float("-inf")
+        self, app_name: str, states: set[str], after: float = -1
     ) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
-        batches: dict[str, Any] = self.apps[app_name]["batches"].copy()
-        return {
-            batch_hash: batch
-            for batch_hash, batch in batches.items()
-            if batch["state"] in states and batch.get("index", 0) > after
-        }
+        batches: dict[str, Any] = {}
+        i = 0
+        for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
+            if batch["state"] in states and batch.get("index", 0) > after:
+                batches[batch_hash] = batch
+                i += 1
+            if i >= zconfig.API_BATCHES_LIMIT:
+                break
+        return batches
 
     def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
         """Get a batch by its hash."""
