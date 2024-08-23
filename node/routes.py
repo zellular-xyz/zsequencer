@@ -51,7 +51,7 @@ def put_batches(app_name: str) -> Response:
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
     if app_name not in list(zconfig.APPS):
-        return error_response(ErrorCodes.INVALID_REQUEST, "invalid app_name.")
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     data = request.data.decode('latin-1')
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
@@ -154,6 +154,8 @@ def get_state() -> Response:
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
+    if app_name not in list(zconfig.APPS):
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
     return success_response(data=last_finalized_batch)
 
@@ -161,6 +163,8 @@ def get_last_finalized_batch(app_name: str) -> Response:
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
 def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
+    if app_name not in list(zconfig.APPS):
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     after: int | None = request.args.get("after", default=0, type=int)
     batches: dict[str, Any] = zdb.get_batches(app_name, { state }, after)
     res: list[str] = list([batch['body'] for batch in batches.values()])
