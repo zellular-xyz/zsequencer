@@ -184,7 +184,7 @@ class InMemoryDB:
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any], count: int
     ) -> int:
         """Filter and add batches to the result based on state and index."""
-        for batch_hash, batch in loaded_batches.items():
+        for batch_hash, batch in list(loaded_batches.items()):
             if batch["state"] in states and batch.get("index", 0) > after:
                 batches[batch_hash] = batch
                 count += 1
