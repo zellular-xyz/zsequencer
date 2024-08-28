@@ -104,22 +104,13 @@ class InMemoryDB:
     def load_finalized_batches(app_name: str, index: int | None = None) -> dict[str, Any]:
         """Load finalized batches for a given app from the snapshot file."""
         if index is None:
-            snapshots: list[str] = []
-            for file in os.listdir(zconfig.SNAPSHOT_PATH):
-                if file.endswith(".json.gz") and file != 'keys.json.gz':
-                    try:
-                        file_app_name = '_'.join(file.split('_')[1:]).rsplit('.', 2)[0]
-                        if file_app_name == app_name:
-                            snapshots.append(file)
-                    except IndexError:
-                        continue
-            if not snapshots:
-                return {}
-
-            index = max(
-                (int(x.split("_")[0]) for x in snapshots if x.split("_")[0].isdigit()),
-                default=0,
-            )
+            # find latest batch index
+            indexes: list[int] = [
+                int(fname.strip(app_name + "_").strip(".json.gz"))
+                for fname in os.listdir(zconfig.SNAPSHOT_PATH)
+                if fname.startswith(app_name + "_")
+            ]
+            index = max(indexes, default=0)
         else:
             index = math.ceil(index / zconfig.SNAPSHOT_CHUNK) * zconfig.SNAPSHOT_CHUNK
 
