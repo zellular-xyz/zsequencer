@@ -1,5 +1,6 @@
 import gzip
 import json
+import math
 import os
 import threading
 import time
@@ -102,9 +103,6 @@ class InMemoryDB:
     @staticmethod
     def load_finalized_batches(app_name: str, index: int | None = None) -> dict[str, Any]:
         """Load finalized batches for a given app from the snapshot file."""
-        if index == 0:
-            return {}
-
         if index is None:
             snapshots: list[str] = []
             for file in os.listdir(zconfig.SNAPSHOT_PATH):
@@ -122,6 +120,11 @@ class InMemoryDB:
                 (int(x.split("_")[0]) for x in snapshots if x.split("_")[0].isdigit()),
                 default=0,
             )
+        else:
+            index = math.ceil(index / zconfig.SNAPSHOT_CHUNK) * zconfig.SNAPSHOT_CHUNK
+
+        if index <= 0:
+            return {}
 
         snapshot_path: str = os.path.join(
             zconfig.SNAPSHOT_PATH, f"{index}_{app_name}.json.gz"
@@ -189,13 +192,35 @@ class InMemoryDB:
     ) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
-        i = 0
-        for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
+        loaded_batches: dict[str, Any] = {}
+        count = 0
+        last_finalized_index = self.apps[app_name]["last_finalized_batch"].get("index", 0)
+        if last_finalized_index - after >= zconfig.SNAPSHOT_CHUNK:
+            loaded_batches = self.load_finalized_batches(app_name, after + 1)
+        for batch_hash, batch in loaded_batches.items():
             if batch["state"] in states and batch.get("index", 0) > after:
                 batches[batch_hash] = batch
-                i += 1
-            if i >= zconfig.API_BATCHES_LIMIT:
+                count += 1
+            if count >= zconfig.API_BATCHES_LIMIT:
                 break
+        if count < zconfig.API_BATCHES_LIMIT and \
+           (after + 1 + count)//zconfig.SNAPSHOT_CHUNK != after//zconfig.SNAPSHOT_CHUNK and \
+           (after + 1 + count)//zconfig.SNAPSHOT_CHUNK != last_finalized_index//zconfig.SNAPSHOT_CHUNK:
+            loaded_batches = self.load_finalized_batches(app_name, after + 1 + count)
+            for batch_hash, batch in loaded_batches.items():
+                if batch["state"] in states and batch.get("index", 0) > after:
+                    batches[batch_hash] = batch
+                    count += 1
+                if count >= zconfig.API_BATCHES_LIMIT:
+                    break
+            
+        if count < zconfig.API_BATCHES_LIMIT:
+            for batch_hash, batch in list(self.apps[app_name]["batches"].items()):
+                if batch["state"] in states and batch.get("index", 0) > after:
+                    batches[batch_hash] = batch
+                    count += 1
+                if count >= zconfig.API_BATCHES_LIMIT:
+                    break
         return batches
 
     def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
@@ -301,6 +326,8 @@ class InMemoryDB:
         for batch in list(batches.values()):
             if batch["state"] == "sequenced" and batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
+        if not batches.get(sig_data["hash"]):
+            return
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["lock_signature"] = sig_data["signature"]
         target_batch["nonsigners"] = sig_data["nonsigners"]
@@ -325,6 +352,8 @@ class InMemoryDB:
                 if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     snapshot_indexes.append(batch["index"])
 
+        if not batches.get(sig_data["hash"]):
+            return
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["finalization_signature"] = sig_data["signature"]
         target_batch["nonsigners"] = sig_data["nonsigners"]
