@@ -113,10 +113,10 @@ class InMemoryDB:
         )
         if index is None:
             index = 0
-            snapshots = [
+            snapshots = sorted(
                 file for file in os.listdir(snapshot_dir)
                 if file.endswith(".json.gz")
-            ]
+            )
             if snapshots:
                 index = int(snapshots[-1].split('.')[0])
         else:
