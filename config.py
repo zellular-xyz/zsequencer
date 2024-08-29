@@ -333,6 +333,12 @@ class Config:
 
         self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
+        for app_name in self.APPS:
+            snapshot_path: str = os.path.join(
+                zconfig.SNAPSHOT_PATH, app_name
+            )
+            os.makedirs(snapshot_path, exist_ok=True)
+
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:

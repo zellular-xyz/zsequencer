@@ -56,6 +56,11 @@ class InMemoryDB:
             }
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
+        for app_name in zconfig.APPS:
+            snapshot_path: str = os.path.join(
+                zconfig.SNAPSHOT_PATH, app_name
+            )
+            os.makedirs(snapshot_path, exist_ok=True)
     
     def fetch_nodes_and_apps(self) -> None:
         """Periodically fetches apps and nodes data."""
@@ -103,27 +108,26 @@ class InMemoryDB:
     @staticmethod
     def load_finalized_batches(app_name: str, index: int | None = None) -> dict[str, Any]:
         """Load finalized batches for a given app from the snapshot file."""
+        snapshot_dir: str = os.path.join(
+            zconfig.SNAPSHOT_PATH, app_name
+        )
         if index is None:
+            index = 0
             snapshots = [
-                file for file in os.listdir(zconfig.SNAPSHOT_PATH)
-                if file.endswith(".json.gz") and \
-                   '_'.join(file.split('_')[1:]).rsplit('.', 2)[0] == app_name
+                file for file in os.listdir(snapshot_dir)
+                if file.endswith(".json.gz")
             ]
-            index = max(
-                (int(file.split("_")[0]) for file in snapshots if file.split("_")[0].isdigit()),
-                default=0,
-            )
+            if snapshots:
+                index = int(snapshots[-1].split('.')[0])
         else:
             index = math.ceil(index / zconfig.SNAPSHOT_CHUNK) * zconfig.SNAPSHOT_CHUNK
 
         if index <= 0:
             return {}
 
-        snapshot_path: str = os.path.join(
-            zconfig.SNAPSHOT_PATH, f"{index}_{app_name}.json.gz"
-        )
         try:
-            with gzip.open(snapshot_path, "rt", encoding="UTF-8") as file:
+            with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
+                    ,"rt", encoding="UTF-8") as file:
                 return json.load(file)
         except (OSError, IOError, json.JSONDecodeError, FileNotFoundError) as error:
             zlogger.exception(
@@ -139,13 +143,12 @@ class InMemoryDB:
         remove_border: int = max(
             index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
         )
-
-        snapshot_path: str = os.path.join(
-            zconfig.SNAPSHOT_PATH, f"{index}_{app_name}.json.gz"
-        )
         try:
+            snapshot_dir: str = os.path.join(
+                zconfig.SNAPSHOT_PATH, app_name
+            )
             self.save_batches_to_file(
-                app_name, index, snapshot_border, snapshot_path
+                app_name, index, snapshot_border, snapshot_dir
             )
             self.prune_old_batches(app_name, remove_border)
         except Exception as error:
@@ -157,10 +160,11 @@ class InMemoryDB:
             )
 
     def save_batches_to_file(
-        self, app_name: str, index: int, snapshot_border: int, snapshot_path: str
+        self, app_name: str, index: int, snapshot_border: int, snapshot_dir
     ) -> None:
         """Helper function to save batches to a snapshot file."""
-        with gzip.open(snapshot_path, "wt", encoding="UTF-8") as file:
+        with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz", 
+                       "wt", encoding="UTF-8") as file:
             json.dump(
                 {
                     batch["hash"]: batch
@@ -181,41 +185,36 @@ class InMemoryDB:
 
 
     def __process_batches(
-        self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any], count: int
-    ) -> int:
+        self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
         for batch_hash, batch in list(loaded_batches.items()):
             if batch["state"] in states and batch.get("index", 0) > after:
                 batches[batch_hash] = batch
-                count += 1
-            if count >= zconfig.API_BATCHES_LIMIT:
-                return count
-        return count
+            if len(batches) >= zconfig.API_BATCHES_LIMIT:
+                return
+        return
 
     def get_batches(self, app_name: str, states: set[str], after: float = -1) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
-        count = 0
         last_finalized_index = self.apps[app_name]["last_finalized_batch"].get("index", 0)
 
         if last_finalized_index - after >= zconfig.SNAPSHOT_CHUNK:
             loaded_batches = self.load_finalized_batches(app_name, after + 1)
-            count = self.__process_batches(loaded_batches, states, after, batches, count)
-            if count >= zconfig.API_BATCHES_LIMIT:
+            self.__process_batches(loaded_batches, states, after, batches)
+            if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return batches
-
-        next_chunk = (after + 1 + count) // zconfig.SNAPSHOT_CHUNK
+              
         current_chunk = after // zconfig.SNAPSHOT_CHUNK
+        next_chunk = (after + 1 + len(batches)) // zconfig.SNAPSHOT_CHUNK
         finalized_chunk = last_finalized_index // zconfig.SNAPSHOT_CHUNK
 
         if next_chunk not in [current_chunk, finalized_chunk]:
-            loaded_batches = self.load_finalized_batches(app_name, after + 1 + count)
-            count = self.__process_batches(loaded_batches, states, after, batches, count)
-            if count >= zconfig.API_BATCHES_LIMIT:
-                return batches
-            
-        self.__process_batches(self.apps[app_name]["batches"], states, after, batches, count)
-
+            loaded_batches = self.load_finalized_batches(app_name, after + 1 + len(batches))
+            self.__process_batches(loaded_batches, states, after, batches)
+            if len(batches) >= zconfig.API_BATCHES_LIMIT:
+                return batches 
+        self.__process_batches(self.apps[app_name]["batches"], states, after, batches)
         return batches
 
     def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
