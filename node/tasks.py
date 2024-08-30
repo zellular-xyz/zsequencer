@@ -343,11 +343,10 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             zdb.reinitialize_db(
                 app_name, new_sequencer_id, all_nodes_last_finalized_batch
             )
-        if zconfig.NODE['id'] == zconfig.SEQUENCER['id']:
-            time.sleep(3)
-        else:
+        if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             time.sleep(10)
         
+        zdb.reset_timestamps(app_name)
         zdb.pause_node.clear()
         return True
 

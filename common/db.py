@@ -480,6 +480,11 @@ class InMemoryDB:
             )
             self.apps[app_name]["batches"][filtered_batch["hash"]] = filtered_batch
             self.apps[app_name]["last_sequenced_batch"] = filtered_batch
+    
+    def reset_timestamps(self, app_name: str) -> None:
+        for batch in list(self.apps[app_name]["batches"].values()):
+            if batch["state"] != "finalized":
+                batch["timestamp"] = int(time.time())
 
     def reinitialize_batches(
         self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
