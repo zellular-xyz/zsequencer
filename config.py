@@ -335,7 +335,7 @@ class Config:
 
         for app_name in self.APPS:
             snapshot_path: str = os.path.join(
-                self.SNAPSHOT_PATH, app_name
+                self.SNAPSHOT_PATH, self.RELEASE_VERSION, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
 

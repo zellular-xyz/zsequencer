@@ -19,6 +19,7 @@ class ErrorCodes:
     """Application-specific error codes as strings."""
 
     INVALID_REQUEST: str = "invalid_request"
+    INVALID_NODE_VERSION: str = "invalid_node_version"
     IS_SEQUENCER: str = "is_sequencer"
     IS_NOT_SEQUENCER: str = "is_not_sequencer"
     INVALID_SEQUENCER: str = "invalid_sequencer"
@@ -33,6 +34,7 @@ class ErrorMessages:
     """Human-readable error messages corresponding to error codes."""
 
     INVALID_REQUEST: str = "The request is invalid."
+    INVALID_NODE_VERSION: str = "Invalid node version. Please get the latest version of node."
     IS_SEQUENCER: str = "This node is the sequencer."
     IS_NOT_SEQUENCER: str = "This node is not the sequencer."
     INVALID_SEQUENCER: str = "The sequencer ID is invalid."
