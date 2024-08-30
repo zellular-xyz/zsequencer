@@ -38,8 +38,8 @@ def put_batches() -> Response:
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
-    if req_data.get("version", "") != zconfig.RELEASE_VERSION:
-        zlogger.warning(f'Invalid node version. expected {zconfig.RELEASE_VERSION} got {req_data["version"]}')
+    if req_data.get("version", "") != zconfig.VERSION:
+        zlogger.warning(f'Invalid node version. expected {zconfig.VERSION} got {req_data["version"]}')
         return error_response(ErrorCodes.INVALID_NODE_VERSION, ErrorMessages.INVALID_NODE_VERSION)
 
     concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])

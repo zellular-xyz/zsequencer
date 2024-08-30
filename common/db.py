@@ -58,7 +58,7 @@ class InMemoryDB:
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
             snapshot_path: str = os.path.join(
-                zconfig.SNAPSHOT_PATH, zconfig.RELEASE_VERSION, app_name
+                zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
     
@@ -109,7 +109,7 @@ class InMemoryDB:
     def load_finalized_batches(app_name: str, index: int | None = None) -> dict[str, Any]:
         """Load finalized batches for a given app from the snapshot file."""
         snapshot_dir: str = os.path.join(
-            zconfig.SNAPSHOT_PATH, zconfig.RELEASE_VERSION, app_name
+            zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
         )
         if index is None:
             index = 0
@@ -145,7 +145,7 @@ class InMemoryDB:
         )
         try:
             snapshot_dir: str = os.path.join(
-                zconfig.SNAPSHOT_PATH, zconfig.RELEASE_VERSION, app_name
+                zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
             )
             self.save_batches_to_file(
                 app_name, index, snapshot_border, snapshot_dir

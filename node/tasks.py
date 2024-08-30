@@ -63,7 +63,7 @@ def send_app_batches(app_name: str) -> None:
             "locked_hash": last_locked_batch.get("hash", ""),
             "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "timestamp": int(time.time()),
-            "version": zconfig.RELEASE_VERSION
+            "version": zconfig.VERSION
         }
     )
 
