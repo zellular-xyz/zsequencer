@@ -238,7 +238,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = 'v0.0.6'
+        self.VERSION = 'v0.0.7'
         self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
