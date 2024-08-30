@@ -16,6 +16,7 @@ from eigensdk.crypto.bls import attestation
 from common import bls, utils
 from common.db import zdb
 from common.logger import zlogger
+from common.errors import ErrorCodes
 from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
@@ -62,6 +63,7 @@ def send_app_batches(app_name: str) -> None:
             "locked_hash": last_locked_batch.get("hash", ""),
             "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "timestamp": int(time.time()),
+            "version": zconfig.VERSION
         }
     )
 
@@ -71,6 +73,9 @@ def send_app_batches(app_name: str) -> None:
             url=url, data=data, headers=zconfig.HEADERS
         ).json()
         if response["status"] == "error":
+            if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
+                zlogger.warning(response["error"]["message"])
+                return
             zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
             return
 
@@ -343,11 +348,10 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             zdb.reinitialize_db(
                 app_name, new_sequencer_id, all_nodes_last_finalized_batch
             )
-        if zconfig.NODE['id'] == zconfig.SEQUENCER['id']:
-            time.sleep(3)
-        else:
+        if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             time.sleep(10)
         
+        zdb.reset_timestamps(app_name)
         zdb.pause_node.clear()
         return True
 

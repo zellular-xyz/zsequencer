@@ -238,7 +238,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.RELEASE_VERSION = 'v0.0.6'
+        self.VERSION = 'v0.0.7'
         self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
@@ -332,6 +332,12 @@ class Config:
         self.init_sequencer()
 
         self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
+
+        for app_name in self.APPS:
+            snapshot_path: str = os.path.join(
+                self.SNAPSHOT_PATH, self.VERSION, app_name
+            )
+            os.makedirs(snapshot_path, exist_ok=True)
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
