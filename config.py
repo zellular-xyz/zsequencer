@@ -139,6 +139,7 @@ class Config:
 
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
+        self.SEQUENCER = self.NODES[self.SEQUENCER['id']]
         self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
     
 
@@ -189,7 +190,6 @@ class Config:
     @staticmethod
     def validate_env_variables() -> None:
         """Validate that all required environment variables are set."""
-        # todo: add ZSEQUENCER_API_BATCHES_LIMIT to the list on new versions where .env is changed
         required_vars: list[str] = [
             "ZSEQUENCER_BLS_KEY_FILE",
             "ZSEQUENCER_BLS_KEY_PASSWORD",
