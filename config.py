@@ -139,6 +139,7 @@ class Config:
 
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
+        self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
     
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
