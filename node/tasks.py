@@ -85,6 +85,7 @@ def send_app_batches(app_name: str) -> None:
             sequencer_response=response["data"],
         )
         zdb.is_sequencer_down = False
+        zdb.empty_missed_batches(app_name)
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)

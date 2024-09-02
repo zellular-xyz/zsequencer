@@ -139,7 +139,7 @@ class Config:
 
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
-        self.SEQUENCER = self.NODES[self.SEQUENCER['id']]
+        self.SEQUENCER.update(self.NODES[self.SEQUENCER['id']])
         self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
     
 
