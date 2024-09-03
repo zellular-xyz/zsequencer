@@ -64,11 +64,15 @@ def post_sign_sync_point() -> Response:
     """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["app_name", "state", "index", "hash", "chaining_hash"]
+    required_keys: list[str] = [
+        "app_name", "state", "index", "hash", "chaining_hash", "version"
+    ]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
+    if zconfig.VERSION != req_data["version"]:
+        return error_response(ErrorCodes.INVALID_NODE_VERSION)
+    del req_data["version"]
     req_data["signature"] = tasks.sign_sync_point(req_data)
     return success_response(data=req_data)
 
@@ -78,11 +82,14 @@ def post_sign_sync_point() -> Response:
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"]
+    required_keys: list[str] = [
+        "sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp", "version"
+    ]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
+    if zconfig.VERSION != req_data["version"]:
+        return error_response(ErrorCodes.INVALID_NODE_VERSION)
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
     if zdb.has_missed_batches() or zdb.is_sequencer_down:
@@ -106,11 +113,12 @@ def post_dispute() -> Response:
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["timestamp", "proofs"]
+    required_keys: list[str] = ["timestamp", "proofs", "version"]
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
+    if zconfig.VERSION != req_data["version"]:
+        return error_response(ErrorCodes.INVALID_NODE_VERSION)
     if utils.is_switch_approved(req_data["proofs"]):
         zdb.pause_node.set()
         old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(

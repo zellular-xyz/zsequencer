@@ -75,6 +75,7 @@ async def gather_and_aggregate_signatures(
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
 
+    data["version"] = zconfig.VERSION
     sign_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(
             request_signature(

@@ -295,6 +295,7 @@ async def send_dispute_request(
             "apps_missed_batches": apps_missed_batches,
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
+            "version": zconfig.VERSION
         }
     )
     url: str = f'{node["socket"]}/node/dispute'
@@ -319,6 +320,7 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
             {
                 "proofs": proofs,
                 "timestamp": int(time.time()),
+                "version": zconfig.VERSION
             }
         )
         url: str = f'{node["socket"]}/node/switch'
