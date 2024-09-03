@@ -27,6 +27,6 @@ Contents
 
 .. toctree::
 
+   sdk
    integration
    protocol
-
