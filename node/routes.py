@@ -165,7 +165,11 @@ def get_last_finalized_batch(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
-    return success_response(data=last_finalized_batch)
+    data = {
+        "last_finalized_batch": last_finalized_batch,
+        "version": zconfig.VERSION
+    }
+    return success_response(data=data)
 
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])

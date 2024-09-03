@@ -376,8 +376,11 @@ def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
             ).json()
-            batch: dict[str, Any] = response.get("data", {})
-            if batch.get("index", 0) > last_finalized_batch.get("index", 0):
+            data: dict[str, Any] = response["data"]
+            batch = data.get("last_finalized_batch", {})
+            version = data.get("version", "")
+            if version == zconfig.VERSION and \
+                batch.get("index", 0) > last_finalized_batch.get("index", 0):
                 last_finalized_batch = batch
         except Exception:
             zlogger.exception("An unexpected error occurred:")
