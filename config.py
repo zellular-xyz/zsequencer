@@ -139,6 +139,8 @@ class Config:
 
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
+        self.SEQUENCER.update(self.NODES[self.SEQUENCER['id']])
+        self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
     
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
@@ -188,7 +190,6 @@ class Config:
     @staticmethod
     def validate_env_variables() -> None:
         """Validate that all required environment variables are set."""
-        # todo: add ZSEQUENCER_API_BATCHES_LIMIT to the list on new versions where .env is changed
         required_vars: list[str] = [
             "ZSEQUENCER_BLS_KEY_FILE",
             "ZSEQUENCER_BLS_KEY_PASSWORD",
@@ -238,7 +239,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = 'v0.0.7'
+        self.VERSION = 'v0.0.8'
         self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")

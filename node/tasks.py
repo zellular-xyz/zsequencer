@@ -79,12 +79,14 @@ def send_app_batches(app_name: str) -> None:
             zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
             return
 
-        sync_with_sequencer(
+        censored_batches = sync_with_sequencer(
             app_name=app_name,
             initialized_batches=initialized_batches,
             sequencer_response=response["data"],
         )
         zdb.is_sequencer_down = False
+        if not censored_batches:
+            zdb.empty_missed_batches(app_name)
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
@@ -95,7 +97,7 @@ def send_app_batches(app_name: str) -> None:
 
 def sync_with_sequencer(
     app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
-) -> None:
+) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(app_name=app_name, batches_data=sequencer_response["batches"])
     last_locked_index: str = zdb.apps[app_name]["last_locked_batch"].get("index", 0)
@@ -135,7 +137,7 @@ def sync_with_sequencer(
             zlogger.error("Invalid finalizing signature received from sequencer")
 
 
-    check_censorship(
+    return check_censorship(
         app_name=app_name,
         initialized_batches=initialized_batches,
         sequencer_response=sequencer_response,
@@ -144,7 +146,7 @@ def sync_with_sequencer(
 
 def check_censorship(
     app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
-) -> None:
+) -> dict[str, Any]:
     """Check for censorship and update missed batches."""
     sequenced_hashes: set[str] = set(batch["hash"] for batch in sequencer_response["batches"])
     censored_batches: dict[str, Any] = {
@@ -164,6 +166,7 @@ def check_censorship(
     missed_batches.update(censored_batches)
 
     zdb.set_missed_batches(app_name=app_name, batches_data=missed_batches)
+    return censored_batches
 
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
