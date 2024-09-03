@@ -166,6 +166,8 @@ def get_batches(app_name: str, state: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     after: int | None = request.args.get("after", default=0, type=int)
-    batches: dict[str, Any] = zdb.get_batches(app_name, { state }, after)
-    res: list[str] = list([batch['body'] for batch in batches.values()])
+    batches: dict[str, str] = zdb.get_batches(app_name, { state }, after)
+    batches: list[str]: list(batches.values())
+    batches.sort(key = lambda batch: batch["index"])
+    res: list[str] = [batch['body'] for batch in batches]
     return success_response(data=res)
