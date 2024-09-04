@@ -17,33 +17,6 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
-# TODO: should remove
-@node_blueprint.route("/db", methods=["GET"])
-def get_db() -> dict[str, Any]:
-    """Get the state of the in-memory database."""
-    apps_data: dict[str, Any] = {}
-
-    for app_name in list(zconfig.APPS.keys()):
-        sequenced_num: int = zdb.get_last_batch(app_name, "sequenced").get("index", 0)
-        locked_num: int = zdb.get_last_batch(app_name, "locked").get("index", 0)
-        finalized_num: int = zdb.get_last_batch(app_name, "finalized").get("index", 0)
-        all_num: int = len(zdb.apps[app_name]["batches"])
-        apps_data[app_name] = {
-            "batches_state": {
-                "sequenced": sequenced_num,
-                "locked": locked_num,
-                "finalized": finalized_num,
-                "all": all_num,
-            },
-            "nodes_state": zdb.apps[app_name]["nodes_state"],
-            "batches": sorted(
-                list(zdb.apps[app_name]["batches"].values()),
-                key=lambda batch: batch.get("index", 0),
-            ),
-        }
-    return apps_data
-
-
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
