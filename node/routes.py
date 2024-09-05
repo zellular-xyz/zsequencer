@@ -138,10 +138,13 @@ def get_last_finalized_batch(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
+    version = request.args.get("version", None)
+    if version and zconfig.VERSION != version:
+        return error_response(ErrorCodes.INVALID_NODE_VERSION)
     data = {
         "last_finalized_batch": last_finalized_batch,
         "version": zconfig.VERSION
-    }
+    } if version else last_finalized_batch   
     return success_response(data=data)
 
 

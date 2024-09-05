@@ -373,9 +373,14 @@ def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
 
         url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
         try:
+            params = {
+                "version": zconfig.VERSION
+            }
             response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS
+                url=url, headers=zconfig.HEADERS, params=params
             ).json()
+            if response["status"] == "error":
+                continue
             data: dict[str, Any] = response["data"]
             batch = data.get("last_finalized_batch", {})
             version = data.get("version", "")
