@@ -129,13 +129,15 @@ class InMemoryDB:
             with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
                     ,"rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError, FileNotFoundError) as error:
+        except FileNotFoundError:
+            pass
+        except (OSError, IOError, json.JSONDecodeError) as error:
             zlogger.exception(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
                 error,
             )
-            return {}
+        return {}
 
     def save_snapshot(self, app_name: str, index: int) -> None:
         """Save a snapshot of the finalized batches to a file."""
@@ -197,8 +199,8 @@ class InMemoryDB:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
         last_finalized_index = self.apps[app_name]["last_finalized_batch"].get("index", 0)
-        current_chunk = after // zconfig.SNAPSHOT_CHUNK
-        next_chunk = (after + 1 + len(batches)) // zconfig.SNAPSHOT_CHUNK
+        current_chunk = (after + 1) // zconfig.SNAPSHOT_CHUNK
+        next_chunk = (after + 1 + zconfig.API_BATCHES_LIMIT) // zconfig.SNAPSHOT_CHUNK
         finalized_chunk = last_finalized_index // zconfig.SNAPSHOT_CHUNK
         if current_chunk != finalized_chunk:
             loaded_batches = self.load_finalized_batches(app_name, after + 1)
