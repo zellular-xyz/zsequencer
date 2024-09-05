@@ -210,7 +210,7 @@ class InMemoryDB:
             loaded_batches = self.load_finalized_batches(app_name, after + 1 + len(batches))
             self.__process_batches(loaded_batches, states, after, batches)
         self.__process_batches(self.apps[app_name]["batches"], states, after, batches)
-        return dict(sorted(batches.items(), key=lambda x: x[1].get('index',0)))
+        return batches
 
     def get_batch(self, app_name: str, batch_hash: str) -> dict[str, Any]:
         """Get a batch by its hash."""

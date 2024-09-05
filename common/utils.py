@@ -10,9 +10,8 @@ from typing import Any
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from web3 import Account
-
 from config import zconfig
-
+from flask import request
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
@@ -39,6 +38,16 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
         return func(*args, **kwargs)
 
+    return decorated_function
+
+def version_check(func: Callable[..., Any]) -> Decorator:
+    """Decorator to check version matches or not."""
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        version = request.headers.get("Version","")
+        if version and version != zconfig.VERSION:
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
+        return func(*args, **kwargs)
     return decorated_function
 
 

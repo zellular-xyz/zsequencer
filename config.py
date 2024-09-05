@@ -240,7 +240,10 @@ class Config:
         self.validate_env_variables()
 
         self.VERSION = 'v0.0.8'
-        self.HEADERS: dict[str, Any] = {"Content-Type": "application/json"}
+        self.HEADERS: dict[str, Any] = {
+            "Content-Type": "application/json",
+            "Version": self.VERSION
+        }
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
         self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")

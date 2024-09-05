@@ -5,10 +5,9 @@ This module defines the Flask blueprint for sequencer-related routes.
 from typing import Any
 
 from flask import Blueprint, Response, request
-import os
 from common import utils
-from common.db import zdb, zlogger
-from common.errors import ErrorCodes, ErrorMessages
+from common.db import zdb
+from common.errors import ErrorCodes
 from common.response_utils import error_response, success_response
 from config import zconfig
 
@@ -16,6 +15,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 
 
 @sequencer_blueprint.route("/batches", methods=["PUT"])
+@utils.version_check
 @utils.sequencer_only
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
@@ -37,10 +37,6 @@ def put_batches() -> Response:
     error_message: str = utils.validate_request(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
-    if req_data.get("version", "") != zconfig.VERSION:
-        zlogger.warning(f'Invalid node version. expected {zconfig.VERSION} got {req_data["version"]}')
-        return error_response(ErrorCodes.INVALID_NODE_VERSION, ErrorMessages.INVALID_NODE_VERSION)
 
     concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified: bool = utils.is_eth_sig_verified(
@@ -94,7 +90,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     #     txs = {}
 
     return {
-        "batches": list(batches.values()),
+        "batches": sorted(batches.values(), key=lambda x: x['index']),
         "finalized": {
             "index": last_finalized_batch.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),

@@ -63,7 +63,6 @@ def send_app_batches(app_name: str) -> None:
             "locked_hash": last_locked_batch.get("hash", ""),
             "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "timestamp": int(time.time()),
-            "version": zconfig.VERSION
         }
     )
 
@@ -295,7 +294,6 @@ async def send_dispute_request(
             "apps_missed_batches": apps_missed_batches,
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
-            "version": zconfig.VERSION
         }
     )
     url: str = f'{node["socket"]}/node/dispute'
@@ -320,7 +318,6 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
             {
                 "proofs": proofs,
                 "timestamp": int(time.time()),
-                "version": zconfig.VERSION
             }
         )
         url: str = f'{node["socket"]}/node/switch'
@@ -373,19 +370,13 @@ def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
 
         url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
         try:
-            params = {
-                "version": zconfig.VERSION
-            }
             response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS, params=params
+                url=url, headers=zconfig.HEADERS
             ).json()
             if response["status"] == "error":
                 continue
-            data: dict[str, Any] = response["data"]
-            batch = data.get("last_finalized_batch", {})
-            version = data.get("version", "")
-            if version == zconfig.VERSION and \
-                batch.get("index", 0) > last_finalized_batch.get("index", 0):
+            batch: dict[str, Any] = response["data"]
+            if batch.get("index", 0) > last_finalized_batch.get("index", 0):
                 last_finalized_batch = batch
         except Exception:
             zlogger.exception("An unexpected error occurred:")
