@@ -45,7 +45,7 @@ Finalising
 
 * **Simultaneous Requests:** To enhance efficiency, the sequencer simultaneously requests locking signatures for a current index and finalising signatures for an older index (for which it has already received locking signatures) in each request.
 
-.. figure:: images/image2.png
+.. figure:: images/piplined_proofs.png
   :align: center
   :width: 800
   :alt: Finalising Process

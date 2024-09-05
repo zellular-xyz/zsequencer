@@ -30,7 +30,17 @@ Install the zelluar.py package via pip:
 Getting Nodes
 -------------
 
-Zellular Testnet is deployed on the EigenLayer Holesky network. You can query the list of nodes using the following code:
+Zellular Testnet is deployed on the EigenLayer Holesky network. The list of operators can be queried using the following `curl` command:
+
+.. code-block:: shell
+
+    curl \
+      --header 'content-type: application/json' \
+      --url 'https://api.studio.thegraph.com/query/85556/bls_apk_registry/version/latest' \
+      --data '{"query":"{ operators { id socket stake } }"}'
+
+
+The list of nodes can also be quried using the following python code:
 
 .. code-block:: python
 

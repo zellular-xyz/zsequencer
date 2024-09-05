@@ -1,32 +1,26 @@
 Zellular Sequencer
 ==================
 
-`Replicating <https://en.wikipedia.org/wiki/State_machine_replication>`_ centralised services across multiple nodes creates a decentralised system that remains robust, even if some nodes fail or act maliciously—this is the essence of `Byzantine Fault Tolerance <https://en.wikipedia.org/wiki/Byzantine_fault>`_.
+Zellular is a decentralized sequencer that enables developing high-throughput dApps implemented in high-level languages like JS, Python, and Go. These dApps can be decentralized as `Byzantine Fault Tolerant (BFT) <https://en.wikipedia.org/wiki/Byzantine_fault>`_ services, `replicated <https://en.wikipedia.org/wiki/State_machine_replication>`_ and secured on `EigenLayer <https://www.eigenlayer.xyz/>`_ and other restaking platforms.
 
-The first phase in decentralizing a centralized service using this approach is to replace the conventional username/password login with signature-based authentication at every place where users send their requests to enable each node to independently verify those requests.
-
-In the second phase, ensuring that all replicated nodes maintain the same data or state is crucial. This requires all nodes to receive and process user-signed requests in the exact same order. If nodes process updates in different orders, they can become out of sync. The **Zellular Sequencer** addresses this challenge by making sure that every node in the network processes every request in the same sequence.
-
-In Zellular Sequencer, one of the network nodes, the Sequencer, takes the leader role for sequencing tasks. User-signed requests received by a node are applied to the database only after being sent to the leader and received back along with other nodes’ requests in a consistent order.
-
-
-.. figure:: images/image1.png
+.. figure:: images/replication.png
   :align: center
-  :width: 500
-  :alt: Zellular Sequencer Architecture
+  :width: 700
+  :alt: Replicated BFT Services
 
-
-If the Sequencer malfunctions—by going offline, censoring requests, or sending inconsistent orders—other nodes can challenge its actions. Should enough nodes agree, the Sequencer's role will seamlessly transfer to a new leader. This mechanism makes the Zellular Sequencer a Byzantine Fault Tolerant (BFT) service, facilitating sequencing without a single point of failure.
+High-throughput dApps need to manage a large volume of user interactions, such as transactions or updates, which need to be processed quickly and consistently. In a decentralized environment, these requests are no longer directed to a single server but must be propagated across all replicas of the service in the exact same sequence to ensure consistency among the nodes. Zellular acts as a decentralized, high-performance messaging system, ensuring that updates are propagated and applied in the same order across all nodes, preserving database uniformity.
 
 .. note::
 
-   This project is under active development.
+   This project is under active development and should not be used in production yet.
 
 Contents
 --------
 
 .. toctree::
 
+   architecture
+   protocol
    sdk
    integration
-   protocol
+   
