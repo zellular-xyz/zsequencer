@@ -156,6 +156,5 @@ def get_batches(app_name: str, state: str) -> Response:
     after: int | None = request.args.get("after", default=0, type=int)
     batches: dict[str, str] = zdb.get_batches(app_name, { state }, after)
     batches: list[str] = list(batches.values())
-    batches.sort(key = lambda batch: batch["index"])
     res: list[str] = [batch['body'] for batch in batches]
     return success_response(data=res)
