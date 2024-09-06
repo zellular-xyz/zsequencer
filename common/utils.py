@@ -41,7 +41,7 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 def validation_check(func: Callable[..., Any]) -> Decorator:
-    """Decorator to check version matches or not."""
+    """Decorator to validate the request."""
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         version = request.headers.get("Version","")

@@ -81,7 +81,7 @@ class InMemoryDB:
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
             last_finalized_batch: dict[str, Any] = max(
-                (batch for batch in finalized_batches.values() if batch.get('finalization_signature')) ,
+                (batch for batch in finalized_batches.values() if batch.get("finalization_signature")) ,
                 key=lambda batch: batch["index"],
                 default={},
             )
