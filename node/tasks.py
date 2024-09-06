@@ -94,9 +94,9 @@ def send_app_batches(app_name: str) -> None:
             zdb.is_sequencer_down = True
 
         check_finalization()
-        sequencer_last_finalized = response.get("data",{}).get("finalized",{}).get("index",0)
-        last_finalized = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
-        if sequencer_last_finalized <= last_finalized:
+        sequencer_last_finalized_hash = response.get("data",{}).get("finalized",{}).get("hash","")
+        if not sequencer_last_finalized_hash or \
+            zdb.apps[app_name]["batches"].get(sequencer_last_finalized_hash):
             zconfig.IS_SYNCING = False
             break
 
