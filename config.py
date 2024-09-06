@@ -244,6 +244,7 @@ class Config:
             "Content-Type": "application/json",
             "Version": self.VERSION
         }
+        self.IS_SYNCING: bool = True
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
         self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
@@ -335,6 +336,9 @@ class Config:
 
         self.init_sequencer()
 
+        if self.SEQUENCER["id"] == self.NODE["id"]:
+            self.IS_SYNCING = False
+            
         self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:

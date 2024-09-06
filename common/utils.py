@@ -40,13 +40,15 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     return decorated_function
 
-def version_check(func: Callable[..., Any]) -> Decorator:
+def validation_check(func: Callable[..., Any]) -> Decorator:
     """Decorator to check version matches or not."""
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         version = request.headers.get("Version","")
         if version and version != zconfig.VERSION:
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
+        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
+            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
         return func(*args, **kwargs)
     return decorated_function
 

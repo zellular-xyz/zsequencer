@@ -81,7 +81,7 @@ class InMemoryDB:
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
             last_finalized_batch: dict[str, Any] = max(
-                (batch for batch in finalized_batches.values()),
+                (batch for batch in finalized_batches.values() if batch.get('finalization_signature')) ,
                 key=lambda batch: batch["index"],
                 default={},
             )
@@ -199,9 +199,9 @@ class InMemoryDB:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
         last_finalized_index = self.apps[app_name]["last_finalized_batch"].get("index", 0)
-        current_chunk = (after + 1) // zconfig.SNAPSHOT_CHUNK
-        next_chunk = (after + 1 + zconfig.API_BATCHES_LIMIT) // zconfig.SNAPSHOT_CHUNK
-        finalized_chunk = last_finalized_index // zconfig.SNAPSHOT_CHUNK
+        current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
+        next_chunk = math.ceil((after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK)
+        finalized_chunk = math.ceil(last_finalized_index / zconfig.SNAPSHOT_CHUNK)
         if current_chunk != finalized_chunk:
             loaded_batches = self.load_finalized_batches(app_name, after + 1)
             self.__process_batches(loaded_batches, states, after, batches)

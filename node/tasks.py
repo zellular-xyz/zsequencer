@@ -39,59 +39,66 @@ def send_batches() -> None:
 
 def send_app_batches(app_name: str) -> None:
     """Send batches for a specific app."""
-    initialized_batches: dict[str, Any] = zdb.get_batches(
-        app_name=app_name, states={"initialized"}
-    )
-
-    last_synced_batch: dict[str, Any] = zdb.get_last_batch(
-        app_name=app_name, state="sequenced"
-    )
-    last_locked_batch: dict[str, Any] = zdb.get_last_batch(app_name=app_name, state="locked")
-
-    concat_hash: str = "".join(initialized_batches.keys())
-    concat_sig: str = utils.eth_sign(concat_hash)
-    data: str = json.dumps(
-        {
-            "app_name": app_name,
-            "batches": list(initialized_batches.values()),
-            "node_id": zconfig.NODE["id"],
-            "signature": concat_sig,
-            "sequenced_index": last_synced_batch.get("index", 0),
-            "sequenced_hash": last_synced_batch.get("hash", ""),
-            "sequenced_chaining_hash": last_synced_batch.get("chaining_hash", ""),
-            "locked_index": last_locked_batch.get("index", 0),
-            "locked_hash": last_locked_batch.get("hash", ""),
-            "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
-            "timestamp": int(time.time()),
-        }
-    )
-
-    url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/batches'
-    try:
-        response: dict[str, Any] = requests.put(
-            url=url, data=data, headers=zconfig.HEADERS
-        ).json()
-        if response["status"] == "error":
-            if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
-                zlogger.warning(response["error"]["message"])
-                return
-            zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
-            return
-
-        censored_batches = sync_with_sequencer(
-            app_name=app_name,
-            initialized_batches=initialized_batches,
-            sequencer_response=response["data"],
+    while True:
+        initialized_batches: dict[str, Any] = zdb.get_batches(
+            app_name=app_name, states={"initialized"}
         )
-        zdb.is_sequencer_down = False
-        if not censored_batches:
-            zdb.empty_missed_batches(app_name)
-    except Exception:
-        zlogger.exception("An unexpected error occurred:")
-        zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
-        zdb.is_sequencer_down = True
 
-    check_finalization()
+        last_synced_batch: dict[str, Any] = zdb.get_last_batch(
+            app_name=app_name, state="sequenced"
+        )
+        last_locked_batch: dict[str, Any] = zdb.get_last_batch(app_name=app_name, state="locked")
+
+        concat_hash: str = "".join(initialized_batches.keys())
+        concat_sig: str = utils.eth_sign(concat_hash)
+        data: str = json.dumps(
+            {
+                "app_name": app_name,
+                "batches": list(initialized_batches.values()),
+                "node_id": zconfig.NODE["id"],
+                "signature": concat_sig,
+                "sequenced_index": last_synced_batch.get("index", 0),
+                "sequenced_hash": last_synced_batch.get("hash", ""),
+                "sequenced_chaining_hash": last_synced_batch.get("chaining_hash", ""),
+                "locked_index": last_locked_batch.get("index", 0),
+                "locked_hash": last_locked_batch.get("hash", ""),
+                "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
+                "timestamp": int(time.time()),
+            }
+        )
+
+        url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/batches'
+        response: dict[str, Any] = {}
+        try:
+            response = requests.put(
+                url=url, data=data, headers=zconfig.HEADERS
+            ).json()
+            if response["status"] == "error":
+                if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
+                    zlogger.warning(response["error"]["message"])
+                    return
+                zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
+                return
+
+            censored_batches = sync_with_sequencer(
+                app_name=app_name,
+                initialized_batches=initialized_batches,
+                sequencer_response=response["data"],
+            )
+            zdb.is_sequencer_down = False
+            if not censored_batches:
+                zdb.empty_missed_batches(app_name)
+        except Exception:
+            zlogger.exception("An unexpected error occurred:")
+            zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
+            zdb.is_sequencer_down = True
+
+        check_finalization()
+        sequencer_last_finalized = response.get("data",{}).get("finalized",{}).get("index",0)
+        last_finalized = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
+        if sequencer_last_finalized <= last_finalized:
+            zconfig.IS_SYNCING = False
+            break
 
 
 def sync_with_sequencer(
@@ -232,7 +239,8 @@ async def gather_disputes(
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
-    if (not zdb.has_missed_batches() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
+    if zconfig.IS_SYNCING or (not zdb.has_missed_batches() and not zdb.is_sequencer_down) \
+        or zdb.pause_node.is_set():
         return
 
     timestamp: int = int(time.time())
