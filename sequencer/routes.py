@@ -15,7 +15,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 
 
 @sequencer_blueprint.route("/batches", methods=["PUT"])
-@utils.validation_check
+@utils.validate_request
 @utils.sequencer_only
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
@@ -34,7 +34,7 @@ def put_batches() -> Response:
         "locked_chaining_hash",
         "timestamp",
     ]
-    error_message: str = utils.validate_request(req_data, required_keys)
+    error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 

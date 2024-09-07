@@ -40,7 +40,7 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     return decorated_function
 
-def validation_check(func: Callable[..., Any]) -> Decorator:
+def validate_request(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
@@ -75,7 +75,7 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         return False
 
 
-def validate_request(req_data: dict[str, Any], required_keys: list[str]) -> str:
+def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
     """Validate a request by checking if required keys are present."""
     if all(key in req_data for key in required_keys):
         return ""
