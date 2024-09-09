@@ -45,8 +45,8 @@ def check_state(
                 f"{node_url}/node/{app_name}/batches/finalized/last"
             )
             response.raise_for_status()
-            last_finalized_batch: dict[str, Any] = response.json()
-            last_finalized_index: int = last_finalized_batch["data"].get("index", 0)
+            last_finalized_batch: dict[str, Any] = response.json()["data"]
+            last_finalized_index: int = last_finalized_batch.get("index", 0)
             zlogger.info(
                 f"Last finalized index: {last_finalized_index} -  ({time.time() - start_time} s)"
             )

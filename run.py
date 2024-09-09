@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from flask import Flask
+from flask import Flask, redirect, url_for
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -29,6 +29,11 @@ def create_app() -> Flask:
 
     app.register_blueprint(node_blueprint, url_prefix="/node")
     app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
+
+    @app.route("/", methods=["GET"])
+    def base_redirect():
+        return redirect(url_for("node.get_state"))
+
     return app
 
 

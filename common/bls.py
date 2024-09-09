@@ -74,7 +74,6 @@ async def gather_and_aggregate_signatures(
         return None
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
-
     sign_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(
             request_signature(
@@ -119,7 +118,7 @@ async def request_signature(
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, json=data, timeout=timeout) as response:
+            async with session.post(url, json=data, timeout=timeout, headers=zconfig.HEADERS) as response:
                 response_json = await response.json()
                 if response_json.get("status") != "success":
                     return None

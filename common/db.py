@@ -81,7 +81,7 @@ class InMemoryDB:
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
             last_finalized_batch: dict[str, Any] = max(
-                (batch for batch in finalized_batches.values()),
+                (batch for batch in finalized_batches.values() if batch.get("finalization_signature")) ,
                 key=lambda batch: batch["index"],
                 default={},
             )
@@ -129,13 +129,15 @@ class InMemoryDB:
             with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
                     ,"rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError, FileNotFoundError) as error:
+        except FileNotFoundError:
+            pass
+        except (OSError, IOError, json.JSONDecodeError) as error:
             zlogger.exception(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
                 error,
             )
-            return {}
+        return {}
 
     def save_snapshot(self, app_name: str, index: int) -> None:
         """Save a snapshot of the finalized batches to a file."""
@@ -188,32 +190,25 @@ class InMemoryDB:
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
         for batch_hash, batch in list(loaded_batches.items()):
-            if batch["state"] in states and batch.get("index", 0) > after:
-                batches[batch_hash] = batch
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return
-        return
-
+            if batch["state"] in states and batch.get("index", 0) > after:
+                batches[batch_hash] = batch
+    
     def get_batches(self, app_name: str, states: set[str], after: float = -1) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
         last_finalized_index = self.apps[app_name]["last_finalized_batch"].get("index", 0)
-
-        if last_finalized_index - after >= zconfig.SNAPSHOT_CHUNK:
+        current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
+        next_chunk = math.ceil((after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK)
+        finalized_chunk = math.ceil(last_finalized_index / zconfig.SNAPSHOT_CHUNK)
+        if current_chunk != finalized_chunk:
             loaded_batches = self.load_finalized_batches(app_name, after + 1)
             self.__process_batches(loaded_batches, states, after, batches)
-            if len(batches) >= zconfig.API_BATCHES_LIMIT:
-                return batches
-              
-        current_chunk = after // zconfig.SNAPSHOT_CHUNK
-        next_chunk = (after + 1 + len(batches)) // zconfig.SNAPSHOT_CHUNK
-        finalized_chunk = last_finalized_index // zconfig.SNAPSHOT_CHUNK
-
-        if next_chunk not in [current_chunk, finalized_chunk]:
+        if len(batches) < zconfig.API_BATCHES_LIMIT and \
+           next_chunk not in [current_chunk, finalized_chunk]:
             loaded_batches = self.load_finalized_batches(app_name, after + 1 + len(batches))
             self.__process_batches(loaded_batches, states, after, batches)
-            if len(batches) >= zconfig.API_BATCHES_LIMIT:
-                return batches 
         self.__process_batches(self.apps[app_name]["batches"], states, after, batches)
         return batches
 

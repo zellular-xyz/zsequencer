@@ -33,11 +33,16 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
-        send_app_batches(app_name)
-    
+        while True:
+            response = send_app_batches(app_name).get("data",{})
+            sequencer_last_finalized_hash = response.get("finalized",{}).get("hash","")
+            if not sequencer_last_finalized_hash or \
+                zdb.get_batch(app_name, sequencer_last_finalized_hash):
+                zconfig.IS_SYNCING = False
+                break
 
 
-def send_app_batches(app_name: str) -> None:
+def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
     initialized_batches: dict[str, Any] = zdb.get_batches(
         app_name=app_name, states={"initialized"}
@@ -63,21 +68,21 @@ def send_app_batches(app_name: str) -> None:
             "locked_hash": last_locked_batch.get("hash", ""),
             "locked_chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "timestamp": int(time.time()),
-            "version": zconfig.VERSION
         }
     )
 
     url: str = f'{zconfig.SEQUENCER["socket"]}/sequencer/batches'
+    response: dict[str, Any] = {}
     try:
-        response: dict[str, Any] = requests.put(
+        response = requests.put(
             url=url, data=data, headers=zconfig.HEADERS
         ).json()
         if response["status"] == "error":
             if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
                 zlogger.warning(response["error"]["message"])
-                return
+                return {}
             zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
-            return
+            return {}
 
         censored_batches = sync_with_sequencer(
             app_name=app_name,
@@ -93,6 +98,8 @@ def send_app_batches(app_name: str) -> None:
         zdb.is_sequencer_down = True
 
     check_finalization()
+    return response
+        
 
 
 def sync_with_sequencer(
@@ -233,7 +240,8 @@ async def gather_disputes(
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
-    if (not zdb.has_missed_batches() and not zdb.is_sequencer_down) or zdb.pause_node.is_set():
+    if zconfig.IS_SYNCING or (not zdb.has_missed_batches() and not zdb.is_sequencer_down) \
+        or zdb.pause_node.is_set():
         return
 
     timestamp: int = int(time.time())
@@ -374,7 +382,9 @@ def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
             response: dict[str, Any] = requests.get(
                 url=url, headers=zconfig.HEADERS
             ).json()
-            batch: dict[str, Any] = response.get("data", {})
+            if response["status"] == "error":
+                continue
+            batch: dict[str, Any] = response["data"]
             if batch.get("index", 0) > last_finalized_batch.get("index", 0):
                 last_finalized_batch = batch
         except Exception:

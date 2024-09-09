@@ -10,9 +10,8 @@ from typing import Any
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from web3 import Account
-
 from config import zconfig
-
+from flask import request
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
@@ -41,6 +40,18 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     return decorated_function
 
+def validate_request(func: Callable[..., Any]) -> Decorator:
+    """Decorator to validate the request."""
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        version = request.headers.get("Version","")
+        if version and version != zconfig.VERSION:
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
+        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
+            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
+        return func(*args, **kwargs)
+    return decorated_function
+
 
 def eth_sign(message: str) -> str:
     """Sign a message using the node's private key."""
@@ -64,7 +75,7 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         return False
 
 
-def validate_request(req_data: dict[str, Any], required_keys: list[str]) -> str:
+def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
     """Validate a request by checking if required keys are present."""
     if all(key in req_data for key in required_keys):
         return ""

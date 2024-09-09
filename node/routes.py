@@ -17,34 +17,8 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
-# TODO: should remove
-@node_blueprint.route("/db", methods=["GET"])
-def get_db() -> dict[str, Any]:
-    """Get the state of the in-memory database."""
-    apps_data: dict[str, Any] = {}
-
-    for app_name in list(zconfig.APPS.keys()):
-        sequenced_num: int = zdb.get_last_batch(app_name, "sequenced").get("index", 0)
-        locked_num: int = zdb.get_last_batch(app_name, "locked").get("index", 0)
-        finalized_num: int = zdb.get_last_batch(app_name, "finalized").get("index", 0)
-        all_num: int = len(zdb.apps[app_name]["batches"])
-        apps_data[app_name] = {
-            "batches_state": {
-                "sequenced": sequenced_num,
-                "locked": locked_num,
-                "finalized": finalized_num,
-                "all": all_num,
-            },
-            "nodes_state": zdb.apps[app_name]["nodes_state"],
-            "batches": sorted(
-                list(zdb.apps[app_name]["batches"].values()),
-                key=lambda batch: batch.get("index", 0),
-            ),
-        }
-    return apps_data
-
-
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
+@utils.validate_request
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
@@ -59,30 +33,34 @@ def put_batches(app_name: str) -> Response:
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
+@utils.validate_request
 @utils.not_sequencer
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["app_name", "state", "index", "hash", "chaining_hash"]
-    error_message: str = utils.validate_request(req_data, required_keys)
+    required_keys: list[str] = [
+        "app_name", "state", "index", "hash", "chaining_hash"
+    ]
+    error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
     req_data["signature"] = tasks.sign_sync_point(req_data)
     return success_response(data=req_data)
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
+@utils.validate_request
 @utils.not_sequencer
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    required_keys: list[str] = ["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"]
-    error_message: str = utils.validate_request(req_data, required_keys)
+    required_keys: list[str] = [
+        "sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"
+    ]
+    error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
     if zdb.has_missed_batches() or zdb.is_sequencer_down:
@@ -103,14 +81,14 @@ def post_dispute() -> Response:
     
 
 @node_blueprint.route("/switch", methods=["POST"])
+@utils.validate_request
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     required_keys: list[str] = ["timestamp", "proofs"]
-    error_message: str = utils.validate_request(req_data, required_keys)
+    error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-
     if utils.is_switch_approved(req_data["proofs"]):
         zdb.pause_node.set()
         old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
@@ -123,6 +101,7 @@ def post_switch_sequencer() -> Response:
 
 
 @node_blueprint.route("/state", methods=["GET"])
+@utils.validate_request
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
@@ -152,6 +131,7 @@ def get_state() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
+@utils.validate_request
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
     if app_name not in list(zconfig.APPS):
@@ -161,6 +141,7 @@ def get_last_finalized_batch(app_name: str) -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
+@utils.validate_request
 def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
     if app_name not in list(zconfig.APPS):

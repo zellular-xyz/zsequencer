@@ -164,12 +164,12 @@ The next step in decentralizing the app is to send user-signed orders to the Zel
 Sending orders to the Sequencer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-After signature verification, the place_order function uses the :code:`POST /node/transaction` endpoint of the Zellular Sequencer service to send the orders to the sequencer before applying them into the database.
+After signature verification, the place_order function uses the :code:`POST /node/{app}/batches` endpoint of the Zellular Sequencer service to send the orders to the sequencer before applying them into the database.
 
 
 .. code-block:: python
 
-    zsequencer_url = 'http://localhost:8323/node/transactions'
+    zsequencer_url = 'http://5.161.230.186:6001/node/orderbook/batches'
     ...
 
     @app.route('/order', methods=['POST'])
@@ -177,38 +177,26 @@ After signature verification, the place_order function uses the :code:`POST /nod
         if not verify_order(request.form):
             return jsonify({"message": "Invalid signature"}), 403
 
-        keys = ['order_type', 'base_token', 'quote_token', 'quantity', 'price']
-        headers = {"Content-Type": "application/json"}
-        data = {
-            'transactions': [{key: request.form[key] for key in keys}],
-            'timestamp': int(time.time())
-        }
-        requests.put(zsequencer_url, jsonify(data), headers=headers)
+        keys = ['order_type', 'base_token', 'quote_token', 'quantity', 'price', 'signature']
+        txs = [{key: request.form[key] for key in keys}]
+        requests.put(zsequencer_url, json=txs)
         return { 'success': True }
 
 Receiving sequenced orders from the sequencer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Add a thread to continuously retrieve finalized, sequenced orders. Apply the same routine used in the :code:`place_order` function to process these orders.
+Add a thread to continuously retrieve finalized, sequenced orders and apply the same routine used in the :code:`place_order` function to process these orders. `Zellular SDK <https://github.com/zellular-xyz/zellular.py>`_ can be used to pull the finalized sequence of transaction batches from the Zellular network.
+
 
 .. code-block:: python
 
-    def process_loop():
-        last = 0
-        while True:
-            params={"after": last, "states": ["finalized"]}
-            response = requests.get(zsequencer_url, params=params)
-            finalized_txs = response.json().get("data")
-            if not finalized_txs:
-                time.sleep(1)
-                continue
+    import zellular
 
-            last = max(tx["index"] for tx in finalized_txs)
-            sorted_numbers = sorted([t["index"] for t in finalized_txs])
-            print(
-                f"\nreceive finalized indexes: [{sorted_numbers[0]}, ..., {sorted_numbers[-1]}]",
-            )
-            for tx in finalized_txs:
+    def process_loop():
+        verifier = zellular.Verifier("orderbook", "http://5.161.230.186:6001")
+        for batch, index in verifier.batches():
+            txs = json.loads(batch)
+            for i, tx in enumerate(txs):
                 place_order(tx)
 
     def __place_order(order):
