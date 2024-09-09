@@ -239,7 +239,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = 'v0.0.8'
+        self.VERSION = 'v0.0.9'
         self.HEADERS: dict[str, Any] = {
             "Content-Type": "application/json",
             "Version": self.VERSION

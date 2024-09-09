@@ -45,7 +45,11 @@ def validate_request(func: Callable[..., Any]) -> Decorator:
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         version = request.headers.get("Version","")
-        if version and version != zconfig.VERSION:
+        if (not version or version != zconfig.VERSION) and \
+            request.endpoint.startswith("sequencer"):
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
+        if (version and version != zconfig.VERSION) and \
+            request.endpoint.startswith("node"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
         if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
