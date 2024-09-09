@@ -175,7 +175,7 @@ class Config:
             url: str = f"{self.NODES[node_id]['socket']}/node/state"
             try:
                 response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
-                if response["data"]["version"] != zconfig.VERSION:
+                if response["data"]["version"] != self.VERSION:
                     continue 
                 sequencer_id = response["data"]["sequencer_id"]
                 sequencers_stake[sequencer_id] += self.NODES[sequencer_id]["stake"]
