@@ -161,7 +161,7 @@ class Config:
             operator_to_avs_registration_sig_expiry=int(time.time()) + 60,
             bls_key_pair=bls_key_pair,
             quorum_numbers=[0],
-            socket=os.getenv('ZSEQUENCER_REGISTER_SOCKET'),
+            socket=os.getenv("ZSEQUENCER_REGISTER_SOCKET"),
         )
 
     def init_sequencer(self) -> None:
@@ -170,19 +170,21 @@ class Config:
             node_id: 0 for node_id in list(self.NODES.keys())
         }
         for node_id in list(self.NODES.keys()):
-            if node_id == self.NODE['id']:
+            if node_id == self.NODE["id"]:
                 continue
-            url: str = f'{self.NODES[node_id]["socket"]}/node/state'
+            url: str = f"{self.NODES[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=1)
-                sequencer_id = response.json()['data']['sequencer_id']
-                sequencers_stake[sequencer_id] += self.NODES[sequencer_id]['stake']
+                response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
+                if response["data"]["version"] != zconfig.VERSION:
+                    continue 
+                sequencer_id = response["data"]["sequencer_id"]
+                sequencers_stake[sequencer_id] += self.NODES[sequencer_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
-        sequencers_stake[max_stake_id] += self.NODE['stake']
+        sequencers_stake[max_stake_id] += self.NODE["stake"]
         if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT and \
-           sequencers_stake[max_stake_id] > self.NODE['stake']:
+           sequencers_stake[max_stake_id] > self.NODE["stake"]:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
