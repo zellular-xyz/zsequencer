@@ -91,7 +91,15 @@ Zellular sequences transactions in batches. You can send a batch of transactions
 
     print(resp.status_code)
 
-In other protocols, the proposer role rotates among nodes to distribute block formation tasks and incentivize participation. However, Zellular focuses on switching the sequencer only in the event of a fault, removing the need for rotation and reward distribution based on processing.
+
+You can add your app to zellular test network using:
+
+.. code-block:: shell
+
+    curl -X POST https://zellular.xyz/testnet/apps \
+        -H "Content-Type: application/json" \
+        -d '{"app_name": "your-app-name"}'
+
 
 Fetching and Verifying Transactions
 -----------------------------------
@@ -105,7 +113,7 @@ Unlike reading from a traditional blockchain, where you must trust the node you'
 
     verifier = zellular.Verifier("simple_app", "http://5.161.230.186:6001")
 
-    for batch, index in verifier.batches():
+    for batch, index in verifier.batches(after=0):
         txs = json.loads(batch)
         for i, tx in enumerate(txs):
             print(index, i, tx)
@@ -114,8 +122,8 @@ Example output:
 
 .. code-block:: shell
 
-    app: simple_app, index: 481238, result: True
-    app: simple_app, index: 481240, result: True
+    app: simple_app, index: 1, result: True
+    app: simple_app, index: 2, result: True
     583 0 {'tx_id': '7eaa...2101', 'operation': 'foo', 't': 1725363009}
     583 1 {'tx_id': '5839...6f5e', 'operation': 'foo', 't': 1725363009}
     583 2 {'tx_id': '0a1a...05cb', 'operation': 'foo', 't': 1725363009}
