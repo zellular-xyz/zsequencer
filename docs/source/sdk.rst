@@ -111,7 +111,10 @@ Unlike reading from a traditional blockchain, where you must trust the node you'
     import json
     import zellular
 
-    verifier = zellular.Verifier("simple_app", "http://5.161.230.186:6001")
+    base_url = "http://5.161.230.186:6001"
+    app_name = "simple_app"
+
+    verifier = zellular.Verifier(app_name, base_url)
 
     for batch, index in verifier.batches(after=0):
         txs = json.loads(batch)
@@ -130,3 +133,12 @@ Example output:
     583 3 {'tx_id': '6339...cc08', 'operation': 'foo', 't': 1725363009}
     583 4 {'tx_id': 'cf4a...fc19', 'operation': 'foo', 't': 1725363009}
     ...
+
+If you want to start reading batches from the latest finalized batch rather than from the beginning, you can achieve this by specifying the `after` parameter with the latest index. Here’s an example of how to do this:
+
+.. code-block:: python
+
+    resp = requests.get(f"{base_url}/node/{app_name}/batches/finalized/last")
+    index = resp.json()['data']['index']
+    for batch, index in verifier.batches(after=index):
+        ...
