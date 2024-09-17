@@ -178,7 +178,7 @@ class Config:
                 if response["data"]["version"] != self.VERSION:
                     continue 
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += self.NODES[sequencer_id]["stake"]
+                sequencers_stake[sequencer_id] += self.NODES[node_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
@@ -241,7 +241,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = 'v0.0.9'
+        self.VERSION = "v0.0.10"
         self.HEADERS: dict[str, Any] = {
             "Content-Type": "application/json",
             "Version": self.VERSION
