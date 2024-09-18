@@ -146,9 +146,30 @@ def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    after: int | None = request.args.get("after", default=0, type=int)
-    batches: dict[str, str] = zdb.get_batches(app_name, { state }, after)
-    batches: list[str] = list(batches.values())
+    after: int = request.args.get("after", default=0, type=int)
+
+    if after < 0:
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
+
+    batches: dict[str, dict] = zdb.get_batches(app_name, { state }, after)
+    if len(batches) == 0:
+        return success_response(data=None)
+
+    batches: list[dict] = list(batches.values())
     batches.sort(key = lambda batch: batch["index"])
-    res: list[str] = [batch['body'] for batch in batches]
+    assert batches[0]["index"] == after + 1
+    first_chaining_hash: str = batches[0]["chaining_hash"]
+
+    finalized: dict = {}
+    for batch in reversed(batches):
+        if "finalization_signature" in batch:
+            for k in ("finalization_signature", "nonsigners", "index", "hash", "chaining_hash"):
+                finalized[k] = batch[k]
+            break
+
+    res: dict[str, dict] = {
+        "batches": [batch["body"] for batch in batches],
+        "first_chaining_hash": first_chaining_hash,
+        "finalized": finalized,
+    }
     return success_response(data=res)

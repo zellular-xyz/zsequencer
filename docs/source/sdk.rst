@@ -91,7 +91,15 @@ Zellular sequences transactions in batches. You can send a batch of transactions
 
     print(resp.status_code)
 
-In other protocols, the proposer role rotates among nodes to distribute block formation tasks and incentivize participation. However, Zellular focuses on switching the sequencer only in the event of a fault, removing the need for rotation and reward distribution based on processing.
+
+You can add your app to zellular test network using:
+
+.. code-block:: shell
+
+    curl -X POST https://zellular.xyz/testnet/apps \
+        -H "Content-Type: application/json" \
+        -d '{"app_name": "your-app-name"}'
+
 
 Fetching and Verifying Transactions
 -----------------------------------
@@ -103,9 +111,12 @@ Unlike reading from a traditional blockchain, where you must trust the node you'
     import json
     import zellular
 
-    verifier = zellular.Verifier("simple_app", "http://5.161.230.186:6001")
+    base_url = "http://5.161.230.186:6001"
+    app_name = "simple_app"
 
-    for batch, index in verifier.batches():
+    verifier = zellular.Verifier(app_name, base_url)
+
+    for batch, index in verifier.batches(after=0):
         txs = json.loads(batch)
         for i, tx in enumerate(txs):
             print(index, i, tx)
@@ -114,11 +125,20 @@ Example output:
 
 .. code-block:: shell
 
-    app: simple_app, index: 481238, result: True
-    app: simple_app, index: 481240, result: True
+    app: simple_app, index: 1, result: True
+    app: simple_app, index: 2, result: True
     583 0 {'tx_id': '7eaa...2101', 'operation': 'foo', 't': 1725363009}
     583 1 {'tx_id': '5839...6f5e', 'operation': 'foo', 't': 1725363009}
     583 2 {'tx_id': '0a1a...05cb', 'operation': 'foo', 't': 1725363009}
     583 3 {'tx_id': '6339...cc08', 'operation': 'foo', 't': 1725363009}
     583 4 {'tx_id': 'cf4a...fc19', 'operation': 'foo', 't': 1725363009}
     ...
+
+If you want to start reading batches from the latest finalized batch rather than from the beginning, you can achieve this by specifying the `after` parameter with the latest index. Here’s an example of how to do this:
+
+.. code-block:: python
+
+    resp = requests.get(f"{base_url}/node/{app_name}/batches/finalized/last")
+    index = resp.json()['data']['index']
+    for batch, index in verifier.batches(after=index):
+        ...
