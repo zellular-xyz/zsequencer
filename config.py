@@ -137,11 +137,11 @@ class Config:
             node_data["public_key_g2"] = attestation.new_zero_g2_point()
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
-        update_node_last_data = len(nodes_data) != len(self.NODES) or any(
+        update_last_nodes_data = len(nodes_data) != len(self.NODES) or any(
             nodes_data[node_id]["stake"] != self.NODES[node_id]["stake"] 
             for node_id in self.NODES
         )
-        if update_node_last_data:
+        if update_last_nodes_data:
             self.NODES_LAST_DATA.update({
                 "total_stake": self.TOTAL_STAKE,
                 "aggregated_public_key": self.AGGREGATED_PUBLIC_KEY,
@@ -251,7 +251,7 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = "v0.0.10"
+        self.VERSION = "v0.0.11"
         self.HEADERS: dict[str, Any] = {
             "Content-Type": "application/json",
             "Version": self.VERSION
