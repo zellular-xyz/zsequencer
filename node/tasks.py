@@ -51,7 +51,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     last_synced_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=app_name, state="sequenced"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_batch(app_name=app_name, state="locked")
+    last_locked_batch: dict[str, Any] = zdb.get_last_batch(
+        app_name=app_name, state="locked"
+    )
 
     concat_hash: str = "".join(initialized_batches.keys())
     concat_sig: str = utils.eth_sign(concat_hash)
