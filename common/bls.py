@@ -23,9 +23,10 @@ def bls_sign(message: str) -> str:
     return signature.getStr(10).decode("utf-8")
 
 
-def get_signers_aggregated_public_key(nonsigners: list[str]) -> attestation.G2Point:
+def get_signers_aggregated_public_key(
+    nonsigners: list[str], aggregated_public_key: attestation.G2Point
+) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
-    aggregated_public_key: attestation.G2Point = zconfig.AGGREGATED_PUBLIC_KEY
     for nonsigner in nonsigners:
         non_signer_public_key: attestation.G2Point = zconfig.NODES[nonsigner]["public_key_g2"]
         aggregated_public_key = aggregated_public_key - non_signer_public_key

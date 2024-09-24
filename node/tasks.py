@@ -51,7 +51,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     last_synced_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=app_name, state="sequenced"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_batch(app_name=app_name, state="locked")
+    last_locked_batch: dict[str, Any] = zdb.get_last_batch(
+        app_name=app_name, state="locked"
+    )
 
     concat_hash: str = "".join(initialized_batches.keys())
     concat_sig: str = utils.eth_sign(concat_hash)
@@ -187,6 +189,16 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     return signature
 
 
+def _validate_nonsigners_stake(nonsigners_stake: int):
+    """Verify the nonsigners' stake."""
+    return (
+        100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT or
+        (
+            100 * nonsigners_stake / zconfig.NODES_LAST_DATA["total_stake"] <= 100 - zconfig.THRESHOLD_PERCENT and
+            int(time.time()) - zconfig.NODES_LAST_DATA["timestamp"] <= zconfig.NODES_INFO_SYNC_BORDER
+        )
+    )
+
 def is_sync_point_signature_verified(
     app_name: str,
     state: str,
@@ -197,12 +209,12 @@ def is_sync_point_signature_verified(
     nonsigners: list[str],
 ) -> bool:
     """Verify the BLS signature of a synchronization point."""
-    nonsigners_stake = sum([zconfig.NODES[node_id]['stake'] for node_id in nonsigners])
-    if 100 * nonsigners_stake / zconfig.TOTAL_STAKE > 100 - zconfig.THRESHOLD_PERCENT:
-        zlogger.exception("signature with invalid stake from sequencer")
+    nonsigners_stake = sum([zconfig.NODES.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
+    if not _validate_nonsigners_stake(nonsigners_stake):
+        zlogger.exception("Signature with invalid stake from sequencer")
         return False
 
-    public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners)
+    public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners, zconfig.AGGREGATED_PUBLIC_KEY)
     data: str = json.dumps(
         {
             "app_name": app_name,
@@ -215,11 +227,22 @@ def is_sync_point_signature_verified(
     )
     message: str = utils.gen_hash(data)
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
-    return bls.is_bls_sig_verified(
+    res = bls.is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
         public_key=public_key,
     )
+    if not res:
+        if int(time.time()) - zconfig.NODES_LAST_DATA["timestamp"] < zconfig.NODES_INFO_SYNC_BORDER:
+            public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(
+                nonsigners, zconfig.NODES_LAST_DATA["aggregated_public_key"]
+            )
+            res = bls.is_bls_sig_verified(
+                signature_hex=signature_hex,
+                message=message,
+                public_key=public_key,
+            )
+    return res
 
 async def gather_disputes(
     dispute_tasks: dict[asyncio.Task, str]

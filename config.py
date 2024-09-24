@@ -137,11 +137,21 @@ class Config:
             node_data["public_key_g2"] = attestation.new_zero_g2_point()
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
+        update_last_nodes_data = len(nodes_data) != len(self.NODES) or any(
+            nodes_data[node_id]["stake"] != self.NODES[node_id]["stake"] 
+            for node_id in self.NODES
+        )
+        if update_last_nodes_data:
+            self.NODES_LAST_DATA.update({
+                "total_stake": self.TOTAL_STAKE,
+                "aggregated_public_key": self.AGGREGATED_PUBLIC_KEY,
+                "timestamp": int(time.time())
+            })
         self.NODE.update(nodes_data[self.ADDRESS])
         self.NODES.update(nodes_data)
         self.SEQUENCER.update(self.NODES[self.SEQUENCER['id']])
+        self.TOTAL_STAKE = sum([node['stake'] for node in self.NODES.values()])
         self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
-    
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
         rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
@@ -241,11 +251,12 @@ class Config:
             load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = "v0.0.10"
+        self.VERSION = "v0.0.11"
         self.HEADERS: dict[str, Any] = {
             "Content-Type": "application/json",
             "Version": self.VERSION
         }
+        self.NODES_INFO_SYNC_BORDER = 5 # in seconds
         self.IS_SYNCING: bool = True
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
@@ -348,6 +359,12 @@ class Config:
                 self.SNAPSHOT_PATH, self.VERSION, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
+
+        self.NODES_LAST_DATA = {
+            "total_stake": self.TOTAL_STAKE,
+            "aggregated_public_key": self.AGGREGATED_PUBLIC_KEY,
+            "timestamp": int(time.time())
+        }
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
