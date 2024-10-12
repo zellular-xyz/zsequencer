@@ -314,7 +314,7 @@ class InMemoryDB:
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
         for batch in list(batches.values()):
-            if batch["state"] == "sequenced" and batch["index"] <= sig_data["index"]:
+            if batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
             return
@@ -337,8 +337,7 @@ class InMemoryDB:
         snapshot_indexes: list[int] = []
         for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
             if batch.get("index",0) <= sig_data["index"]:
-                if batch["state"] == "locked":
-                    batch["state"] = "finalized"
+                batch["state"] = "finalized"
                 if batch["state"] == "finalized" and batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     snapshot_indexes.append(batch["index"])
 
