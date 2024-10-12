@@ -313,7 +313,7 @@ class InMemoryDB:
         if sig_data["index"] <= self.apps[app_name]["last_locked_batch"].get("index", 0):
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
-        for batch in list(batches.values()):
+        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
             if batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
