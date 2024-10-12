@@ -303,7 +303,7 @@ class InMemoryDB:
                         f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}"
                     )
                     return
-
+            batch["state"] = "sequenced"
             batch["sequenced_timestamp"] = now
             batches[batch["hash"]] = batch
         if chaining_hash:
