@@ -129,7 +129,7 @@ class InMemoryDB:
             with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
                     ,"rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except FileNotFoundError:
+        except FileNotFoundError, EOFError:
             pass
         except (OSError, IOError, json.JSONDecodeError) as error:
             zlogger.exception(
