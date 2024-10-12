@@ -189,6 +189,7 @@ class InMemoryDB:
     def __process_batches(
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
+        # fixme: sort should be removed after updating batches dict to list
         sorter = lambda batch: batch.get("index", 0)
         for batch in sorted(list(loaded_batches.values()), key = sorter):
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
@@ -313,6 +314,7 @@ class InMemoryDB:
         if sig_data["index"] <= self.apps[app_name]["last_locked_batch"].get("index", 0):
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
+        # fixme: sort should be removed after updating batches dict to list
         for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
             if batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
@@ -335,6 +337,7 @@ class InMemoryDB:
         batches: dict[str, Any] = self.apps[app_name]["batches"]
 
         snapshot_indexes: list[int] = []
+        # fixme: sort should be removed after updating batches dict to list
         for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
             if batch.get("index",0) <= sig_data["index"]:
                 batch["state"] = "finalized"
