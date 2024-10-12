@@ -157,7 +157,10 @@ def get_batches(app_name: str, state: str) -> Response:
 
     batches: list[dict] = list(batches.values())
     batches.sort(key = lambda batch: batch["index"])
-    assert batches[0]["index"] == after + 1, f"error in getting batches: {batches[0]["index"]} != {after + 1}"
+
+    for i in range(len(batches)):
+        assert batches[i]["index"] == after + i + 1, f"error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}"
+
     first_chaining_hash: str = batches[0]["chaining_hash"]
 
     finalized: dict = {}
