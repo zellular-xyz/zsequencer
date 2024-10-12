@@ -189,8 +189,9 @@ class InMemoryDB:
     def __process_batches(
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
+        # fixme: sort should be removed after updating batches dict to list
         sorter = lambda batch: batch.get("index", 0)
-        for batch in sorted(loaded_batches.values(), key = sorter):
+        for batch in sorted(list(loaded_batches.values()), key = sorter):
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return
             if batch["state"] in states and batch.get("index", 0) > after:
@@ -313,8 +314,9 @@ class InMemoryDB:
         if sig_data["index"] <= self.apps[app_name]["last_locked_batch"].get("index", 0):
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
-        for batch in list(batches.values()):
-            if batch["state"] == "sequenced" and batch["index"] <= sig_data["index"]:
+        # fixme: sort should be removed after updating batches dict to list
+        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
+            if batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
             return
@@ -335,10 +337,10 @@ class InMemoryDB:
         batches: dict[str, Any] = self.apps[app_name]["batches"]
 
         snapshot_indexes: list[int] = []
-        for batch in list(batches.values()):
+        # fixme: sort should be removed after updating batches dict to list
+        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
             if batch.get("index",0) <= sig_data["index"]:
-                if batch["state"] == "locked":
-                    batch["state"] = "finalized"
+                batch["state"] = "finalized"
                 if batch["state"] == "finalized" and batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     snapshot_indexes.append(batch["index"])
 
