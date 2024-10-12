@@ -17,11 +17,11 @@ class InMemoryDB:
     """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
 
     _instance: "InMemoryDB | None" = None
-    lock: threading.Lock = threading.Lock()
+    instance_lock: threading.Lock = threading.Lock()
 
     def __new__(cls) -> "InMemoryDB":
         """Singleton pattern implementation to ensure only one instance exists."""
-        with cls.lock:
+        with cls.instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
@@ -31,9 +31,9 @@ class InMemoryDB:
 
     def _initialize(self) -> None:
         """Initialize the InMemoryDB instance."""
-        self.lock = threading.Lock()
+        self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
-
+        self.last_stored_index = 0
         self.apps: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
@@ -129,7 +129,7 @@ class InMemoryDB:
             with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
                     ,"rt", encoding="UTF-8") as file:
                 return json.load(file)
-        except FileNotFoundError:
+        except (FileNotFoundError, EOFError):
             pass
         except (OSError, IOError, json.JSONDecodeError) as error:
             zlogger.exception(
@@ -189,11 +189,13 @@ class InMemoryDB:
     def __process_batches(
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
-        for batch_hash, batch in list(loaded_batches.items()):
+        # fixme: sort should be removed after updating batches dict to list
+        sorter = lambda batch: batch.get("index", 0)
+        for batch in sorted(list(loaded_batches.values()), key = sorter):
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return
             if batch["state"] in states and batch.get("index", 0) > after:
-                batches[batch_hash] = batch
+                batches[batch["hash"]] = batch
     
     def get_batches(self, app_name: str, states: set[str], after: float = -1) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
@@ -312,14 +314,15 @@ class InMemoryDB:
         if sig_data["index"] <= self.apps[app_name]["last_locked_batch"].get("index", 0):
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
-        for batch in list(batches.values()):
-            if batch["state"] == "sequenced" and batch["index"] <= sig_data["index"]:
+        # fixme: sort should be removed after updating batches dict to list
+        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
+            if batch["index"] <= sig_data["index"]:
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
             return
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["lock_signature"] = sig_data["signature"]
-        target_batch["nonsigners"] = sig_data["nonsigners"]
+        target_batch["locked_nonsigners"] = sig_data["nonsigners"]
         self.apps[app_name]["last_locked_batch"] = target_batch
         if not self.apps[app_name]["last_sequenced_batch"]:
             self.apps[app_name]["last_sequenced_batch"] = target_batch
@@ -334,21 +337,24 @@ class InMemoryDB:
         batches: dict[str, Any] = self.apps[app_name]["batches"]
 
         snapshot_indexes: list[int] = []
-        for batch in list(batches.values()):
-            if batch["state"] == "locked" and batch["index"] <= sig_data["index"]:
+        # fixme: sort should be removed after updating batches dict to list
+        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
+            if batch.get("index",0) <= sig_data["index"]:
                 batch["state"] = "finalized"
-
-                if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
+                if batch["state"] == "finalized" and batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                     snapshot_indexes.append(batch["index"])
 
         if not batches.get(sig_data["hash"]):
             return
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["finalization_signature"] = sig_data["signature"]
-        target_batch["nonsigners"] = sig_data["nonsigners"]
+        target_batch["finalized_nonsigners"] = sig_data["nonsigners"]
         self.apps[app_name]["last_finalized_batch"] = target_batch
 
         for snapshot_index in snapshot_indexes:
+            if snapshot_index <= self.last_stored_index:
+                continue
+            self.last_stored_index = snapshot_index
             self.save_snapshot(app_name, snapshot_index)
 
     def upsert_node_state(

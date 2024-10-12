@@ -57,7 +57,7 @@ def put_batches() -> Response:
 
 def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the batches data."""
-    with zdb.lock:
+    with zdb.sequencer_put_batches_lock:
         zdb.sequencer_init_batches(app_name=req_data["app_name"], batches_data=req_data["batches"])
 
     batches: dict[str, Any] = zdb.get_batches(
@@ -65,13 +65,23 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
+    batches = sorted(batches.values(), key=lambda x: x["index"])
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=req_data["app_name"], state="finalized"
     )
     last_locked_batch: dict[str, Any] = zdb.get_last_batch(
         app_name=req_data["app_name"], state="locked"
     )
-
+    if batches:
+        if batches[-1]["index"] < last_finalized_batch.get("index",0):
+            last_finalized_batch: dict[str, Any] = next(
+                (d for d in reversed(batches) if "finalization_signature" in d), {}
+            )
+        if batches[-1]["index"] < last_locked_batch.get("index",0):
+            last_locked_batch: dict[str, Any] = next(
+                (d for d in reversed(batches) if "lock_signature" in d), {}
+            )
+        
     zdb.upsert_node_state(
         {
             "app_name": req_data["app_name"],
@@ -90,19 +100,19 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     #     txs = {}
 
     return {
-        "batches": sorted(batches.values(), key=lambda x: x['index']),
+        "batches": batches,
         "finalized": {
             "index": last_finalized_batch.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
             "hash": last_finalized_batch.get("hash", ""),
             "signature": last_finalized_batch.get("finalization_signature", ""),
-            "nonsigners": last_finalized_batch.get("nonsigners", []),
+            "nonsigners": last_finalized_batch.get("finalized_nonsigners", []),
         },
         "locked": {
             "index": last_locked_batch.get("index", 0),
             "chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "hash": last_locked_batch.get("hash", ""),
             "signature": last_locked_batch.get("lock_signature", ""),
-            "nonsigners": last_locked_batch.get("nonsigners", []),
+            "nonsigners": last_locked_batch.get("locked_nonsigners", []),
         },
     }

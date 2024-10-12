@@ -157,16 +157,19 @@ def get_batches(app_name: str, state: str) -> Response:
 
     batches: list[dict] = list(batches.values())
     batches.sort(key = lambda batch: batch["index"])
-    assert batches[0]["index"] == after + 1
+
+    for i in range(len(batches)):
+        assert batches[i]["index"] == after + i + 1, f"error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}"
+
     first_chaining_hash: str = batches[0]["chaining_hash"]
 
     finalized: dict = {}
     for batch in reversed(batches):
         if "finalization_signature" in batch:
-            for k in ("finalization_signature", "nonsigners", "index", "hash", "chaining_hash"):
+            for k in ("finalization_signature", "index", "hash", "chaining_hash"):
                 finalized[k] = batch[k]
+            finalized["nonsigners"] = batch["finalized_nonsigners"]
             break
-
     res: dict[str, dict] = {
         "batches": [batch["body"] for batch in batches],
         "first_chaining_hash": first_chaining_hash,
