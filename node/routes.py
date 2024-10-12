@@ -159,7 +159,7 @@ def get_batches(app_name: str, state: str) -> Response:
     batches.sort(key = lambda batch: batch["index"])
 
     for i in range(len(batches)):
-        assert batches[i]["index"] == after + i + 1, f"error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}"
+        assert batches[i]["index"] == after + i + 1, f"error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}"
 
     first_chaining_hash: str = batches[0]["chaining_hash"]
 
