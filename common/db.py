@@ -316,7 +316,7 @@ class InMemoryDB:
         batches: dict[str, Any] = self.apps[app_name]["batches"]
         # fixme: sort should be removed after updating batches dict to list
         for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
-            if "index" in batch and batch["index"] <= sig_data["index"]:
+            if "index" in batch and batch["index"] <= sig_data["index"] and batch["state"] != "finalized":
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
             return
