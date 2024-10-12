@@ -189,11 +189,12 @@ class InMemoryDB:
     def __process_batches(
         self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
-        for batch_hash, batch in list(loaded_batches.items()):
+        sorter = lambda batch: batch.get("index", 0)
+        for batch in sorted(loaded_batches.values(), key = sorter):
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return
             if batch["state"] in states and batch.get("index", 0) > after:
-                batches[batch_hash] = batch
+                batches[batch["hash"]] = batch
     
     def get_batches(self, app_name: str, states: set[str], after: float = -1) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
