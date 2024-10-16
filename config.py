@@ -15,6 +15,7 @@ from threading import Thread
 from typing import Any
 from urllib.parse import urlparse
 
+import validators
 from dotenv import load_dotenv
 from eigensdk.crypto.bls import attestation
 from web3 import Account
@@ -44,7 +45,7 @@ class Config:
             return content
         else:
             raise ValueError("The source provided is neither a valid URL nor a valid file path.")
-    
+
     @staticmethod
     def fetch_eigenlayer_nodes_data() -> dict[str, Any]:
         """Retrieve nodes data from Eigenlayer"""
@@ -82,7 +83,7 @@ class Config:
             quorum_numbers=[0]
         )[0]
         stakes = { operator.operator.lower(): {'stake': operator.stake, 'id':operator.operator_id} for operator in operators }
-        
+
         query = """query MyQuery {
             operatorSocketUpdates {
                 socket
@@ -93,8 +94,7 @@ class Config:
         response = requests.post(subgraph_url, json={ "query": query })
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
-        add_http = lambda socket: f"http://{socket}" if not socket.startswith('http') else socket
-        sockets = { update['operatorId']: add_http(update['socket']) for update in updates }
+        sockets = { update['operatorId']: update['socket'] for update in updates if validators.url(update['socket']) }
         for operator in nodes_raw_data:
             stake = stakes.get(operator, {}).get('stake', 0)
             nodes_raw_data[operator]['stake'] = stake
@@ -109,6 +109,9 @@ class Config:
             '0x93d89ade53b8fcca53736be1a0d11d342d71118b'
         }
         for node_id, data in nodes_raw_data.items():
+            if not data['socket'] or not data['stake']:
+                continue
+
             pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
                             + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
             nodes[node_id] = {
@@ -123,8 +126,8 @@ class Config:
             else:
                 nodes[node_id]['stake'] = float(data['stake'])/(10**18)
         return nodes
-    
-        
+
+
     def fetch_nodes(self):
         """Fetchs the nodes data."""
         if self.NODE_SOURCE == 'eigenlayer':
