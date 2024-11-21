@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import time
 from typing import Any
-
+from pathlib import Path
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
@@ -71,17 +71,33 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
 
 
 def run_command(
-    command_name: str, command_args: str, env_variables: dict[str, str]
+        command_name: str, command_args: str, env_variables: dict[str, str]
 ) -> None:
     """Run a command in a new terminal tab."""
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
+    env_script = " && ".join([f"export {key}='{value}'" for key, value in env_variables.items()])
     command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
-    launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
-    with subprocess.Popen(args=launch_command, env=env_variables) as process:
-        process.wait()
+    full_command = f"{env_script} && {command}"
+
+    # Use AppleScript to open a new Terminal tab and execute the command
+    applescript_command = f"""
+        tell application "Terminal"
+            do script "{full_command}"
+            activate
+        end tell
+        """
+    # Execute the AppleScript with the full command
+    subprocess.run(["osascript", "-e", applescript_command], check=True)
+
+# launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
+
+
+# print(full_command)
+# with subprocess.Popen(args=launch_command, env=env_variables) as process:
+#     process.wait()
 
 
 def main() -> None:
@@ -149,12 +165,12 @@ def main() -> None:
             "ZSEQUENCER_REGISTER_OPERATOR": "false"
         })
 
-        run_command("run.py", f"{i + 1}", env_variables)
+        run_command(os.path.join(Path(__file__).parent.parent, "run.py"), f"{i + 1}", env_variables)
         time.sleep(2)
 
     time.sleep(5)
     run_command(
-        f"examples/{args.test}_test.py",
+        os.path.join(Path(__file__).parent, f"examples/{args.test}_test.py"),
         f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
         env_variables,
     )
