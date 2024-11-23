@@ -1,14 +1,13 @@
 """This script sets up and runs a simple app network for testing."""
 
-import argparse
 import json
 import os
 import secrets
 import shutil
 import subprocess
-import time
-from typing import Any
 from pathlib import Path
+from typing import Any, Optional
+
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
@@ -30,27 +29,13 @@ ZSEQUENCER_API_BATCHES_LIMIT = 100
 APP_NAME: str = "simple_app"
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
-    parser: argparse.ArgumentParser = argparse.ArgumentParser(
-        description="Run the specified test."
-    )
-    parser.add_argument(
-        "--test",
-        required=True,
-        choices=["general"],
-        help="the test name.",
-    )
-    return parser.parse_args()
-
-
-def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
+def generate_privates_and_nodes_info(nodes_count) -> tuple[list[str], list[str], dict[str, Any]]:
     """Generate private keys and nodes information for the network."""
     nodes_info_dict: dict[str, Any] = {}
     bls_privates_list: list[str] = []
     ecdsa_privates_list: list[str] = []
 
-    for i in range(NUM_INSTANCES):
+    for i in range(nodes_count):
         bls_private_key: str = secrets.token_hex(32)
         bls_privates_list.append(bls_private_key)
         bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(
@@ -70,41 +55,30 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
     return bls_privates_list, ecdsa_privates_list, nodes_info_dict
 
 
-def run_command(
-        command_name: str, command_args: str, env_variables: dict[str, str]
+def generate_bash_command_file(
+        command_name: str,
+        command_args: str,
+        env_variables: dict[str, str],
+        bash_filename: Optional[str]
 ) -> None:
     """Run a command in a new terminal tab."""
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
-    env_script = " && ".join([f"export {key}='{value}'" for key, value in env_variables.items()])
+    env_script = "export " + " ".join([f"{key}='{value}'" for key, value in env_variables.items()])
     command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
     full_command = f"{env_script} && {command}"
 
-    # Use AppleScript to open a new Terminal tab and execute the command
-    applescript_command = f"""
-        tell application "Terminal"
-            do script "{full_command}"
-            activate
-        end tell
-        """
-    # Execute the AppleScript with the full command
-    subprocess.run(["osascript", "-e", applescript_command], check=True)
-
-# launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
-
-
-# print(full_command)
-# with subprocess.Popen(args=launch_command, env=env_variables) as process:
-#     process.wait()
+    if bash_filename is not None:
+        with open(f'./{bash_filename}', "w+") as bash_file:
+            bash_file.write(full_command)
 
 
 def main() -> None:
     """Main function to run the setup and launch nodes and run the test."""
-    args: argparse.Namespace = parse_args()
 
-    bls_privates_list, ecdsa_privates_list, nodes_info_dict = generate_privates_and_nodes_info()
+    bls_privates_list, ecdsa_privates_list, nodes_info_dict = generate_privates_and_nodes_info(NUM_INSTANCES)
 
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
@@ -160,20 +134,18 @@ def main() -> None:
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
+
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
             "ZSEQUENCER_NODES_SOURCE": "file",
             "ZSEQUENCER_REGISTER_OPERATOR": "false"
         })
 
-        run_command(os.path.join(Path(__file__).parent.parent, "run.py"), f"{i + 1}", env_variables)
-        time.sleep(2)
+        generate_bash_command_file(os.path.join(Path(__file__).parent.parent, "run.py"),
+                                   f"{i + 1}",
+                                   env_variables,
+                                   f'node_{(i + 1)}.sh')
 
-    time.sleep(5)
-    run_command(
-        os.path.join(Path(__file__).parent, f"examples/{args.test}_test.py"),
-        f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
-        env_variables,
-    )
+        subprocess.run(['chmod', '+x', f'node_{(i + 1)}.sh'])
 
 
 if __name__ == "__main__":

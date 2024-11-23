@@ -118,18 +118,19 @@ def generate_dummy_transactions(
 
 def main() -> None:
     """Run the simple app."""
+
     args: argparse.Namespace = parse_args()
     batches: list[dict[str, Any]] = generate_dummy_transactions(
         BATCH_SIZE, BATCH_NUMBER
     )
     sender_thread: threading.Thread = threading.Thread(
-        target=send_batches_with_threads, args=[args.app_name, batches, args.node_url, THREAD_NUMBERS_FOR_SENDING_TXS]
+        target=send_batches_with_threads,
+        args=[args.app_name, batches, args.node_url, THREAD_NUMBERS_FOR_SENDING_TXS]
     )
     sync_thread: threading.Thread = threading.Thread(
         target=check_state,
         args=[args.app_name, args.node_url, BATCH_NUMBER, BATCH_SIZE],
     )
-
     sender_thread.start()
     sync_thread.start()
 
