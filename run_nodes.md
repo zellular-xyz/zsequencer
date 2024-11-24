@@ -22,3 +22,6 @@ By running these script files, you actually have your network. Note that the nod
 - Now you have successfully set up your network, it is time to run a simulation on the network. For this purpose, you can find nodes_network_simulation python script in examples directory.
 This script sends different batches of random messages to nodes on the network and tries to act as a client on this network.
 you can check the logs of different network to observe communication process between nodes to commit transactions.
+
+
+``` python examples/nodes_network_simulation.py --app_name {APP_NAME} --node_url {SAMPLE_NODE_SOCKET}```
