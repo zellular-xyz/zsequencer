@@ -12,10 +12,12 @@ app.config['SECRET_KEY'] = 'your_secret_key'
 db = SQLAlchemy(app)
 zsequencer_url = 'http://localhost:8323/node/transactions'
 
+
 class Balance(db.Model):
     public_key = db.Column(db.String(500), primary_key=True)
     token = db.Column(db.String(50), primary_key=True)
     amount = db.Column(db.Float, nullable=False)
+
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -27,9 +29,11 @@ class Order(db.Model):
     price = db.Column(db.Float, nullable=False)  # price in quote tokens per base token
     matched = db.Column(db.Boolean, default=False, nullable=False)
 
+
 @app.before_first_request
 def create_tables():
     db.create_all()
+
 
 def verify_order(order):
     # Serialize the data from the form fields
@@ -46,6 +50,7 @@ def verify_order(order):
         return False
     return True
 
+
 @app.route('/order', methods=['POST'])
 def place_order():
     if not verify_order(request.form):
@@ -58,12 +63,13 @@ def place_order():
         'timestamp': int(time.time())
     }
     requests.put(zsequencer_url, jsonify(data), headers=headers)
-    return { 'success': True }
+    return {'success': True}
+
 
 def process_loop():
     last = 0
     while True:
-        params={"after": last, "states": ["finalized"]}
+        params = {"after": last, "states": ["finalized"]}
         response = requests.get(zsequencer_url, params=params)
         finalized_txs = response.json().get("data")
         if not finalized_txs:
@@ -78,39 +84,6 @@ def process_loop():
         for tx in finalized_txs:
             place_order(tx)
 
-def __place_order(order):
-    if not verify_order(order):
-        print("Invalid signature:", order)
-        return
-
-    order_type = order['order_type']
-    base_token = order['base_token']
-    quote_token = order['quote_token']
-    quantity = float(order['quantity'])
-    price = float(order['price'])
-
-    # Determine the cost in quote tokens and check balances
-    cost_in_quote = quantity * price
-
-    quote_balance = Balance.query.filter_by(user_id=session['user_id'], token=quote_token).first()
-    base_balance = Balance.query.filter_by(user_id=session['user_id'], token=base_token).first()
-
-    if order_type == 'buy':
-        if not quote_balance or quote_balance.amount < cost_in_quote:
-            return jsonify({"message": "Insufficient quote token balance"}), 403
-        quote_balance.amount -= cost_in_quote
-    elif order_type == 'sell':
-        if not base_balance or base_balance.amount < quantity:
-            return jsonify({"message": "Insufficient base token balance"}), 403
-        base_balance.amount -= quantity
-
-    new_order = Order(user_id=session['user_id'], order_type=order_type, base_token=base_token, quote_token=quote_token, quantity=quantity, price=price)
-    db.session.add(new_order)
-    db.session.flush()  # Allows us to use the id of the new_order before committing
-    matched = match_order(new_order)
-    if not matched:
-        db.session.commit()
-    return jsonify({"message": "Order placed"}), 201
 
 def match_order(new_order):
     # Logic to find and process matching orders
@@ -124,7 +97,7 @@ def match_order(new_order):
     for matched_order in matched_orders:
         if new_order.quantity == 0:
             break
-        
+
         trade_quantity = min(new_order.quantity, matched_order.quantity)
 
         # Update quantities
@@ -142,6 +115,7 @@ def match_order(new_order):
         new_order.matched = True
         db.session.commit()
     return new_order.matched
+
 
 def update_balances(new_order, matched_order, trade_quantity):
     # Logic to update balances after matching orders
@@ -161,6 +135,7 @@ def update_balances(new_order, matched_order, trade_quantity):
     buyer_base_balance.amount += trade_quantity
 
     db.session.commit()
+
 
 if __name__ == '__main__':
     Thread(target=process_loop).start()

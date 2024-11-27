@@ -4,10 +4,11 @@ import json
 import os
 import secrets
 import shutil
+import random
+import zellular
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
-
+from typing import Any, Optional, List, Dict
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
@@ -29,21 +30,24 @@ ZSEQUENCER_API_BATCHES_LIMIT = 100
 APP_NAME: str = "simple_app"
 
 
-def generate_privates_and_nodes_info(nodes_count) -> tuple[list[str], list[str], dict[str, Any]]:
+def generate_privates_and_nodes_info(nodes_count) -> tuple[list[str], list[str], dict[str, Any], dict[str, Any]]:
     """Generate private keys and nodes information for the network."""
     nodes_info_dict: dict[str, Any] = {}
+    operators_info_dict: dict[str, Any] = {}
     bls_privates_list: list[str] = []
     ecdsa_privates_list: list[str] = []
 
     for i in range(nodes_count):
         bls_private_key: str = secrets.token_hex(32)
         bls_privates_list.append(bls_private_key)
-        bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(
-            bls_private_key
-        )
+        bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(bls_private_key)
+        pub_g1 = bls_key_pair.pub_g1
+        pub_g2 = bls_key_pair.pub_g2
+
         ecdsa_private_key: str = secrets.token_hex(32)
         ecdsa_privates_list.append(ecdsa_private_key)
         address: str = Account().from_key(ecdsa_private_key).address.lower()
+
         nodes_info_dict[address] = {
             "id": address,
             "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
@@ -52,7 +56,24 @@ def generate_privates_and_nodes_info(nodes_count) -> tuple[list[str], list[str],
             "stake": 10,
         }
 
-    return bls_privates_list, ecdsa_privates_list, nodes_info_dict
+        operators_info_dict[address] = {
+            'id': address,
+            'operatorId': address,
+            'pubkeyG1_X': pub_g1.x.getStr(10).decode("utf-8"),
+            'pubkeyG1_Y': pub_g1.y.getStr(10).decode("utf-8"),
+            'pubkeyG2_X': [pub_g2.x.get_a().getStr(10).decode("utf-8"),
+                           pub_g2.x.get_b().getStr(10).decode("utf-8")],
+            'pubkeyG2_Y': [pub_g2.y.get_a().getStr(10).decode("utf-8"),
+                           pub_g2.y.get_b().getStr(10).decode("utf-8")],
+            'public_key_g2': attestation.G2Point(xa=pub_g2.x.get_a().getStr(10),
+                                                 xb=pub_g2.x.get_b().getStr(10),
+                                                 ya=pub_g2.y.get_a().getStr(10),
+                                                 yb=pub_g2.y.get_b().getStr(10)),
+            'socket': f"http://127.0.0.1:{str(BASE_PORT + i + 1)}",
+            'stake': 10,
+        }
+
+    return bls_privates_list, ecdsa_privates_list, nodes_info_dict, operators_info_dict
 
 
 def generate_bash_command_file(
@@ -78,7 +99,10 @@ def generate_bash_command_file(
 def main() -> None:
     """Main function to run the setup and launch nodes and run the test."""
 
-    bls_privates_list, ecdsa_privates_list, nodes_info_dict = generate_privates_and_nodes_info(NUM_INSTANCES)
+    (bls_privates_list,
+     ecdsa_privates_list,
+     nodes_info_dict,
+     operators_info_dict) = generate_privates_and_nodes_info(NUM_INSTANCES)
 
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
@@ -134,7 +158,6 @@ def main() -> None:
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
-
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
             "ZSEQUENCER_NODES_SOURCE": "file",
             "ZSEQUENCER_REGISTER_OPERATOR": "false"
@@ -146,6 +169,18 @@ def main() -> None:
                                    f'node_{(i + 1)}.sh')
 
         subprocess.run(['chmod', '+x', f'node_{(i + 1)}.sh'])
+        # subprocess.run(['bash', f'node_{(i + 1)}.sh'])
+
+    use_zellular_sdk(operators_data_dict=operators_info_dict)
+
+
+def use_zellular_sdk(operators_data_dict):
+    print(operators_data_dict)
+
+    sample_socket = random.choice(list(operators_data_dict.values()))['socket']
+    verifier = zellular.Zellular(app_name=APP_NAME, base_url=sample_socket)
+
+    print(verifier)
 
 
 if __name__ == "__main__":

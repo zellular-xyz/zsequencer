@@ -371,32 +371,4 @@ class Config:
         if sequencer_id:
             self.SEQUENCER = self.NODES[sequencer_id]
 
-    # TODO: remove
-    @staticmethod
-    def profile_function(output_file: str) -> Any:
-        """Decorator to profile the execution of a function."""
-
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                profiler = cProfile.Profile()
-                profiler.enable()
-                try:
-                    result = func(*args, **kwargs)
-                finally:
-                    profiler.disable()
-                    with open(
-                        file=f"{zconfig.NODE['port']}_{output_file}",
-                        mode="a",
-                        encoding="utf-8",
-                    ) as file:
-                        ps = pstats.Stats(profiler, stream=file)
-                        ps.strip_dirs().sort_stats("cumulative").print_stats()
-                return result
-
-            return wrapper
-
-        return decorator
-
-
 zconfig: Config = Config()
