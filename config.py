@@ -10,6 +10,7 @@ import sys
 import pstats
 import time
 import requests
+from pprint import pprint
 from random import randbytes
 from threading import Thread
 from typing import Any
@@ -44,7 +45,7 @@ class Config:
             return content
         else:
             raise ValueError("The source provided is neither a valid URL nor a valid file path.")
-    
+
     @staticmethod
     def fetch_eigenlayer_nodes_data() -> dict[str, Any]:
         """Retrieve nodes data from Eigenlayer"""
@@ -64,12 +65,12 @@ class Config:
         }
         """
 
-        response = requests.post(subgraph_url, json={ "query": query })
+        response = requests.post(subgraph_url, json={"query": query})
         data = response.json()
         registrations = data['data']['newPubkeyRegistrations']
         for registration in registrations:
             registration['operator'] = registration['operator'].lower()
-        nodes_raw_data = { registration['operator']: registration for registration in registrations }
+        nodes_raw_data = {registration['operator']: registration for registration in registrations}
 
         config = BuildAllConfig(
             eth_http_url=rpc_node,
@@ -81,8 +82,9 @@ class Config:
         operators = clients.avs_registry_reader.get_operators_stake_in_quorums_at_current_block(
             quorum_numbers=[0]
         )[0]
-        stakes = { operator.operator.lower(): {'stake': operator.stake, 'id':operator.operator_id} for operator in operators }
-        
+        stakes = {operator.operator.lower(): {'stake': operator.stake, 'id': operator.operator_id} for operator in
+                  operators}
+
         query = """query MyQuery {
             operatorSocketUpdates {
                 socket
@@ -90,11 +92,11 @@ class Config:
                 id
             }
         }"""
-        response = requests.post(subgraph_url, json={ "query": query })
+        response = requests.post(subgraph_url, json={"query": query})
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
         add_http = lambda socket: f"http://{socket}" if not socket.startswith('http') else socket
-        sockets = { update['operatorId']: add_http(update['socket']) for update in updates }
+        sockets = {update['operatorId']: add_http(update['socket']) for update in updates}
         for operator in nodes_raw_data:
             stake = stakes.get(operator, {}).get('stake', 0)
             nodes_raw_data[operator]['stake'] = stake
@@ -109,22 +111,21 @@ class Config:
             '0x93d89ade53b8fcca53736be1a0d11d342d71118b'
         }
         for node_id, data in nodes_raw_data.items():
-            pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' '\
-                            + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
+            pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' ' \
+                     + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
             nodes[node_id] = {
                 'id': node_id,
                 'public_key_g2': pub_g2,
                 'address': data['operator'],
                 'socket': data['socket'],
             }
-            
+
             if node_id not in default_nodes_list:
-                nodes[node_id]['stake'] = min(float(data['stake'])/(10**18), 1.0)
+                nodes[node_id]['stake'] = min(float(data['stake']) / (10 ** 18), 1.0)
             else:
-                nodes[node_id]['stake'] = float(data['stake'])/(10**18)
+                nodes[node_id]['stake'] = float(data['stake']) / (10 ** 18)
         return nodes
-    
-        
+
     def fetch_nodes(self):
         """Fetchs the nodes data."""
         if self.NODE_SOURCE == 'eigenlayer':
@@ -138,7 +139,7 @@ class Config:
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
         update_last_nodes_data = len(nodes_data) != len(self.NODES) or any(
-            nodes_data[node_id]["stake"] != self.NODES[node_id]["stake"] 
+            nodes_data[node_id]["stake"] != self.NODES[node_id]["stake"]
             for node_id in self.NODES
         )
         if update_last_nodes_data:
@@ -186,7 +187,7 @@ class Config:
             try:
                 response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
                 if response["data"]["version"] != self.VERSION:
-                    continue 
+                    continue
                 sequencer_id = response["data"]["sequencer_id"]
                 sequencers_stake[sequencer_id] += self.NODES[node_id]["stake"]
             except Exception:
@@ -194,11 +195,11 @@ class Config:
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
         if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT and \
-           sequencers_stake[max_stake_id] > self.NODE["stake"]:
+                sequencers_stake[max_stake_id] > self.NODE["stake"]:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
-        
+
     @staticmethod
     def validate_env_variables() -> None:
         """Validate that all required environment variables are set."""
@@ -232,7 +233,7 @@ class Config:
             required_vars.extend(eigenlayer_vars)
         else:
             required_vars.append("ZSEQUENCER_NODES_FILE")
-        
+
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
             raise EnvironmentError(
@@ -256,7 +257,7 @@ class Config:
             "Content-Type": "application/json",
             "Version": self.VERSION
         }
-        self.NODES_INFO_SYNC_BORDER = 5 # in seconds
+        self.NODES_INFO_SYNC_BORDER = 5  # in seconds
         self.IS_SYNCING: bool = True
         self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
@@ -281,7 +282,7 @@ class Config:
             self.NODES: dict[str, dict[str, Any]] = Config.fetch_eigenlayer_nodes_data()
         else:
             self.NODES: dict[str, dict[str, Any]] = Config.get_file_content(self.NODES_FILE)
-        
+
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
@@ -329,10 +330,10 @@ class Config:
         self.AGGREGATION_TIMEOUT: int = int(
             os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
         )
-        self.FETCH_APPS_AND_NODES_INTERVAL: int = int (
+        self.FETCH_APPS_AND_NODES_INTERVAL: int = int(
             os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
         )
-        self.API_BATCHES_LIMIT: int = int (
+        self.API_BATCHES_LIMIT: int = int(
             os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100")
         )
         self.INIT_SEQUENCER_ID: str = os.getenv(
@@ -351,7 +352,7 @@ class Config:
 
         if self.SEQUENCER["id"] == self.NODE["id"]:
             self.IS_SYNCING = False
-            
+
         self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
@@ -370,5 +371,6 @@ class Config:
         """Update the sequencer configuration."""
         if sequencer_id:
             self.SEQUENCER = self.NODES[sequencer_id]
+
 
 zconfig: Config = Config()

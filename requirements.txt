@@ -5,3 +5,4 @@ xxhash==3.4.1
 https://github.com/zellular-xyz/eigensdk-python/archive/refs/tags/latest.zip
 ecdsa
 flask_sqlalchemy
+cryptography

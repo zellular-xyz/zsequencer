@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional, List, Dict
 from eigensdk.crypto.bls import attestation
+from pprint import pprint
 from web3 import Account
 
 NUM_INSTANCES: int = 3
@@ -17,6 +18,7 @@ BASE_PORT: int = 6000
 THRESHOLD_PERCENT: int = 67
 DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
+OPERATORS_FILE: str = "/tmp/zellular_dev_net/operators.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
 ZSEQUENCER_SNAPSHOT_CHUNK: int = 1000
 ZSEQUENCER_REMOVE_CHUNK_BORDER: int = 3
@@ -65,10 +67,7 @@ def generate_privates_and_nodes_info(nodes_count) -> tuple[list[str], list[str],
                            pub_g2.x.get_b().getStr(10).decode("utf-8")],
             'pubkeyG2_Y': [pub_g2.y.get_a().getStr(10).decode("utf-8"),
                            pub_g2.y.get_b().getStr(10).decode("utf-8")],
-            'public_key_g2': attestation.G2Point(xa=pub_g2.x.get_a().getStr(10),
-                                                 xb=pub_g2.x.get_b().getStr(10),
-                                                 ya=pub_g2.y.get_a().getStr(10),
-                                                 yb=pub_g2.y.get_b().getStr(10)),
+            'public_key_g2': bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
             'socket': f"http://127.0.0.1:{str(BASE_PORT + i + 1)}",
             'stake': 10,
         }
@@ -169,18 +168,9 @@ def main() -> None:
                                    f'node_{(i + 1)}.sh')
 
         subprocess.run(['chmod', '+x', f'node_{(i + 1)}.sh'])
-        # subprocess.run(['bash', f'node_{(i + 1)}.sh'])
 
-    use_zellular_sdk(operators_data_dict=operators_info_dict)
-
-
-def use_zellular_sdk(operators_data_dict):
-    print(operators_data_dict)
-
-    sample_socket = random.choice(list(operators_data_dict.values()))['socket']
-    verifier = zellular.Zellular(app_name=APP_NAME, base_url=sample_socket)
-
-    print(verifier)
+        with open(OPERATORS_FILE, 'w+') as json_file:
+            json.dump(operators_info_dict, json_file, indent=4)
 
 
 if __name__ == "__main__":
