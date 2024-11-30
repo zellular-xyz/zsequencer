@@ -6,3 +6,6 @@ https://github.com/zellular-xyz/eigensdk-python/archive/refs/tags/latest.zip
 ecdsa
 flask_sqlalchemy
 cryptography
+fastapi==0.115.5
+uvicorn==0.32.0
+requests
