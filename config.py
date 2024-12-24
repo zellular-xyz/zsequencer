@@ -13,11 +13,12 @@ import requests
 from pprint import pprint
 from random import randbytes
 from threading import Thread
-from typing import Any
+from typing import List
 from urllib.parse import urlparse
-
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from eigensdk.crypto.bls import attestation
+from nodes_snapshot_timeseries_server import NodesSnapshotClient, NodeInfo
 from web3 import Account
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from common.logger import zlogger
@@ -25,6 +26,40 @@ from common.logger import zlogger
 
 class Config:
     _instance = None
+
+    def __init__(self):
+        self.nodes_info_source = None
+        self.address = None
+        self.apps = None
+        self.headers = None
+        self.version = None
+        self.nodes_info_sync_border = 0
+        self.is_syncing = True
+        self.nodes_file = None
+        self.apps_file = None
+        self.snapshot_path = None
+        self.send_batch_interval = None
+        self.sync_interval = None
+        self.finalization_time_border = None
+        self.aggregation_timeout = None
+        self.fetch_apps_and_nodes_interval = None
+        self.api_batches_limit = None
+        self.snapshot_chunk = None
+        self.remove_chunk_border = None
+        self.port = None
+        self.historical_snapshot_server_socket = None
+        self.nodes_info = {}
+        self.nodes_last_data = {}
+        self.node_info = {}
+        self.total_stake = 0
+        self.aggregated_public_key = None
+        self.threshold_percent = 0
+        self.init_sequencer_id = None
+        self.sequencer = {}
+        self.subgraph_url = ''
+        self.rpc_node = ''
+        self.registry_coordinator = ''
+        self.operator_state_retriever = ''
 
     def __new__(cls) -> "Config":
         if cls._instance is None:
@@ -46,13 +81,8 @@ class Config:
         else:
             raise ValueError("The source provided is neither a valid URL nor a valid file path.")
 
-    @staticmethod
-    def fetch_eigenlayer_nodes_data() -> dict[str, Any]:
+    def fetch_eigenlayer_nodes_data(self) -> dict[str, Any]:
         """Retrieve nodes data from Eigenlayer"""
-        subgraph_url = os.getenv('ZSEQUENCER_SUBGRAPH_URL')
-        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
-        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
-        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
 
         query = """query MyQuery {
             newPubkeyRegistrations {
@@ -65,7 +95,7 @@ class Config:
         }
         """
 
-        response = requests.post(subgraph_url, json={"query": query})
+        response = requests.post(self.subgraph_url, json={"query": query})
         data = response.json()
         registrations = data['data']['newPubkeyRegistrations']
         for registration in registrations:
@@ -73,9 +103,9 @@ class Config:
         nodes_raw_data = {registration['operator']: registration for registration in registrations}
 
         config = BuildAllConfig(
-            eth_http_url=rpc_node,
-            registry_coordinator_addr=registry_coordinator,
-            operator_state_retriever_addr=operator_state_retriever,
+            eth_http_url=self.rpc_node,
+            registry_coordinator_addr=self.registry_coordinator,
+            operator_state_retriever_addr=self.operator_state_retriever,
         )
 
         clients = build_all(config)
@@ -92,7 +122,7 @@ class Config:
                 id
             }
         }"""
-        response = requests.post(subgraph_url, json={"query": query})
+        response = requests.post(self.subgraph_url, json={"query": query})
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
         add_http = lambda socket: f"http://{socket}" if not socket.startswith('http') else socket
@@ -126,43 +156,46 @@ class Config:
                 nodes[node_id]['stake'] = float(data['stake']) / (10 ** 18)
         return nodes
 
+    def get_last_nodes_info(self):
+        nodes_data = {}
+        if self.nodes_info_source == 'eigenlayer':
+            nodes_data = self.fetch_eigenlayer_nodes_data()
+        elif self.nodes_info_source == 'file':
+            nodes_data = self.get_file_content(self.nodes_file)
+        elif self.nodes_info_source == 'historical_snapshot_server':
+            nodes_data = self.get_historical_snapshot_server_network_info()
+        return nodes_data
+
     def fetch_nodes(self):
         """Fetchs the nodes data."""
-        if self.NODE_SOURCE == 'eigenlayer':
-            nodes_data = Config.fetch_eigenlayer_nodes_data()
-        else:
-            nodes_data = Config.get_file_content(self.NODES_FILE)
-
+        nodes_data = self.get_last_nodes_info()
         for node_data in nodes_data.values():
             public_key_g2: str = node_data["public_key_g2"]
             node_data["public_key_g2"] = attestation.new_zero_g2_point()
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
-        update_last_nodes_data = len(nodes_data) != len(self.NODES) or any(
-            nodes_data[node_id]["stake"] != self.NODES[node_id]["stake"]
-            for node_id in self.NODES
+        update_last_nodes_data = len(nodes_data) != len(self.nodes_info) or any(
+            nodes_data[node_id]["stake"] != self.nodes_info[node_id]["stake"]
+            for node_id in self.nodes_info
         )
         if update_last_nodes_data:
-            self.NODES_LAST_DATA.update({
-                "total_stake": self.TOTAL_STAKE,
-                "aggregated_public_key": self.AGGREGATED_PUBLIC_KEY,
+            self.nodes_last_data.update({
+                "total_stake": self.total_stake,
+                "aggregated_public_key": self.aggregated_public_key,
                 "timestamp": int(time.time())
             })
-        self.NODE.update(nodes_data[self.ADDRESS])
-        self.NODES.update(nodes_data)
-        self.SEQUENCER.update(self.NODES[self.SEQUENCER['id']])
-        self.TOTAL_STAKE = sum([node['stake'] for node in self.NODES.values()])
-        self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
+        self.node_info.update(nodes_data[self.address])
+        self.nodes_info.update(nodes_data)
+        self.sequencer.update(self.nodes_info[self.sequencer['id']])
+        self.total_stake = sum([node['stake'] for node in self.nodes_info.values()])
+        self.aggregated_public_key = self.get_aggregated_public_key()
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
-        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
-        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
-        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
 
         config = BuildAllConfig(
-            eth_http_url=rpc_node,
-            registry_coordinator_addr=registry_coordinator,
-            operator_state_retriever_addr=operator_state_retriever,
+            eth_http_url=self.rpc_node,
+            registry_coordinator_addr=self.registry_coordinator,
+            operator_state_retriever_addr=self.operator_state_retriever,
         )
 
         clients = build_all(config, ecdsa_private_key)
@@ -175,30 +208,37 @@ class Config:
             socket=os.getenv("ZSEQUENCER_REGISTER_SOCKET"),
         )
 
+    @property
+    def node_info(self) -> NodeInfo:
+        return NodeInfo(
+
+        )
+
+
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
         sequencers_stake: dict[str, Any] = {
-            node_id: 0 for node_id in list(self.NODES.keys())
+            node_id: 0 for node_id in list(self.nodes_info.keys())
         }
-        for node_id in list(self.NODES.keys()):
-            if node_id == self.NODE["id"]:
+        for node_id in list(self.nodes_info.keys()):
+            if node_id == self.node_info["id"]:
                 continue
-            url: str = f"{self.NODES[node_id]['socket']}/node/state"
+            url: str = f"{self.nodes_info[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
-                if response["data"]["version"] != self.VERSION:
+                response = requests.get(url=url, headers=self.headers, timeout=1).json()
+                if response["data"]["version"] != self.version:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += self.NODES[node_id]["stake"]
+                sequencers_stake[sequencer_id] += self.nodes_info[node_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
-        sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT and \
-                sequencers_stake[max_stake_id] > self.NODE["stake"]:
+        sequencers_stake[max_stake_id] += self.node_info["stake"]
+        if 100 * sequencers_stake[max_stake_id] / self.total_stake >= self.threshold_percent and \
+                sequencers_stake[max_stake_id] > self.node_info["stake"]:
             self.update_sequencer(max_stake_id)
         else:
-            self.update_sequencer(self.INIT_SEQUENCER_ID)
+            self.update_sequencer(self.init_sequencer_id)
 
     @staticmethod
     def validate_env_variables() -> None:
@@ -222,17 +262,20 @@ class Config:
             "ZSEQUENCER_INIT_SEQUENCER_ID",
             "ZSEQUENCER_NODES_SOURCE"
         ]
-        eigenlayer_vars: list[str] = [
+        eigenlayer_vars: List[str] = [
             "ZSEQUENCER_SUBGRAPH_URL",
             "ZSEQUENCER_RPC_NODE",
             "ZSEQUENCER_REGISTRY_COORDINATOR",
             "ZSEQUENCER_OPERATOR_STATE_RETRIEVER"
         ]
 
-        if os.getenv("ZSEQUENCER_NODES_SOURCE") == 'eigenlayer':
+        nodes_source = os.getenv("ZSEQUENCER_NODES_SOURCE")
+        if nodes_source == 'eigenlayer':
             required_vars.extend(eigenlayer_vars)
-        else:
+        elif nodes_source == 'file':
             required_vars.append("ZSEQUENCER_NODES_FILE")
+        elif nodes_source == 'historical_snapshot_server':
+            required_vars.append("ZSEQUENCER_HISTORICAL_SNAPSHOT_SERVER_SOCKET")
 
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
         if missing_vars:
@@ -242,26 +285,40 @@ class Config:
 
     def get_aggregated_public_key(self) -> attestation.G2Point:
         aggregated_public_key: attestation.G2Point = attestation.new_zero_g2_point()
-        for node in self.NODES.values():
+        for node in self.nodes_info.values():
+            aggregated_public_key = aggregated_public_key + node["public_key_g2"]
+        return aggregated_public_key
+
+    @staticmethod
+    def compute_agg_public_key(nodes_info):
+        aggregated_public_key: attestation.G2Point = attestation.new_zero_g2_point()
+        for node in nodes_info.values():
             aggregated_public_key = aggregated_public_key + node["public_key_g2"]
         return aggregated_public_key
 
     def load_environment_variables(self):
         """Load environment variables from a .env file and validate them."""
-        if os.path.exists(".env"):
-            load_dotenv(dotenv_path=".env", override=False)
+        # if os.path.exists(".env"):
+        #     load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
-        self.VERSION = "v0.0.12"
-        self.HEADERS: dict[str, Any] = {
+        self.version = "v0.0.12"
+        self.headers: dict[str, Any] = {
             "Content-Type": "application/json",
-            "Version": self.VERSION
+            "Version": self.version
         }
-        self.NODES_INFO_SYNC_BORDER = 5  # in seconds
-        self.IS_SYNCING: bool = True
-        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
-        self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
-        self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
+        self.nodes_info_sync_border = 5  # in seconds
+        self.is_syncing: bool = True
+        self.nodes_file: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
+        self.apps_file: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
+        self.snapshot_path: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
+        self.historical_snapshot_server_socket = os.getenv("ZSEQUENCER_HISTORICAL_SNAPSHOT_SERVER_SOCKET",
+                                                           "localhost:8000")
+
+        self.subgraph_url = os.getenv('ZSEQUENCER_SUBGRAPH_URL', '')
+        self.rpc_node = os.getenv('ZSEQUENCER_RPC_NODE', '')
+        self.registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR', '')
+        self.operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER', '')
 
         bls_key_store_path: str = os.getenv("ZSEQUENCER_BLS_KEY_FILE", "")
         ecdsa_key_store_path: str = os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", "")
@@ -275,23 +332,20 @@ class Config:
         with open(ecdsa_key_store_path, 'r') as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(encrypted_json, ecdsa_key_password)
-        self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
+        self.address = Account.from_key(ecdsa_private_key).address.lower()
 
-        self.NODE_SOURCE = os.getenv("ZSEQUENCER_NODES_SOURCE")
-        if self.NODE_SOURCE == 'eigenlayer':
-            self.NODES: dict[str, dict[str, Any]] = Config.fetch_eigenlayer_nodes_data()
-        else:
-            self.NODES: dict[str, dict[str, Any]] = Config.get_file_content(self.NODES_FILE)
+        self.nodes_info_source = os.getenv("ZSEQUENCER_NODES_SOURCE")
+        self.nodes_info = self.get_last_nodes_info()
 
-        self.NODE: dict[str, Any] = {}
-        for node in self.NODES.values():
+        self.node_info: dict[str, Any] = {}
+        for node in self.nodes_info.values():
             public_key_g2: str = node["public_key_g2"]
             node["public_key_g2"] = attestation.new_zero_g2_point()
             node["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
-        if self.ADDRESS in self.NODES:
-            self.NODE = self.NODES[self.ADDRESS]
-            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
+        if self.address in self.nodes_info:
+            self.node_info = self.nodes_info[self.address]
+            public_key_g2: str = self.node_info["public_key_g2"].getStr(10).decode('utf-8')
             public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
             error_msg: str = "the bls key pair public key does not match public of the node in the nodes list"
             assert public_key_g2 == public_key_g2_from_private, error_msg
@@ -302,75 +356,106 @@ class Config:
             zlogger.warning("Operator not found in the nodes' list")
             sys.exit()
 
-        self.NODE["ecdsa_private_key"] = ecdsa_private_key
-        self.NODE["bls_key_pair"] = bls_key_pair
+        self.node_info["ecdsa_private_key"] = ecdsa_private_key
+        self.node_info["bls_key_pair"] = bls_key_pair
 
-        os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
+        os.makedirs(self.snapshot_path, exist_ok=True)
 
-        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
-        if self.PORT != urlparse(self.NODE['socket']).port:
-            if self.NODE_SOURCE != 'eigenlayer':
-                data_source = f'{self.NODES_FILE}'
-            else:
+        self.port: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
+        if self.port != urlparse(self.node_info['socket']).port:
+            if self.nodes_info_source == 'eigenlayer':
                 data_source = 'Eigenlayer network'
+            else:
+                data_source = self.nodes_file
+
             zlogger.warning(f"The node port in the .env file does not match the node port provided by {data_source}.")
             sys.exit()
-        self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
-        self.REMOVE_CHUNK_BORDER: int = int(
-            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
-        )
 
-        self.SEND_BATCH_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
-        )
-        self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
-        self.FINALIZATION_TIME_BORDER: int = int(
-            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
-        )
-        self.AGGREGATION_TIMEOUT: int = int(
-            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
-        )
-        self.FETCH_APPS_AND_NODES_INTERVAL: int = int(
-            os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
-        )
-        self.API_BATCHES_LIMIT: int = int(
-            os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100")
-        )
-        self.INIT_SEQUENCER_ID: str = os.getenv(
-            "ZSEQUENCER_INIT_SEQUENCER_ID"
-        )
-        self.THRESHOLD_PERCENT: int = float(
-            os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
-        )
+        self.snapshot_chunk: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
+        self.remove_chunk_border: int = int(os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2"))
 
-        self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = (
-            self.get_aggregated_public_key()
-        )
-        self.TOTAL_STAKE = sum([node['stake'] for node in self.NODES.values()])
+        self.send_batch_interval: float = float(os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5"))
+        self.sync_interval: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
+        self.finalization_time_border: int = int(os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120"))
+        self.aggregation_timeout: int = int(os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5"))
+        self.fetch_apps_and_nodes_interval: int = int(os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60"))
+        self.api_batches_limit: int = int(os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100"))
+        self.init_sequencer_id: str = os.getenv("ZSEQUENCER_INIT_SEQUENCER_ID")
+        self.threshold_percent: int = float(os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100)))
+
+        self.aggregated_public_key: attestation.G2Point = (self.get_aggregated_public_key())
+        self.total_stake = sum([node['stake'] for node in self.nodes_info.values()])
 
         self.init_sequencer()
 
-        if self.SEQUENCER["id"] == self.NODE["id"]:
-            self.IS_SYNCING = False
+        if self.sequencer["id"] == self.node_info["id"]:
+            self.is_syncing = False
 
-        self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
+        self.apps: dict[str, dict[str, Any]] = Config.get_file_content(self.apps_file)
 
-        for app_name in self.APPS:
+        for app_name in self.apps:
             snapshot_path: str = os.path.join(
-                self.SNAPSHOT_PATH, self.VERSION, app_name
+                self.snapshot_path, self.version, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
 
-        self.NODES_LAST_DATA = {
-            "total_stake": self.TOTAL_STAKE,
-            "aggregated_public_key": self.AGGREGATED_PUBLIC_KEY,
+        self.nodes_last_data = {
+            "total_stake": self.total_stake,
+            "aggregated_public_key": self.aggregated_public_key,
             "timestamp": int(time.time())
         }
+
+        if self.nodes_info_source == 'historical_snapshot_server':
+            self.register_node_info()
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:
-            self.SEQUENCER = self.NODES[sequencer_id]
+            self.sequencer = self.nodes_info[sequencer_id]
+
+    def get_network_info(self, signature_tag: int):
+        if self.nodes_info_source == 'eigenlayer':
+            return self.get_eigen_network_info(signature_tag=signature_tag)
+        elif self.nodes_info_source == 'historical_snapshot_server':
+            return self.get_historical_snapshot_server_network_info(timestamp=signature_tag)
+        elif self.nodes_info_source == 'file':
+            return self.get_last_nodes_info()
+
+    def get_historical_snapshot_server_network_info(self, timestamp: Optional[int]):
+        client = NodesSnapshotClient(socket=self.historical_snapshot_server_socket)
+        return client.get_network_snapshot(timestamp=timestamp)
+
+    def get_eigen_network_info(self, signature_tag: int):
+
+        graphql_query = {
+            "query": f"""
+    {{
+        operators(block: {{ number: {signature_tag} }}) {{
+            id
+            socket
+            stake
+            pubkeyG2_X
+            pubkeyG2_Y
+        }}
+    }}
+    """
+        }
+
+        response = requests.post(self.subgraph_url,
+                                 headers={"content-type": "application/json"},
+                                 json=graphql_query)
+        result = response.json()
+        return {
+            item.get("id"): {
+                "id": item.get("id"),
+                "address": item.get("id"),
+                "socket": item.get("socket"),
+                "stake": int(item.get("socket")),
+                "public_key_g2": '1 ' + item['pubkeyG2_X'][1] + ' ' + item['pubkeyG2_X'][0] + ' ' \
+                                 + item['pubkeyG2_Y'][1] + ' ' + item['pubkeyG2_Y'][0]
+            }
+            for item in result.get("data").get("operators", [])
+        }
 
 
 zconfig: Config = Config()

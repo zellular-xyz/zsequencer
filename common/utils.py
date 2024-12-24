@@ -22,7 +22,7 @@ def sequencer_only(func: Callable[..., Any]) -> Decorator:
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        if zconfig.node_info["id"] != zconfig.sequencer["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
         return func(*args, **kwargs)
 
@@ -34,7 +34,7 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+        if zconfig.node_info["id"] == zconfig.sequencer["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
         return func(*args, **kwargs)
 
@@ -45,13 +45,13 @@ def validate_request(func: Callable[..., Any]) -> Decorator:
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         version = request.headers.get("Version","")
-        if (not version or version != zconfig.VERSION) and \
+        if (not version or version != zconfig.version) and \
             request.endpoint.startswith("sequencer"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
-        if (version and version != zconfig.VERSION) and \
+        if (version and version != zconfig.version) and \
             request.endpoint.startswith("node"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
-        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
+        if zconfig.is_syncing and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
         return func(*args, **kwargs)
     return decorated_function
@@ -62,7 +62,7 @@ def eth_sign(message: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=message)
     account_instance: Account = Account()
     return account_instance.sign_message(
-        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"]
+        signable_message=message_encoded, private_key=zconfig.node_info["ecdsa_private_key"]
     ).signature.hex()
 
 
@@ -74,7 +74,7 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         recovered_address: str = account_instance.recover_message(
             signable_message=msg_encoded, signature=signature
         )
-        return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
+        return recovered_address.lower() == zconfig.nodes_info[node_id]["address"].lower()
     except Exception:
         return False
 
@@ -91,7 +91,7 @@ def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
     """Get the ID of the next sequencer."""
     sorted_nodes: list[dict[str, Any]] = sorted(
-        zconfig.NODES.values(), key=lambda x: x["id"]
+        zconfig.nodes_info.values(), key=lambda x: x["id"]
     )
     index: int | None = next(
         (i for i, item in enumerate(sorted_nodes) if item["id"] == old_sequencer_id),
@@ -106,8 +106,8 @@ def get_next_sequencer_id(old_sequencer_id: str) -> str:
 def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
     """Check if the switch to a new sequencer is approved."""
     node_ids = [proof['node_id'] for proof in proofs if is_dispute_approved(proof)]
-    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
-    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
+    stake = sum([zconfig.nodes_info[node_id]['stake'] for node_id in node_ids])
+    return 100 * stake / zconfig.total_stake >= zconfig.threshold_percent
 
 
 def is_dispute_approved(proof: dict[str, Any]) -> bool:
@@ -122,9 +122,9 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
     if not all(key in proof for key in required_keys):
         return False
 
-    new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
+    new_sequencer_id: str = get_next_sequencer_id(zconfig.sequencer["id"])
     if (
-        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
+        proof["old_sequencer_id"] != zconfig.sequencer["id"]
         or proof["new_sequencer_id"] != new_sequencer_id
     ):
         return False
@@ -136,7 +136,7 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
     if not is_eth_sig_verified(
         signature=proof["signature"],
         node_id=proof["node_id"],
-        message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
+        message=f'{zconfig.sequencer["id"]}{proof["timestamp"]}',
     ):
         return False
 

@@ -17,7 +17,7 @@ from .logger import zlogger
 
 def bls_sign(message: str) -> str:
     """Sign a message using BLS."""
-    signature: attestation.Signature = zconfig.NODE["bls_key_pair"].sign_message(
+    signature: attestation.Signature = zconfig.node_info["bls_key_pair"].sign_message(
         message.encode("utf-8")
     )
     return signature.getStr(10).decode("utf-8")
@@ -28,7 +28,7 @@ def get_signers_aggregated_public_key(
 ) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     for nonsigner in nonsigners:
-        non_signer_public_key: attestation.G2Point = zconfig.NODES[nonsigner]["public_key_g2"]
+        non_signer_public_key: attestation.G2Point = zconfig.nodes_info[nonsigner]["public_key_g2"]
         aggregated_public_key = aggregated_public_key - non_signer_public_key
     return aggregated_public_key
 
@@ -47,16 +47,16 @@ async def gather_signatures(
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
-    stake_percent = 100 * zconfig.NODE['stake'] / zconfig.TOTAL_STAKE
+    stake_percent = 100 * zconfig.node_info['stake'] / zconfig.total_stake
     try:
-        while stake_percent < zconfig.THRESHOLD_PERCENT:
+        while stake_percent < zconfig.threshold_percent:
             done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 if not task.result():
                     continue
                 node_id = sign_tasks[task]
                 completed_results[node_id] = task.result()
-                stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+                stake_percent += 100 * zconfig.nodes_info[node_id]['stake'] / zconfig.total_stake
 
     except Exception as error:
         if not isinstance(error, ValueError): # For empty list
@@ -67,11 +67,11 @@ async def gather_and_aggregate_signatures(
     data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes."""
-    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids]) + zconfig.NODE['stake']
-    if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
+    stake = sum([zconfig.nodes_info[node_id]['stake'] for node_id in node_ids]) + zconfig.node_info['stake']
+    if 100 * stake / zconfig.total_stake < zconfig.threshold_percent:
         return None
 
-    if not node_ids.issubset(set(zconfig.NODES.keys())):
+    if not node_ids.issubset(set(zconfig.nodes_info.keys())):
         return None
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
@@ -79,7 +79,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f'{zconfig.NODES[node_id]["socket"]}/node/sign_sync_point',
+                url=f'{zconfig.nodes_info[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,
@@ -89,19 +89,19 @@ async def gather_and_aggregate_signatures(
     }
     try:
         signatures, stake_percent = await asyncio.wait_for(
-            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT
+            gather_signatures(sign_tasks), timeout=zconfig.aggregation_timeout
         )
     except asyncio.TimeoutError:
-        zlogger.exception(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
+        zlogger.exception(f"Aggregation of signatures timed out after {zconfig.aggregation_timeout} seconds.")
         return None
 
-    if stake_percent < zconfig.THRESHOLD_PERCENT:
+    if stake_percent < zconfig.threshold_percent:
         return None
 
     data["signature"] = bls_sign(message)
-    signatures[zconfig.NODE['id']] = data
+    signatures[zconfig.node_info['id']] = data
 
-    nonsigners = list(set(zconfig.NODES.keys()) - set(signatures.keys()))
+    nonsigners = list(set(zconfig.nodes_info.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(
         list(signatures.values())
     )
@@ -119,7 +119,7 @@ async def request_signature(
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, json=data, timeout=timeout, headers=zconfig.HEADERS) as response:
+            async with session.post(url, json=data, timeout=timeout, headers=zconfig.headers) as response:
                 response_json = await response.json()
                 if response_json.get("status") != "success":
                     return None
@@ -127,7 +127,7 @@ async def request_signature(
                 signature: attestation.Signature = attestation.new_zero_signature()
                 signature.setStr(response_json["data"]["signature"].encode("utf-8"))
                 if not signature.verify(
-                    pub_key=zconfig.NODES[node_id]["public_key_g2"],
+                    pub_key=zconfig.nodes_info[node_id]["public_key_g2"],
                     msg_bytes=message.encode("utf-8"),
                 ):
                     return None

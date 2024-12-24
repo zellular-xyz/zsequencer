@@ -24,7 +24,7 @@ def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-    if app_name not in list(zconfig.APPS):
+    if app_name not in list(zconfig.apps):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     data = request.data.decode('latin-1')
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
@@ -61,16 +61,16 @@ def post_dispute() -> Response:
     error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-    if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
+    if req_data["sequencer_id"] != zconfig.sequencer["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
     if zdb.has_missed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
+            "node_id": zconfig.node_info["id"],
+            "old_sequencer_id": zconfig.sequencer["id"],
+            "new_sequencer_id": utils.get_next_sequencer_id(zconfig.sequencer["id"]),
             "timestamp": timestamp,
-            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
+            "signature": utils.eth_sign(f'{zconfig.sequencer["id"]}{timestamp}'),
         }
         return success_response(data=data)
     
@@ -105,16 +105,16 @@ def post_switch_sequencer() -> Response:
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
-        "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
-        "version": zconfig.VERSION,
-        "sequencer_id": zconfig.SEQUENCER["id"],
-        "node_id": zconfig.NODE["id"],
-        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
-        "address": zconfig.NODE["address"],
+        "sequencer": zconfig.node_info["id"] == zconfig.sequencer["id"],
+        "version": zconfig.version,
+        "sequencer_id": zconfig.sequencer["id"],
+        "node_id": zconfig.node_info["id"],
+        "public_key_g2": zconfig.node_info["public_key_g2"].getStr(10).decode('utf-8'),
+        "address": zconfig.node_info["address"],
         "apps": {},
     }
 
-    for app_name in list(zconfig.APPS.keys()):
+    for app_name in list(zconfig.apps.keys()):
         last_sequenced_batch = zdb.get_last_batch(app_name, "sequenced")
         last_locked_batch = zdb.get_last_batch(app_name, "locked")
         last_finalized_batch = zdb.get_last_batch(app_name, "finalized")
@@ -134,7 +134,7 @@ def get_state() -> Response:
 @utils.validate_request
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
-    if app_name not in list(zconfig.APPS):
+    if app_name not in list(zconfig.apps):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
     return success_response(data=last_finalized_batch)
@@ -144,7 +144,7 @@ def get_last_finalized_batch(app_name: str) -> Response:
 @utils.validate_request
 def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
-    if app_name not in list(zconfig.APPS):
+    if app_name not in list(zconfig.apps):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     after: int = request.args.get("after", default=0, type=int)
 

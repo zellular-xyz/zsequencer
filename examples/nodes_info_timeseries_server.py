@@ -34,12 +34,14 @@ class NodesSnapshotTimeSeries:
         timestamps = [ts for ts, _ in self.snapshots]
         idx = bisect.bisect_left(timestamps, query_timestamp)
 
-        if idx == 0:
-            return self.snapshots[0]
-        elif idx == len(timestamps):
-            return self.snapshots[-1]
-        else:
-            return self.snapshots[idx - 1]
+        #  Todo: handle exact match
+        pass
+        # if idx == 0:
+        #     return self.snapshots[0]
+        # elif idx == len(timestamps):
+        #     return self.snapshots[-1]
+        # else:
+        #     return self.snapshots[idx - 1]
 
     def add_snapshot(self, timestamp: float, snapshot):
         if self.last_timestamp is not None and timestamp <= self.last_timestamp:
@@ -51,7 +53,9 @@ class NodesSnapshotTimeSeries:
 
 
 class StateManager:
-    def __init__(self, nodes_snapshot_timeseries: NodesSnapshotTimeSeries, commitment_interval: float):
+    def __init__(self,
+                 nodes_snapshot_timeseries: NodesSnapshotTimeSeries,
+                 commitment_interval: float):
         self.nodes_snapshot_timeseries = nodes_snapshot_timeseries
         self.commitment_interval = commitment_interval
         self.nodes_info = {}
@@ -61,7 +65,8 @@ class StateManager:
 
     def run(self):
         while True:
-            if self.nodes_snapshot_timeseries.last_snapshot != self.nodes_info:
+            if ((self.nodes_snapshot_timeseries.last_snapshot) and
+                    (self.nodes_snapshot_timeseries.last_snapshot != self.nodes_info)):
                 self.nodes_snapshot_timeseries.add_snapshot(timestamp=time.time(),
                                                             snapshot=self.nodes_info)
             time.sleep(self.commitment_interval)
@@ -85,8 +90,8 @@ daemon_thread.start()
 
 
 # Define FastAPI routes
-@app.get("/snapshot/{timestamp}")
-def get_snapshot(timestamp: int, manager: StateManager = Depends(get_state_manager)):
+@app.get("/snapshot/")
+def get_snapshot(timestamp: Optional[int], manager: StateManager = Depends(get_state_manager)):
     """Retrieve the snapshot closest to the given timestamp."""
     try:
         snapshot = manager.nodes_snapshot_timeseries.get_snapshot_by_timestamp(timestamp)

@@ -46,8 +46,8 @@ def put_batches() -> Response:
     )
     if (
         not is_eth_sig_verified
-        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
-        or req_data["app_name"] not in list(zconfig.APPS.keys())
+        or str(req_data["node_id"]) not in list(zconfig.nodes_info.keys())
+        or req_data["app_name"] not in list(zconfig.apps.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
@@ -101,6 +101,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "batches": batches,
+        "signature_tag": zdb.signature_tag_value,
         "finalized": {
             "index": last_finalized_batch.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),

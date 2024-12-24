@@ -16,7 +16,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
     if not any(s["sequenced_index"] > locked_index for s in nodes_state):
         return None
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["sequenced_index"] >= locked_index      
+        s for s in nodes_state if s["sequenced_index"] >= locked_index
     ]
     sorted_filtered_states: list[dict[str, Any]] = sorted(
         filtered_states,
@@ -29,9 +29,9 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
             for s in sorted_filtered_states
             if s["sequenced_index"] >= state["sequenced_index"]
         }
-        stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
-        stake += zconfig.NODE["stake"]
-        if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
+        stake = sum([zconfig.nodes_info[node_id]['stake'] for node_id in party])
+        stake += zconfig.node_info["stake"]
+        if 100 * stake / zconfig.total_stake >= zconfig.threshold_percent:
             return {"state": state, "party": party}
     return None
 
@@ -57,20 +57,26 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
             for s in sorted_filtered_states
             if s["locked_index"] >= state["locked_index"]
         }
-        stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
-        stake += zconfig.NODE["stake"]
-        if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
+        stake = sum([zconfig.nodes_info[node_id]['stake'] for node_id in party])
+        stake += zconfig.node_info["stake"]
+        if 100 * stake / zconfig.total_stake >= zconfig.threshold_percent:
             return {"state": state, "party": party}
     return None
 
 
 async def sync() -> None:
     """Synchronize all apps."""
-    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+    if zconfig.node_info["id"] != zconfig.sequencer["id"]:
         return
 
-    for app_name in list(zconfig.APPS.keys()):
+    for app_name in list(zconfig.apps.keys()):
         await sync_app(app_name)
+
+
+async def update_network_last_block_number() -> None:
+    """Update the last block number"""
+    if zconfig.node_info["id"] != zconfig.sequencer["id"]:
+        return
 
 
 async def sync_app(app_name: str) -> None:
@@ -83,9 +89,10 @@ async def sync_app(app_name: str) -> None:
             "index": locked_sync_point["state"]["sequenced_index"],
             "hash": locked_sync_point["state"]["sequenced_hash"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
+            "tag": zdb.signature_tag_value
         }
         lock_signature: (
-            dict[str, Any] | None
+                dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=locked_data, node_ids=locked_sync_point["party"]
         )
@@ -106,9 +113,10 @@ async def sync_app(app_name: str) -> None:
             "index": finalized_sync_point["state"]["locked_index"],
             "hash": finalized_sync_point["state"]["locked_hash"],
             "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
+            "tag": zdb.signature_tag_value
         }
         finalization_signature: (
-            dict[str, Any] | None
+                dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=finalized_data, node_ids=finalized_sync_point["party"]
         )

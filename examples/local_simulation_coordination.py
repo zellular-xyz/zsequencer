@@ -4,16 +4,14 @@ import json
 import os
 import secrets
 import shutil
-import random
-import zellular
-import threading
-import time
 import subprocess
 from pathlib import Path
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional
+
 from eigensdk.crypto.bls import attestation
-from pprint import pprint
 from web3 import Account
+
+from nodes_snapshot_timeseries_server import NodesSnapshotClient, NodeInfo
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
@@ -22,11 +20,11 @@ DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
 OPERATORS_FILE: str = "/tmp/zellular_dev_net/operators.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
+HISTORICAL_SNAPSHOT_SERVER_SOCKET = 'localhost:8000'
 ZSEQUENCER_SNAPSHOT_CHUNK: int = 1000
 ZSEQUENCER_REMOVE_CHUNK_BORDER: int = 3
-ZSEQUENCER_SEND_TXS_INTERVAL: float = 2.0
-ZSEQUENCER_SYNC_INTERVAL: float = 2.0
-ZSEQUENCER_NODES_FILE_GENERATION_INTERVAL: float = 1.0
+ZSEQUENCER_SEND_TXS_INTERVAL: float = 0.05
+ZSEQUENCER_SYNC_INTERVAL: float = 0.05
 ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 10
 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT = 5
 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 30
@@ -98,31 +96,8 @@ def generate_bash_command_file(
             bash_file.write(full_command)
 
 
-# def generate_nodes_file_background(nodes_info_dict):
-#     while True:
-#         for idx in range(NUM_INSTANCES):
-#             with open(file=f"/tmp/zellular_dev_net/nodes_{str(idx)}.json", mode="w", encoding="utf-8") as file:
-#                 file.write(json.dumps(nodes_info_dict))
-#
-#         time.sleep(ZSEQUENCER_NODES_FILE_GENERATION_INTERVAL)
-#
-
-def generate_nodes_file_background(nodes_info_dict, stop_event):
-    """
-    Continuously generates nodes.json files for the network.
-    Args:
-        nodes_info_dict (dict): Dictionary containing nodes information.
-        stop_event (threading.Event): Event to signal thread termination.
-    """
-    # Loop until the stop_event is set
-    count = 0
-    while not stop_event.is_set():
-        for idx in range(NUM_INSTANCES):
-            with open(file=f"/tmp/zellular_dev_net/nodes_{str(idx)}.json", mode="w", encoding="utf-8") as file:
-                json.dump(nodes_info_dict, file)
-        print(f'generate nodes.json file for each node for: {str(count)}th')
-        time.sleep(ZSEQUENCER_NODES_FILE_GENERATION_INTERVAL)
-        count += 1
+# def register_nodes_info(nodes_snapshot: SnapShotType):
+#     snapshot_client = NodesSnapshotClient(socket=HISTORICAL_SNAPSHOT_SERVER_SOCKET)
 
 
 def main() -> None:
@@ -133,20 +108,23 @@ def main() -> None:
      nodes_info_dict,
      operators_info_dict) = generate_privates_and_nodes_info(NUM_INSTANCES)
 
+    nodes_snapshot_client = NodesSnapshotClient(socket=HISTORICAL_SNAPSHOT_SERVER_SOCKET)
+    initial_snapshot = {
+        id: NodeInfo(id=id,
+                     public_key_g2=node_dict.get('public_key_g2'),
+                     address=id,
+                     socket=node_dict.get('socket'),
+                     stake=node_dict.get('stake'))
+        for id, node_dict in nodes_info_dict.items()
+    }
+    nodes_snapshot_client.add_snapshot(initial_snapshot)
+
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
 
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
-
-    # Start background task to update nodes file
-    stop_event = threading.Event()
-    thread = threading.Thread(
-        target=generate_nodes_file_background,
-        args=(nodes_info_dict, stop_event)
-    )
-    thread.start()
 
     with open(file=APPS_FILE, mode="w", encoding="utf-8") as file:
         file.write(json.dumps({f"{APP_NAME}": {"url": "", "public_keys": []}}))
@@ -176,10 +154,11 @@ def main() -> None:
             "ZSEQUENCER_BLS_KEY_PASSWORD": bls_passwd,
             "ZSEQUENCER_ECDSA_KEY_FILE": ecdsa_key_file,
             "ZSEQUENCER_ECDSA_KEY_PASSWORD": ecdsa_passwd,
-            "ZSEQUENCER_NODES_FILE": f"/tmp/zellular_dev_net/nodes_{str(i)}.json",
+            "ZSEQUENCER_NODES_FILE": NODES_FILE,
             "ZSEQUENCER_APPS_FILE": APPS_FILE,
             "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
             "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
+            'HISTORICAL_SNAPSHOT_SERVER_SOCKET': HISTORICAL_SNAPSHOT_SERVER_SOCKET,
             "ZSEQUENCER_SNAPSHOT_CHUNK": str(ZSEQUENCER_SNAPSHOT_CHUNK),
             "ZSEQUENCER_REMOVE_CHUNK_BORDER": str(ZSEQUENCER_REMOVE_CHUNK_BORDER),
             "ZSEQUENCER_THRESHOLD_PERCENT": str(THRESHOLD_PERCENT),
@@ -193,7 +172,8 @@ def main() -> None:
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
-            "ZSEQUENCER_NODES_SOURCE": "file",
+            # Todo: handle this as a enum
+            "ZSEQUENCER_NODES_SOURCE": "historical_snapshot_server",
             "ZSEQUENCER_REGISTER_OPERATOR": "false"
         })
 

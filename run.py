@@ -40,8 +40,8 @@ def create_app() -> Flask:
 def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
-        time.sleep(zconfig.SEND_BATCH_INTERVAL)
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+        time.sleep(zconfig.send_batch_interval)
+        if zconfig.node_info["id"] == zconfig.sequencer["id"]:
             continue
 
         if zdb.pause_node.is_set():
@@ -61,26 +61,26 @@ def run_sequencer_tasks() -> None:
 async def run_sequencer_tasks_async() -> None:
     """Asynchronously run sequencer tasks."""
     while True:
-        await asyncio.sleep(zconfig.SYNC_INTERVAL)
-        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        await asyncio.sleep(zconfig.sync_interval)
+        if zconfig.node_info["id"] != zconfig.sequencer["id"]:
             continue
 
         if zdb.pause_node.is_set():
             continue
 
         await sequencer_tasks.sync()
-
+        await sequencer_tasks.update_network_last_block_number()
 
 def run_flask_app(app: Flask) -> None:
     """Run the Flask application."""
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
-    print(f'starting flask on 0.0.0.0:{zconfig.PORT}')
+    print(f'starting flask on 0.0.0.0:{zconfig.port}')
 
     app.run(
         host="0.0.0.0",
-        port=zconfig.PORT,
+        port=zconfig.port,
         debug=False,
         threaded=True,
         use_reloader=False,
