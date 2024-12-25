@@ -3,4 +3,5 @@ Flask==3.0.3
 web3==6.19.0
 python-dotenv==1.0.1
 xxhash==3.4.1
+validators==0.34.0
 https://github.com/zellular-xyz/eigensdk-python/archive/refs/tags/latest.zip

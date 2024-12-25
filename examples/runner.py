@@ -7,8 +7,9 @@ import secrets
 import shutil
 import subprocess
 import time
-from typing import Any
-
+from pathlib import Path
+from typing import Any, Optional
+from nodes_snapshot_timeseries_server import NodesRegistryClient, NodeInfo
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
@@ -18,6 +19,7 @@ THRESHOLD_PERCENT: int = 67
 DST_DIR: str = "/tmp/zellular_dev_net"
 NODES_FILE: str = "/tmp/zellular_dev_net/nodes.json"
 APPS_FILE: str = "/tmp/zellular_dev_net/apps.json"
+HISTORICAL_NODES_REGISTRY: str = "localhost:8000"
 ZSEQUENCER_SNAPSHOT_CHUNK: int = 1000
 ZSEQUENCER_REMOVE_CHUNK_BORDER: int = 3
 ZSEQUENCER_SEND_TXS_INTERVAL: float = 0.05
@@ -26,7 +28,9 @@ ZSEQUENCER_FINALIZATION_TIME_BORDER: int = 10
 ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT = 5
 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 30
 ZSEQUENCER_API_BATCHES_LIMIT = 100
-
+ZSEQUENCER_NODES_SOURCES = ["file",
+                            "historical_nodes_registry",
+                            "eigenlayer"]
 APP_NAME: str = "simple_app"
 
 
@@ -70,18 +74,24 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
     return bls_privates_list, ecdsa_privates_list, nodes_info_dict
 
 
-def run_command(
-    command_name: str, command_args: str, env_variables: dict[str, str]
+def generate_bash_command_file(
+        command_name: str,
+        command_args: str,
+        env_variables: dict[str, str],
+        bash_filename: Optional[str]
 ) -> None:
     """Run a command in a new terminal tab."""
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
+    env_script = "export " + " ".join([f"{key}='{value}'" for key, value in env_variables.items()])
     command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
-    launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
-    with subprocess.Popen(args=launch_command, env=env_variables) as process:
-        process.wait()
+    full_command = f"{env_script} && {command}"
+
+    if bash_filename is not None:
+        with open(f'./{bash_filename}', "w+") as bash_file:
+            bash_file.write(full_command)
 
 
 def main() -> None:
@@ -97,11 +107,22 @@ def main() -> None:
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
-    with open(file=NODES_FILE, mode="w", encoding="utf-8") as file:
-        file.write(json.dumps(nodes_info_dict))
-
     with open(file=APPS_FILE, mode="w", encoding="utf-8") as file:
         file.write(json.dumps({f"{APP_NAME}": {"url": "", "public_keys": []}}))
+
+    '''
+        Register initial nodes info on historical registry server to be fetch in future 
+    '''
+    nodes_registry_client = NodesRegistryClient(socket=HISTORICAL_NODES_REGISTRY)
+    initial_snapshot = {
+        id: NodeInfo(id=id,
+                     public_key_g2=node_dict.get('public_key_g2'),
+                     address=id,
+                     socket=node_dict.get('socket'),
+                     stake=node_dict.get('stake'))
+        for id, node_dict in nodes_info_dict.items()
+    }
+    nodes_registry_client.add_snapshot(initial_snapshot)
 
     for i in range(NUM_INSTANCES):
         data_dir: str = f"{DST_DIR}/db_{i + 1}"
@@ -128,9 +149,9 @@ def main() -> None:
             "ZSEQUENCER_BLS_KEY_PASSWORD": bls_passwd,
             "ZSEQUENCER_ECDSA_KEY_FILE": ecdsa_key_file,
             "ZSEQUENCER_ECDSA_KEY_PASSWORD": ecdsa_passwd,
-            "ZSEQUENCER_NODES_FILE": NODES_FILE,
             "ZSEQUENCER_APPS_FILE": APPS_FILE,
             "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
+            "ZSEQUENCER_HISTORICAL_NODES_REGISTRY": HISTORICAL_NODES_REGISTRY,
             "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
             "ZSEQUENCER_SNAPSHOT_CHUNK": str(ZSEQUENCER_SNAPSHOT_CHUNK),
             "ZSEQUENCER_REMOVE_CHUNK_BORDER": str(ZSEQUENCER_REMOVE_CHUNK_BORDER),
@@ -145,19 +166,16 @@ def main() -> None:
                 ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
-            "ZSEQUENCER_NODES_SOURCE": "file",
+            "ZSEQUENCER_NODES_SOURCE": ZSEQUENCER_NODES_SOURCES[1],
             "ZSEQUENCER_REGISTER_OPERATOR": "false"
         })
 
-        run_command("run.py", f"{i + 1}", env_variables)
-        time.sleep(2)
+        generate_bash_command_file(os.path.join(Path(__file__).parent.parent, "run.py"),
+                                   f"{i + 1}",
+                                   env_variables,
+                                   f'node_{(i + 1)}.sh')
 
-    time.sleep(5)
-    run_command(
-        f"examples/{args.test}_test.py",
-        f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
-        env_variables,
-    )
+        subprocess.run(['chmod', '+x', f'node_{(i + 1)}.sh'])
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from typing import Optional
 from nodes_snapshot_timeseries_server.schema import NodeInfo, SnapShotType
 
 
-class NodesSnapshotClient:
+class NodesRegistryClient:
     def __init__(self, socket: str):
         self.base_url = f'http://{socket}' if not socket.startswith(('http://', 'https://')) else socket
 
@@ -42,7 +42,7 @@ class NodesSnapshotClient:
                 response = requests.get(urljoin(self.base_url, '/snapshot/'), params={"timestamp": timestamp})
             response.raise_for_status()
             snapshot: SnapShotType = {address: NodeInfo(**node_info_dict)
-                                      for address, node_info_dict in response.json().items()}
+                                      for address, node_info_dict in response.json().get('snapshot').items()}
             return snapshot
         except requests.HTTPError as http_err:
             print(f"HTTP error occurred: {http_err}")  # HTTP error details
