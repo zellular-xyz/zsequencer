@@ -1,7 +1,7 @@
 import requests
 from urllib.parse import urljoin
 from typing import Optional
-from nodes_snapshot_timeseries_server.schema import NodeInfo, SnapShotType
+from historical_nodes_registry.schema import NodeInfo, SnapShotType
 
 
 class NodesRegistryClient:

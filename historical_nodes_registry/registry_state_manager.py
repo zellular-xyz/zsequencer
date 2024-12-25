@@ -5,10 +5,10 @@ import time
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple
 
-from nodes_snapshot_timeseries_server.schema import NodeInfo, SnapShotType
+from historical_nodes_registry.schema import NodeInfo, SnapShotType
 
 
-class SnapshotStateManager:
+class RegistryStateManager:
     """Manages a time series of node snapshots and the current state of nodes."""
 
     def __init__(self, snapshots_file_path: str,

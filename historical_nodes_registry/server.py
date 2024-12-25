@@ -5,8 +5,8 @@ from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, Depends, HTTPException
 
-from nodes_snapshot_timeseries_server.snapshot_state_manager import SnapshotStateManager
-from nodes_snapshot_timeseries_server.schema import NodeInfo
+from historical_nodes_registry.registry_state_manager import RegistryStateManager
+from historical_nodes_registry.schema import NodeInfo
 
 # Constants
 HTTP_400_BAD_REQUEST = 400
@@ -34,9 +34,9 @@ def create_server_app(persistence_filepath: str,
     app = FastAPI()
 
     # Initialize StateManager
-    state_manager = SnapshotStateManager(persistence_filepath,
+    state_manager = RegistryStateManager(persistence_filepath,
                                          commitment_interval,
-                                         logging.getLogger('nodes_snapshot_timeseries_server.server'))
+                                         logging.getLogger('historical_nodes_registry.server'))
 
     # Start StateManager daemon thread
     daemon_thread = threading.Thread(target=state_manager.run, daemon=True)
@@ -44,7 +44,7 @@ def create_server_app(persistence_filepath: str,
 
     async def get_snapshot(
             timestamp: Optional[int] = None,
-            manager: SnapshotStateManager = Depends(lambda: state_manager),
+            manager: RegistryStateManager = Depends(lambda: state_manager),
     ):
         """
         Retrieve the snapshot closest to the given timestamp or the last snapshot if timestamp is None.
@@ -68,7 +68,7 @@ def create_server_app(persistence_filepath: str,
 
     async def add_snapshot(
             nodes_info_snapshot: Dict[str, NodeInfo],
-            manager: SnapshotStateManager = Depends(lambda: state_manager),
+            manager: RegistryStateManager = Depends(lambda: state_manager),
     ):
         """
         Add a new snapshot to the series.
@@ -92,7 +92,7 @@ def create_server_app(persistence_filepath: str,
 
     async def update_node_info(
             nodes_info: NodeInfo,
-            manager: SnapshotStateManager = Depends(lambda: state_manager)):
+            manager: RegistryStateManager = Depends(lambda: state_manager)):
         try:
             manager.update_node_info(nodes_info)
             return {"message": "NodeInfo updated successfully."}

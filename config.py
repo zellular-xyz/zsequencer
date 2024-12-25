@@ -11,7 +11,7 @@ import pstats
 import time
 import requests
 from random import randbytes
-from nodes_snapshot_timeseries_server import NodesRegistryClient
+from historical_nodes_registry import NodesRegistryClient
 from threading import Thread
 from typing import Any, List, Dict, Optional
 from urllib.parse import urlparse
