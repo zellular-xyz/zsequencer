@@ -12,11 +12,6 @@ from historical_nodes_registry.schema import NodeInfo
 HTTP_400_BAD_REQUEST = 400
 HTTP_500_INTERNAL_SERVER_ERROR = 500
 
-logging.basicConfig(
-    level=logging.DEBUG,  # Set the logging level
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'  # Log format
-)
-
 
 def create_server_app(persistence_filepath: str,
                       commitment_interval: int) -> FastAPI:

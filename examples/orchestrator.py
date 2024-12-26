@@ -83,7 +83,7 @@ def generate_bash_command_file(
     full_command = f"{env_script} && {command}"
 
     if bash_filename is not None:
-        with open(f'./{bash_filename}', "w+") as bash_file:
+        with open(f'./examples/{bash_filename}', "w+") as bash_file:
             bash_file.write(full_command)
 
 
@@ -165,7 +165,7 @@ def prepare_nodes() -> None:
                                    env_variables,
                                    f'node_{(i + 1)}.sh')
 
-        subprocess.run(['chmod', '+x', f'node_{(i + 1)}.sh'])
+        subprocess.run(['chmod', '+x', f'./examples/node_{(i + 1)}.sh'])
 
 
 def wait_for_server(host: str, port: int, timeout: float = 20.0, interval: float = 0.5) -> None:
