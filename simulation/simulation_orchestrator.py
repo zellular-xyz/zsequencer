@@ -1,12 +1,13 @@
 """This script sets up and runs a simple app network for testing."""
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import json
-import os
 import time
 import secrets
 import shutil
 import subprocess
-import signal
 import threading
 import socket
 from pathlib import Path
@@ -14,6 +15,9 @@ from typing import Any, Optional
 from historical_nodes_registry import NodesRegistryClient, NodeInfo, run_registry_server
 from eigensdk.crypto.bls import attestation
 from web3 import Account
+
+
+
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
