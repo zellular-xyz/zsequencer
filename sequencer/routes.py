@@ -101,6 +101,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "batches": batches,
+        "signature_tag": zdb.signature_tag_value,
         "finalized": {
             "index": last_finalized_batch.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
