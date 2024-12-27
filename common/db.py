@@ -5,7 +5,7 @@ import os
 import threading
 import time
 from typing import Any
-
+import requests
 from threading import Thread
 from config import zconfig
 
@@ -25,7 +25,7 @@ class InMemoryDB:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
-                fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
+                fetch_data = Thread(target=cls._instance.fetch_scheduled_data)
                 fetch_data.start()
             return cls._instance
 
@@ -34,6 +34,7 @@ class InMemoryDB:
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self.last_stored_index = 0
+        self.signature_tag_value = 0
         self.apps: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
@@ -61,7 +62,34 @@ class InMemoryDB:
                 zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
-    
+
+    def fetch_scheduled_data(self):
+        self.fetch_nodes_and_apps()
+        self.fetch_historical_tag()
+
+    def fetch_eigen_layer_last_block_number(self) -> int:
+        subgraph_url = os.getenv('ZSEQUENCER_SUBGRAPH_URL')
+
+        # Send the POST request
+        response = requests.post(subgraph_url,
+                                 headers={"content-type": "application/json"},
+                                 json={"query": "{ _meta { block { number } } }"})
+
+        if response.status_code == 200:
+            block_number = int(response.json()["data"]["_meta"]["block"]["number"])
+            return block_number
+        else:
+            return None
+
+    def fetch_historical_tag(self):
+        if zconfig.NODE_SOURCE == 'eigenlayer':
+            last_block_number = self.fetch_eigen_layer_last_block_number()
+            self.signature_tag_value = last_block_number if last_block_number else self.signature_tag_value
+        elif zconfig.NODE_SOURCE == 'historical_snapshot_server':
+            self.signature_tag_value = time.time()
+
+
+
     def fetch_nodes_and_apps(self) -> None:
         """Periodically fetches apps and nodes data."""
         while True:

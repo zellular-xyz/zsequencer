@@ -16,7 +16,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
     if not any(s["sequenced_index"] > locked_index for s in nodes_state):
         return None
     filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["sequenced_index"] >= locked_index      
+        s for s in nodes_state if s["sequenced_index"] >= locked_index
     ]
     sorted_filtered_states: list[dict[str, Any]] = sorted(
         filtered_states,
@@ -73,6 +73,12 @@ async def sync() -> None:
         await sync_app(app_name)
 
 
+async def update_network_last_block_number() -> None:
+    """Update the last block number"""
+    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        return
+
+
 async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
@@ -83,9 +89,10 @@ async def sync_app(app_name: str) -> None:
             "index": locked_sync_point["state"]["sequenced_index"],
             "hash": locked_sync_point["state"]["sequenced_hash"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
+            "tag": zdb.signature_tag_value
         }
         lock_signature: (
-            dict[str, Any] | None
+                dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=locked_data, node_ids=locked_sync_point["party"]
         )
@@ -106,9 +113,10 @@ async def sync_app(app_name: str) -> None:
             "index": finalized_sync_point["state"]["locked_index"],
             "hash": finalized_sync_point["state"]["locked_hash"],
             "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
+            "tag": zdb.signature_tag_value
         }
         finalization_signature: (
-            dict[str, Any] | None
+                dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=finalized_data, node_ids=finalized_sync_point["party"]
         )

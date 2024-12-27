@@ -52,13 +52,9 @@ class Config:
         snapshot_data = {address: node_info.dict() for address, node_info in snapshot.items()}
         return snapshot_data
 
-    @staticmethod
-    def fetch_eigenlayer_nodes_data() -> dict[str, Any]:
+
+    def fetch_eigenlayer_nodes_data(self) -> dict[str, Any]:
         """Retrieve nodes data from Eigenlayer"""
-        subgraph_url = os.getenv('ZSEQUENCER_SUBGRAPH_URL')
-        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
-        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
-        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
 
         query = """query MyQuery {
             newPubkeyRegistrations {
@@ -71,7 +67,7 @@ class Config:
         }
         """
 
-        response = requests.post(subgraph_url, json={"query": query})
+        response = requests.post(self.SUBGRAPH_URL, json={"query": query})
         data = response.json()
         registrations = data['data']['newPubkeyRegistrations']
         for registration in registrations:
@@ -79,9 +75,9 @@ class Config:
         nodes_raw_data = {registration['operator']: registration for registration in registrations}
 
         config = BuildAllConfig(
-            eth_http_url=rpc_node,
-            registry_coordinator_addr=registry_coordinator,
-            operator_state_retriever_addr=operator_state_retriever,
+            eth_http_url=self.RPC_NODE,
+            registry_coordinator_addr=self.REGISTRY_COORDINATOR,
+            operator_state_retriever_addr=self.OPERATOR_STATE_RETRIEVER,
         )
 
         clients = build_all(config)
@@ -98,7 +94,7 @@ class Config:
                 id
             }
         }"""
-        response = requests.post(subgraph_url, json={"query": query})
+        response = requests.post(self.SUBGRAPH_URL, json={"query": query})
         data = response.json()
         updates = data['data']['operatorSocketUpdates']
         sockets = {update['operatorId']: update['socket'] for update in updates if validators.url(update['socket'])}
@@ -138,9 +134,9 @@ class Config:
         nodes_data: Dict[str, Dict[str, Any]] = {}
 
         if self.NODE_SOURCE == 'eigenlayer':
-            nodes_data = Config.fetch_eigenlayer_nodes_data()
+            nodes_data = self.fetch_eigenlayer_nodes_data()
         elif self.NODE_SOURCE == 'file':
-            nodes_data = Config.get_file_content(self.NODES_FILE)
+            nodes_data = self.get_file_content(self.NODES_FILE)
         elif self.NODE_SOURCE == 'historical_nodes_registry':
             nodes_data = self.fetch_historical_nodes_registry_data(timestamp=None)
 
@@ -172,14 +168,10 @@ class Config:
         self.AGGREGATED_PUBLIC_KEY = self.get_aggregated_public_key()
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
-        rpc_node = os.getenv('ZSEQUENCER_RPC_NODE')
-        registry_coordinator = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR')
-        operator_state_retriever = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER')
-
         config = BuildAllConfig(
-            eth_http_url=rpc_node,
-            registry_coordinator_addr=registry_coordinator,
-            operator_state_retriever_addr=operator_state_retriever,
+            eth_http_url=self.RPC_NODE,
+            registry_coordinator_addr=self.REGISTRY_COORDINATOR,
+            operator_state_retriever_addr=self.OPERATOR_STATE_RETRIEVER,
         )
 
         clients = build_all(config, ecdsa_private_key)
@@ -269,15 +261,6 @@ class Config:
             aggregated_public_key = aggregated_public_key + node["public_key_g2"]
         return aggregated_public_key
 
-    # def fetch_nodes_info(self):
-    #     if self.NODE_SOURCE == 'eigenlayer':
-    #         self.NODES: dict[str, dict[str, Any]] = Config.fetch_eigenlayer_nodes_data()
-    #     elif self.NODE_SOURCE == 'file':
-    #         self.NODES: dict[str, dict[str, Any]] = Config.get_file_content(self.NODES_FILE)
-    #     elif self.NODE_SOURCE == 'historical_nodes_registry':
-    #         # Todo: handle historical
-    #         self.NODES = {}
-
     def load_environment_variables(self):
         """Load environment variables from a .env file and validate them."""
         if os.path.exists(".env"):
@@ -295,6 +278,11 @@ class Config:
         self.HISTORICAL_NODES_REGISTRY = os.getenv("ZSEQUENCER_HISTORICAL_NODES_REGISTRY", "")
         self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
         self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
+
+        self.SUBGRAPH_URL = os.getenv('ZSEQUENCER_SUBGRAPH_URL', '')
+        self.RPC_NODE = os.getenv('ZSEQUENCER_RPC_NODE', '')
+        self.REGISTRY_COORDINATOR = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR', '')
+        self.OPERATOR_STATE_RETRIEVER = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER', '')
 
         bls_key_store_path: str = os.getenv("ZSEQUENCER_BLS_KEY_FILE", "")
         ecdsa_key_store_path: str = os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", "")
@@ -401,6 +389,46 @@ class Config:
         """Update the sequencer configuration."""
         if sequencer_id:
             self.SEQUENCER = self.NODES[sequencer_id]
+
+    def get_eigen_network_info(self, signature_tag: int):
+
+        graphql_query = {
+            "query": f"""
+    {{
+        operators(block: {{ number: {signature_tag} }}) {{
+            id
+            socket
+            stake
+            pubkeyG2_X
+            pubkeyG2_Y
+        }}
+    }}
+    """
+        }
+
+        response = requests.post(self.SUBGRAPH_URL,
+                                 headers={"content-type": "application/json"},
+                                 json=graphql_query)
+        result = response.json()
+        return {
+            item.get("id"): {
+                "id": item.get("id"),
+                "address": item.get("id"),
+                "socket": item.get("socket"),
+                "stake": int(item.get("socket")),
+                "public_key_g2": '1 ' + item['pubkeyG2_X'][1] + ' ' + item['pubkeyG2_X'][0] + ' ' \
+                                 + item['pubkeyG2_Y'][1] + ' ' + item['pubkeyG2_Y'][0]
+            }
+            for item in result.get("data").get("operators", [])
+        }
+
+    def get_network_info(self, signature_tag: int):
+        if self.NODE_SOURCE == 'eigenlayer':
+            return self.get_eigen_network_info(signature_tag=signature_tag)
+        elif self.NODE_SOURCE == 'historical_nodes_registry':
+            return self.fetch_historical_nodes_registry_data(timestamp=signature_tag)
+        elif self.NODE_SOURCE == 'file':
+            return self.get_last_nodes_info()
 
     # TODO: remove
     @staticmethod

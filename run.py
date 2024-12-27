@@ -69,6 +69,7 @@ async def run_sequencer_tasks_async() -> None:
             continue
 
         await sequencer_tasks.sync()
+        await sequencer_tasks.update_network_last_block_number()
 
 
 def run_flask_app(app: Flask) -> None:
