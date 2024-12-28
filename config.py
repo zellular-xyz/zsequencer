@@ -192,13 +192,13 @@ class Config:
         historical_nodes_snapshot_server_vars: List[str] = [
             "ZSEQUENCER_HISTORICAL_NODES_REGISTRY"
         ]
-        nodes_source = os.getenv("ZSEQUENCER_NODES_SOURCE")
+        nodes_source = get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE"))
 
-        if nodes_source == 'eigenlayer':
+        if nodes_source == NodeSource.EIGEN_LAYER:
             required_vars.extend(eigenlayer_vars)
-        elif nodes_source == 'file':
+        elif nodes_source == NodeSource.FILE:
             required_vars.append("ZSEQUENCER_NODES_FILE")
-        elif nodes_source == 'historical_nodes_registry':
+        elif nodes_source == NodeSource.NODES_REGISTRY:
             required_vars.extend(historical_nodes_snapshot_server_vars)
 
         missing_vars: list[str] = [var for var in required_vars if not os.getenv(var)]
