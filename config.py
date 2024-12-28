@@ -11,6 +11,7 @@ import pstats
 import time
 import requests
 from random import randbytes
+from enum import Enum
 from historical_nodes_registry import NodesRegistryClient
 from threading import Thread
 from typing import Any, List, Dict, Optional
@@ -22,6 +23,19 @@ from eigensdk.crypto.bls import attestation
 from web3 import Account
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from common.logger import zlogger
+
+
+class NodeSource(Enum):
+    FILE = "file"
+    EIGEN_LAYER = "eigenlayer"
+    NODES_REGISTRY = "historical_nodes_registry"
+
+
+def get_node_source(value: str) -> NodeSource | None:
+    try:
+        return NodeSource(value)
+    except ValueError:
+        return None
 
 
 class Config:
@@ -54,13 +68,11 @@ class Config:
 
     def fetch_nodes_info(self) -> Dict[str, Dict[str, Any]]:
         nodes_data: Dict[str, Dict[str, Any]] = {}
-        if self.NODE_SOURCE == 'file':
+        if self.NODE_SOURCE == NodeSource.FILE:
             nodes_data = self.get_file_content(self.NODES_FILE)
-
-        elif self.NODE_SOURCE == 'eigenlayer':
+        elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             nodes_data = self.get_eigen_network_info(block_number=self.NETWORK_STATUS_TAG)
-
-        elif self.NODE_SOURCE == 'historical_nodes_registry':
+        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = self.fetch_historical_nodes_registry_data(timestamp=self.NETWORK_STATUS_TAG)
 
         return nodes_data
@@ -75,10 +87,12 @@ class Config:
             return block_number
 
     def fetch_network_state_last_tag(self):
-        if self.NODE_SOURCE == 'eigenlayer':
+        if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             self.NETWORK_STATUS_TAG = self._fetch_eigen_layer_last_block_number()
-        elif self.NODE_SOURCE == 'historical_nodes_registry':
+        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             self.NETWORK_STATUS_TAG = int(time.time())
+        elif self.NODE_SOURCE == NodeSource.FILE:
+            self.NETWORK_STATUS_TAG = 0
 
     def fetch_nodes(self):
         """Fetchs the nodes data."""
@@ -236,9 +250,11 @@ class Config:
         ecdsa_private_key: str = Account.decrypt(encrypted_json, ecdsa_key_password)
         self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
-        self.NODE_SOURCE = os.getenv("ZSEQUENCER_NODES_SOURCE")
-        self.NODES = self.fetch_nodes_info()
+        self.NODE_SOURCE = get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE"))
         self.NETWORK_STATUS_TAG = 0
+        self.fetch_network_state_last_tag()
+        self.NODES = self.fetch_nodes_info()
+
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
@@ -265,11 +281,8 @@ class Config:
 
         self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
         if self.PORT != urlparse(self.NODE['socket']).port:
-            if self.NODE_SOURCE != 'eigenlayer':
-                data_source = f'{self.NODES_FILE}'
-            else:
-                data_source = 'Eigenlayer network'
-            zlogger.warning(f"The node port in the .env file does not match the node port provided by {data_source}.")
+            zlogger.warning(
+                f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
         self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
         self.REMOVE_CHUNK_BORDER: int = int(
@@ -361,11 +374,11 @@ class Config:
         }
 
     def get_network_info(self, tag: int):
-        if self.NODE_SOURCE == 'eigenlayer':
+        if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             return self.get_eigen_network_info(block_number=tag)
-        elif self.NODE_SOURCE == 'historical_nodes_registry':
+        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             return self.fetch_historical_nodes_registry_data(timestamp=tag)
-        elif self.NODE_SOURCE == 'file':
+        elif self.NODE_SOURCE == NodeSource.FILE:
             return self.get_file_content(self.NODES_FILE)
 
     # TODO: remove
