@@ -210,7 +210,7 @@ def _validate_nonsigners_stake(nonsigners_stake: int):
 def get_aggregated_public_key(nodes_info, non_signers: List[str]) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = attestation.new_zero_g2_point()
     non_signer_ids_set = set(non_signers)
-    for node_id, node in nodes_info.NODES.items():
+    for node_id, node in nodes_info.items():
         if node_id not in non_signer_ids_set:
             aggregated_public_key = aggregated_public_key + node["public_key_g2"]
     return aggregated_public_key
@@ -234,7 +234,7 @@ def is_sync_point_signature_verified(
 
     """Verify the BLS signature of a synchronization point."""
     nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
-    agg_pub_key = get_aggregated_public_key(nodes_info.NODES, nonsigners)
+    agg_pub_key = get_aggregated_public_key(nodes_info, nonsigners)
 
     # if not _validate_nonsigners_stake(nonsigners_stake):
     #     zlogger.exception("Signature with invalid stake from sequencer")
