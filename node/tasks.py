@@ -112,10 +112,12 @@ def sync_with_sequencer(
     last_locked_index: str = zdb.apps[app_name]["last_locked_batch"].get("index", 0)
     last_finalized_index: str = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
 
-    if sequencer_response["locked"]["index"] <= last_locked_index:
+    if (sequencer_response["locked"]["index"] != 0 and
+            sequencer_response["locked"]["index"] <= last_locked_index):
         zlogger.error("Invalid locking signature received from sequencer")
 
-    if sequencer_response["finalized"]["index"] <= last_finalized_index:
+    if (sequencer_response["finalized"]["index"] != 0 and
+            sequencer_response["finalized"]["index"] <= last_finalized_index):
         zlogger.error("Invalid finalizing signature received from sequencer")
 
     if is_sync_point_signature_verified(
