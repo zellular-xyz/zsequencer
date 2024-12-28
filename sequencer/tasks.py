@@ -88,8 +88,7 @@ async def sync_app(app_name: str) -> None:
             "state": "sequenced",
             "index": locked_sync_point["state"]["sequenced_index"],
             "hash": locked_sync_point["state"]["sequenced_hash"],
-            "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
-            "tag": zdb.signature_tag_value
+            "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"]
         }
         lock_signature: (
                 dict[str, Any] | None
@@ -112,8 +111,7 @@ async def sync_app(app_name: str) -> None:
             "state": "locked",
             "index": finalized_sync_point["state"]["locked_index"],
             "hash": finalized_sync_point["state"]["locked_hash"],
-            "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
-            "tag": zdb.signature_tag_value
+            "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"]
         }
         finalization_signature: (
                 dict[str, Any] | None

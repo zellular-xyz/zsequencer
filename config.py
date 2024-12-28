@@ -52,95 +52,33 @@ class Config:
         snapshot_data = {address: node_info.dict() for address, node_info in snapshot.items()}
         return snapshot_data
 
-
-    def fetch_eigenlayer_nodes_data(self) -> dict[str, Any]:
-        """Retrieve nodes data from Eigenlayer"""
-
-        query = """query MyQuery {
-            newPubkeyRegistrations {
-                pubkeyG2_X
-                pubkeyG2_Y
-                pubkeyG1_Y
-                pubkeyG1_X
-                operator
-            }
-        }
-        """
-
-        response = requests.post(self.SUBGRAPH_URL, json={"query": query})
-        data = response.json()
-        registrations = data['data']['newPubkeyRegistrations']
-        for registration in registrations:
-            registration['operator'] = registration['operator'].lower()
-        nodes_raw_data = {registration['operator']: registration for registration in registrations}
-
-        config = BuildAllConfig(
-            eth_http_url=self.RPC_NODE,
-            registry_coordinator_addr=self.REGISTRY_COORDINATOR,
-            operator_state_retriever_addr=self.OPERATOR_STATE_RETRIEVER,
-        )
-
-        clients = build_all(config)
-        operators = clients.avs_registry_reader.get_operators_stake_in_quorums_at_current_block(
-            quorum_numbers=[0]
-        )[0]
-        stakes = {operator.operator.lower(): {'stake': operator.stake, 'id': operator.operator_id} for operator in
-                  operators}
-
-        query = """query MyQuery {
-            operatorSocketUpdates {
-                socket
-                operatorId
-                id
-            }
-        }"""
-        response = requests.post(self.SUBGRAPH_URL, json={"query": query})
-        data = response.json()
-        updates = data['data']['operatorSocketUpdates']
-        sockets = {update['operatorId']: update['socket'] for update in updates if validators.url(update['socket'])}
-        for operator in nodes_raw_data:
-            stake = stakes.get(operator, {}).get('stake', 0)
-            nodes_raw_data[operator]['stake'] = stake
-            operator_id = stakes.get(operator, {}).get('id', None)
-            nodes_raw_data[operator]['socket'] = sockets.get(operator_id, None)
-
-        nodes: dict[str, dict[str, Any]] = {}
-        default_nodes_list = {
-            '0x747b80a1c0b0e6031b389e3b7eaf9b5f759f34ed',
-            '0x3eaa1c283dbf13357257e652649784a4cc08078c',
-            '0x906585f83fa7d29b96642aa8f7b4267ab42b7b6c',
-            '0x93d89ade53b8fcca53736be1a0d11d342d71118b'
-        }
-        for node_id, data in nodes_raw_data.items():
-            if not data['socket'] or not data['stake']:
-                continue
-
-            pub_g2 = '1 ' + data['pubkeyG2_X'][1] + ' ' + data['pubkeyG2_X'][0] + ' ' \
-                     + data['pubkeyG2_Y'][1] + ' ' + data['pubkeyG2_Y'][0]
-            nodes[node_id] = {
-                'id': node_id,
-                'public_key_g2': pub_g2,
-                'address': data['operator'],
-                'socket': data['socket'],
-            }
-
-            if node_id not in default_nodes_list:
-                nodes[node_id]['stake'] = min(float(data['stake']) / (10 ** 18), 1.0)
-            else:
-                nodes[node_id]['stake'] = float(data['stake']) / (10 ** 18)
-        return nodes
-
     def fetch_nodes_info(self) -> Dict[str, Dict[str, Any]]:
         nodes_data: Dict[str, Dict[str, Any]] = {}
-
-        if self.NODE_SOURCE == 'eigenlayer':
-            nodes_data = self.fetch_eigenlayer_nodes_data()
-        elif self.NODE_SOURCE == 'file':
+        if self.NODE_SOURCE == 'file':
             nodes_data = self.get_file_content(self.NODES_FILE)
+
+        elif self.NODE_SOURCE == 'eigenlayer':
+            nodes_data = self.get_eigen_network_info(block_number=self.NETWORK_STATUS_TAG)
+
         elif self.NODE_SOURCE == 'historical_nodes_registry':
-            nodes_data = self.fetch_historical_nodes_registry_data(timestamp=None)
+            nodes_data = self.fetch_historical_nodes_registry_data(timestamp=self.NETWORK_STATUS_TAG)
 
         return nodes_data
+
+    def _fetch_eigen_layer_last_block_number(self) -> int:
+        response = requests.post(self.SUBGRAPH_URL,
+                                 headers={"content-type": "application/json"},
+                                 json={"query": "{ _meta { block { number } } }"})
+
+        if response.status_code == 200:
+            block_number = int(response.json()["data"]["_meta"]["block"]["number"])
+            return block_number
+
+    def fetch_network_state_last_tag(self):
+        if self.NODE_SOURCE == 'eigenlayer':
+            self.NETWORK_STATUS_TAG = self._fetch_eigen_layer_last_block_number()
+        elif self.NODE_SOURCE == 'historical_nodes_registry':
+            self.NETWORK_STATUS_TAG = int(time.time())
 
     def fetch_nodes(self):
         """Fetchs the nodes data."""
@@ -300,7 +238,7 @@ class Config:
 
         self.NODE_SOURCE = os.getenv("ZSEQUENCER_NODES_SOURCE")
         self.NODES = self.fetch_nodes_info()
-
+        self.NETWORK_STATUS_TAG = 0
         self.NODE: dict[str, Any] = {}
         for node in self.NODES.values():
             public_key_g2: str = node["public_key_g2"]
@@ -390,12 +328,12 @@ class Config:
         if sequencer_id:
             self.SEQUENCER = self.NODES[sequencer_id]
 
-    def get_eigen_network_info(self, signature_tag: int):
+    def get_eigen_network_info(self, block_number: int):
 
         graphql_query = {
             "query": f"""
     {{
-        operators(block: {{ number: {signature_tag} }}) {{
+        operators(block: {{ number: {block_number} }}) {{
             id
             socket
             stake
@@ -422,13 +360,13 @@ class Config:
             for item in result.get("data").get("operators", [])
         }
 
-    def get_network_info(self, signature_tag: int):
+    def get_network_info(self, tag: int):
         if self.NODE_SOURCE == 'eigenlayer':
-            return self.get_eigen_network_info(signature_tag=signature_tag)
+            return self.get_eigen_network_info(block_number=tag)
         elif self.NODE_SOURCE == 'historical_nodes_registry':
-            return self.fetch_historical_nodes_registry_data(timestamp=signature_tag)
+            return self.fetch_historical_nodes_registry_data(timestamp=tag)
         elif self.NODE_SOURCE == 'file':
-            return self.get_last_nodes_info()
+            return self.get_file_content(self.NODES_FILE)
 
     # TODO: remove
     @staticmethod

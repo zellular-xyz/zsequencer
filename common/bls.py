@@ -66,12 +66,20 @@ async def gather_signatures(
 async def gather_and_aggregate_signatures(
     data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
-    """Gather and aggregate signatures from nodes."""
-    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids]) + zconfig.NODE['stake']
-    if 100 * stake / zconfig.TOTAL_STAKE < zconfig.THRESHOLD_PERCENT:
+    """
+    Gather and aggregate signatures from nodes.
+    Lock NODES and TAG and other zconfig
+    """
+    network_nodes_info = zconfig.NODES
+    node_info = zconfig.NODE
+    total_stake = zconfig.TOTAL_STAKE
+    tag = zconfig.NETWORK_STATUS_TAG
+
+    stake = sum([network_nodes_info[node_id]['stake'] for node_id in node_ids]) + node_info['stake']
+    if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
 
-    if not node_ids.issubset(set(zconfig.NODES.keys())):
+    if not node_ids.issubset(set(network_nodes_info.keys())):
         return None
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
@@ -79,7 +87,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f'{zconfig.NODES[node_id]["socket"]}/node/sign_sync_point',
+                url=f'{network_nodes_info[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,
@@ -99,9 +107,9 @@ async def gather_and_aggregate_signatures(
         return None
 
     data["signature"] = bls_sign(message)
-    signatures[zconfig.NODE['id']] = data
+    signatures[node_info['id']] = data
 
-    nonsigners = list(set(zconfig.NODES.keys()) - set(signatures.keys()))
+    nonsigners = list(set(network_nodes_info.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(
         list(signatures.values())
     )
@@ -110,6 +118,7 @@ async def gather_and_aggregate_signatures(
         "message": message,
         "signature": aggregated_signature,
         "nonsigners": nonsigners,
+        'tag': tag
     }
 
 

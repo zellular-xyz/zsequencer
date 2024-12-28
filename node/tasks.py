@@ -12,6 +12,7 @@ from typing import Any
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
+from typing import List
 from historical_nodes_registry import NodesRegistryClient
 from common import bls, utils
 from common.db import zdb
@@ -206,30 +207,39 @@ def _validate_nonsigners_stake(nonsigners_stake: int):
     )
 
 
+def get_aggregated_public_key(nodes_info, non_signers: List[str]) -> attestation.G2Point:
+    aggregated_public_key: attestation.G2Point = attestation.new_zero_g2_point()
+    non_signer_ids_set = set(non_signers)
+    for node_id, node in nodes_info.NODES.items():
+        if node_id not in non_signer_ids_set:
+            aggregated_public_key = aggregated_public_key + node["public_key_g2"]
+    return aggregated_public_key
+
+
 def is_sync_point_signature_verified(
         app_name: str,
         state: str,
         index: int,
         batch_hash: str,
         chaining_hash: str,
-        signature_tag: int,
+        tag: int,
         signature_hex: str,
         nonsigners: list[str],
 ) -> bool:
-
     '''
     Should first load the state of network nodes info using signature tag
     '''
 
-    network_state = zconfig.get_network_info(signature_tag=signature_tag)
+    nodes_info = zconfig.get_network_info(tag=tag)
 
     """Verify the BLS signature of a synchronization point."""
-    nonsigners_stake = sum([zconfig.NODES.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
-    if not _validate_nonsigners_stake(nonsigners_stake):
-        zlogger.exception("Signature with invalid stake from sequencer")
-        return False
+    nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
+    agg_pub_key = get_aggregated_public_key(nodes_info.NODES, nonsigners)
 
-    public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(nonsigners, zconfig.AGGREGATED_PUBLIC_KEY)
+    # if not _validate_nonsigners_stake(nonsigners_stake):
+    #     zlogger.exception("Signature with invalid stake from sequencer")
+    #     return False
+
     data: str = json.dumps(
         {
             "app_name": app_name,
@@ -245,7 +255,7 @@ def is_sync_point_signature_verified(
     res = bls.is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
-        public_key=public_key,
+        public_key=agg_pub_key,
     )
     if not res:
         if int(time.time()) - zconfig.NODES_LAST_DATA["timestamp"] < zconfig.NODES_INFO_SYNC_BORDER:
