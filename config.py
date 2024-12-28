@@ -214,9 +214,6 @@ class Config:
         return aggregated_public_key
 
     def load_environment_variables(self):
-        """Load environment variables from a .env file and validate them."""
-        if os.path.exists(".env"):
-            load_dotenv(dotenv_path=".env", override=False)
         self.validate_env_variables()
 
         self.VERSION = "v0.0.12"
