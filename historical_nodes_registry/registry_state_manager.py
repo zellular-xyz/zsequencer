@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional, List, Tuple
 
 from historical_nodes_registry.schema import NodeInfo, SnapShotType
-
+from historical_nodes_registry.errors import SnapshotQueryError
 
 class RegistryStateManager:
     """Manages a time series of node snapshots and the current state of nodes."""
@@ -103,7 +103,7 @@ class RegistryStateManager:
         # Closest match
         idx = bisect.bisect_right(timestamps, query_timestamp) - 1
         if idx < 0:
-            raise ValueError("Query timestamp is earlier than the first snapshot.")
+            raise SnapshotQueryError(query_timestamp=query_timestamp, first_snapshot_timestamp=timestamps[0])
         return self._snapshots[idx]
 
     def update_temporary_snapshot(self, snapshot: SnapShotType):

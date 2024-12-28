@@ -7,10 +7,10 @@ from fastapi import FastAPI, Depends, HTTPException
 
 from historical_nodes_registry.registry_state_manager import RegistryStateManager
 from historical_nodes_registry.schema import NodeInfo
+from historical_nodes_registry.errors import SnapshotQueryError
 
 # Constants
 HTTP_400_BAD_REQUEST = 400
-HTTP_500_INTERNAL_SERVER_ERROR = 500
 
 
 def create_server_app(persistence_filepath: str,
@@ -58,8 +58,8 @@ def create_server_app(persistence_filepath: str,
             timestamp, snapshot = manager.get_snapshot_by_timestamp(timestamp)
             return dict(timestamp=timestamp,
                         snapshot=snapshot)
-        except Exception as e:
-            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        except SnapshotQueryError:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail='Snapshot not found.')
 
     async def add_snapshot(
             nodes_info_snapshot: Dict[str, NodeInfo],
