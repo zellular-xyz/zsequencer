@@ -124,7 +124,7 @@ def sync_with_sequencer(
             index=sequencer_response["locked"]["index"],
             batch_hash=sequencer_response["locked"]["hash"],
             chaining_hash=sequencer_response["locked"]["chaining_hash"],
-            signature_tag=sequencer_response["signature_tag"],
+            tag=sequencer_response["locked"]["tag"],
             signature_hex=sequencer_response["locked"]["signature"],
             nonsigners=sequencer_response["locked"]["nonsigners"],
     ):
@@ -141,7 +141,7 @@ def sync_with_sequencer(
             index=sequencer_response["finalized"]["index"],
             batch_hash=sequencer_response["finalized"]["hash"],
             chaining_hash=sequencer_response["finalized"]["chaining_hash"],
-            signature_tag=sequencer_response["signature_tag"],
+            tag=sequencer_response["finalized"]["tag"],
             signature_hex=sequencer_response["finalized"]["signature"],
             nonsigners=sequencer_response["finalized"]["nonsigners"],
     ):
