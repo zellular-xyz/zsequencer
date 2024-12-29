@@ -73,12 +73,6 @@ async def sync() -> None:
         await sync_app(app_name)
 
 
-async def update_network_last_block_number() -> None:
-    """Update the last block number"""
-    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-        return
-
-
 async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)

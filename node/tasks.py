@@ -230,17 +230,18 @@ def is_sync_point_signature_verified(
 ) -> bool:
     '''
     Should first load the state of network nodes info using signature tag
+
+    Verify the BLS signature of a synchronization point.
     '''
 
     nodes_info = zconfig.get_network_info(tag=tag)
 
-    """Verify the BLS signature of a synchronization point."""
     nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
     agg_pub_key = get_aggregated_public_key(nodes_info, nonsigners)
 
-    # if not _validate_nonsigners_stake(nonsigners_stake):
-    #     zlogger.exception("Signature with invalid stake from sequencer")
-    #     return False
+    if not _validate_nonsigners_stake(nonsigners_stake):
+        zlogger.exception("Signature with invalid stake from sequencer")
+        return False
 
     data: str = json.dumps(
         {

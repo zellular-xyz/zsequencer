@@ -333,6 +333,8 @@ class Config:
             "timestamp": int(time.time())
         }
 
+        self.HISTORICAL_NODES_INFO = {}
+
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:
@@ -371,12 +373,21 @@ class Config:
         }
 
     def get_network_info(self, tag: int):
-        if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
-            return self.get_eigen_network_info(block_number=tag)
-        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
-            return self.fetch_historical_nodes_registry_data(timestamp=tag)
-        elif self.NODE_SOURCE == NodeSource.FILE:
+
+        if self.NODE_SOURCE == NodeSource.FILE:
             return self.get_file_content(self.NODES_FILE)
+
+        if tag in self.HISTORICAL_NODES_INFO:
+            return self.HISTORICAL_NODES_INFO[tag]
+
+        nodes_state = None
+        if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
+            nodes_state = self.get_eigen_network_info(block_number=tag)
+        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
+            nodes_state = self.fetch_historical_nodes_registry_data(timestamp=tag)
+
+        self.HISTORICAL_NODES_INFO[tag] = nodes_state
+        return nodes_state
 
     # TODO: remove
     @staticmethod
