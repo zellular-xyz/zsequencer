@@ -25,7 +25,7 @@ class InMemoryDB:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
-                fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
+                fetch_data = Thread(target=cls._instance.schedule_fetch)
                 fetch_data.start()
             return cls._instance
 
@@ -62,7 +62,7 @@ class InMemoryDB:
             )
             os.makedirs(snapshot_path, exist_ok=True)
 
-    def fetch_nodes_and_apps(self) -> None:
+    def schedule_fetch(self) -> None:
         """Periodically fetches apps and nodes data."""
         while True:
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)

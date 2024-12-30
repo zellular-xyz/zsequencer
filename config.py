@@ -41,6 +41,41 @@ def get_node_source(value: str) -> NodeSource | None:
 class Config:
     _instance = None
 
+    def __init__(self):
+        self.HISTORICAL_NODES_INFO = None
+        self.NODES_LAST_DATA = None
+        self.APPS = None
+        self.IS_SYNCING = None
+        self.TOTAL_STAKE = None
+        self.AGGREGATED_PUBLIC_KEY = None
+        self.THRESHOLD_PERCENT = None
+        self.INIT_SEQUENCER_ID = None
+        self.API_BATCHES_LIMIT = None
+        self.FETCH_APPS_AND_NODES_INTERVAL = None
+        self.AGGREGATION_TIMEOUT = None
+        self.FINALIZATION_TIME_BORDER = None
+        self.SYNC_INTERVAL = None
+        self.SEND_BATCH_INTERVAL = None
+        self.REMOVE_CHUNK_BORDER = None
+        self.SNAPSHOT_CHUNK = None
+        self.PORT = None
+        self.NODE = None
+        self.NODES = None
+        self.NETWORK_STATUS_TAG = None
+        self.NODE_SOURCE = None
+        self.ADDRESS = None
+        self.OPERATOR_STATE_RETRIEVER = None
+        self.REGISTRY_COORDINATOR = None
+        self.RPC_NODE = None
+        self.SUBGRAPH_URL = None
+        self.SNAPSHOT_PATH = None
+        self.APPS_FILE = None
+        self.HISTORICAL_NODES_REGISTRY = None
+        self.NODES_FILE = None
+        self.NODES_INFO_SYNC_BORDER = None
+        self.HEADERS = None
+        self.VERSION = None
+
     def __new__(cls) -> "Config":
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
@@ -282,32 +317,16 @@ class Config:
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
         self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
-        self.REMOVE_CHUNK_BORDER: int = int(
-            os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")
-        )
+        self.REMOVE_CHUNK_BORDER: int = int(os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2"))
 
-        self.SEND_BATCH_INTERVAL: float = float(
-            os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5")
-        )
+        self.SEND_BATCH_INTERVAL: float = float(os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5"))
         self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
-        self.FINALIZATION_TIME_BORDER: int = int(
-            os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120")
-        )
-        self.AGGREGATION_TIMEOUT: int = int(
-            os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5")
-        )
-        self.FETCH_APPS_AND_NODES_INTERVAL: int = int(
-            os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60")
-        )
-        self.API_BATCHES_LIMIT: int = int(
-            os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100")
-        )
-        self.INIT_SEQUENCER_ID: str = os.getenv(
-            "ZSEQUENCER_INIT_SEQUENCER_ID"
-        )
-        self.THRESHOLD_PERCENT: int = float(
-            os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", str(100))
-        )
+        self.FINALIZATION_TIME_BORDER: int = int(os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120"))
+        self.AGGREGATION_TIMEOUT: int = int(os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5"))
+        self.FETCH_APPS_AND_NODES_INTERVAL: int = int(os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60"))
+        self.API_BATCHES_LIMIT: int = int(os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100"))
+        self.INIT_SEQUENCER_ID: str = os.getenv("ZSEQUENCER_INIT_SEQUENCER_ID")
+        self.THRESHOLD_PERCENT: int = float(os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", '100'))
 
         self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = (
             self.get_aggregated_public_key()
