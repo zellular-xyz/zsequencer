@@ -1,6 +1,7 @@
 """This script sets up and runs a simple app network for testing."""
 import os
 import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import json
@@ -15,9 +16,6 @@ from typing import Any, Optional
 from historical_nodes_registry import NodesRegistryClient, NodeInfo, run_registry_server
 from eigensdk.crypto.bls import attestation
 from web3 import Account
-
-
-
 
 NUM_INSTANCES: int = 3
 BASE_PORT: int = 6000
@@ -39,6 +37,8 @@ ZSEQUENCER_NODES_SOURCES = ["file",
                             "historical_nodes_registry",
                             "eigenlayer"]
 APP_NAME: str = "simple_app"
+
+BASE_DIRECTORY = './examples'
 
 
 def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
@@ -83,7 +83,10 @@ def generate_bash_command_file(
     full_command = f"{env_script} && {command}"
 
     if bash_filename is not None:
-        with open(f'./examples/{bash_filename}', "w+") as bash_file:
+        file_path = os.path.join(BASE_DIRECTORY, bash_filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        with open(file_path, "w+") as bash_file:
             bash_file.write(full_command)
 
 
@@ -165,7 +168,8 @@ def prepare_nodes() -> None:
                                    env_variables,
                                    f'node_{(i + 1)}.sh')
 
-        subprocess.run(['chmod', '+x', f'./examples/node_{(i + 1)}.sh'])
+        nodes_file_path = os.path.join(BASE_DIRECTORY, f'node_{(i + 1)}.sh')
+        subprocess.run(['chmod', '+x', nodes_file_path])
 
 
 def wait_for_server(host: str, port: int, timeout: float = 20.0, interval: float = 0.5) -> None:
