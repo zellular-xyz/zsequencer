@@ -79,7 +79,8 @@ class Config:
     def __new__(cls) -> "Config":
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls)
-            cls._instance.load_environment_variables()
+            cls._instance._load_environment_variables()
+            cls._instance._init_network_config()
         return cls._instance
 
     @staticmethod
@@ -248,7 +249,7 @@ class Config:
             aggregated_public_key = aggregated_public_key + node["public_key_g2"]
         return aggregated_public_key
 
-    def load_environment_variables(self):
+    def _load_environment_variables(self):
         self.validate_env_variables()
 
         self.VERSION = "v0.0.12"
@@ -328,11 +329,9 @@ class Config:
         self.INIT_SEQUENCER_ID: str = os.getenv("ZSEQUENCER_INIT_SEQUENCER_ID")
         self.THRESHOLD_PERCENT: int = float(os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", '100'))
 
-        self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = (
-            self.get_aggregated_public_key()
-        )
+    def _init_network_config(self):
+        self.AGGREGATED_PUBLIC_KEY: attestation.G2Point = self.get_aggregated_public_key()
         self.TOTAL_STAKE = sum([node['stake'] for node in self.NODES.values()])
-
         self.init_sequencer()
 
         if self.SEQUENCER["id"] == self.NODE["id"]:
@@ -341,9 +340,7 @@ class Config:
         self.APPS: dict[str, dict[str, Any]] = Config.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
-            snapshot_path: str = os.path.join(
-                self.SNAPSHOT_PATH, self.VERSION, app_name
-            )
+            snapshot_path: str = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
             os.makedirs(snapshot_path, exist_ok=True)
 
         self.NODES_LAST_DATA = {
