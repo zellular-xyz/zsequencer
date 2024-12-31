@@ -202,9 +202,9 @@ def _validate_nonsigners_stake(nonsigners_stake: int):
     return (
             100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT or
             (
-                    100 * nonsigners_stake / zconfig.NODES_LAST_DATA[
+                    100 * nonsigners_stake / zconfig.nodes_last_state[
                 "total_stake"] <= 100 - zconfig.THRESHOLD_PERCENT and
-                    int(time.time()) - zconfig.NODES_LAST_DATA["timestamp"] <= zconfig.NODES_INFO_SYNC_BORDER
+                    int(time.time()) - zconfig.nodes_last_state["timestamp"] <= zconfig.NODES_INFO_SYNC_BORDER
             )
     )
 
@@ -234,7 +234,7 @@ def is_sync_point_signature_verified(
     Verify the BLS signature of a synchronization point.
     '''
 
-    nodes_info = zconfig.get_network_info(tag=tag)
+    nodes_info = zconfig.get_network_state(tag=tag).nodes
 
     nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
     agg_pub_key = get_aggregated_public_key(nodes_info, nonsigners)
@@ -261,9 +261,9 @@ def is_sync_point_signature_verified(
         public_key=agg_pub_key,
     )
     if not res:
-        if int(time.time()) - zconfig.NODES_LAST_DATA["timestamp"] < zconfig.NODES_INFO_SYNC_BORDER:
+        if int(time.time()) - zconfig.nodes_last_state["timestamp"] < zconfig.NODES_INFO_SYNC_BORDER:
             public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(
-                nonsigners, zconfig.NODES_LAST_DATA["aggregated_public_key"]
+                nonsigners, zconfig.nodes_last_state["aggregated_public_key"]
             )
             res = bls.is_bls_sig_verified(
                 signature_hex=signature_hex,
