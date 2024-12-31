@@ -122,7 +122,7 @@ class Config:
             block_number = int(response.json()["data"]["_meta"]["block"]["number"])
             return block_number
 
-    def fetch_network_state_last_tag(self):
+    def fetch_tag(self):
         if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             self.NETWORK_STATUS_TAG = self._fetch_eigen_layer_last_block_number()
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
@@ -285,7 +285,7 @@ class Config:
 
         self.NODE_SOURCE = get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE"))
         self.NETWORK_STATUS_TAG = 0
-        self.fetch_network_state_last_tag()
+        self.fetch_tag()
         self.NODES = self.fetch_nodes_info()
 
         self.NODE: dict[str, Any] = {}

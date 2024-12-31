@@ -69,13 +69,13 @@ class InMemoryDB:
             try:
                 self.fetch_apps()
             except Exception:
-                zlogger.exception("An unexpected error occurred:")
+                zlogger.error("An unexpected error occurred while fetching apps data")
 
             try:
-                zconfig.fetch_network_state_last_tag()
+                zconfig.fetch_tag()
                 zconfig.fetch_nodes()
             except Exception:
-                zlogger.exception("An unexpected error occurred:")
+                zlogger.error("An unexpected error occurred while fetching nodes data")
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
