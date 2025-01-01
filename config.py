@@ -62,6 +62,7 @@ class Config:
         self.ECDSA_KEY_STORE_PATH = None
         self.BLS_KEY_PASSWORD = None
         self.ECDSA_KEY_PASSWORD = None
+        self.REGISTER_OPERATOR = None
 
     def __new__(cls) -> "Config":
         if cls._instance is None:
@@ -111,7 +112,7 @@ class Config:
             self.NETWORK_STATUS_TAG = 0
 
     def fetch_network_state(self):
-        """Fetch the latest"""
+        """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
 
         try:
             self.fetch_tag()
@@ -126,8 +127,11 @@ class Config:
             return
 
         nodes_data = network_state.nodes
+        sequencer_id = self.SEQUENCER['id']
+
         self.NODE.update(nodes_data[self.ADDRESS])
-        self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
+        self.SEQUENCER.update(nodes_data[sequencer_id])
+
         return nodes_data
 
     def register_operator(self, ecdsa_private_key, bls_key_pair) -> None:
@@ -212,6 +216,7 @@ class Config:
         self.BLS_KEY_PASSWORD: str = os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", "")
         self.ECDSA_KEY_PASSWORD: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
 
+        self.REGISTER_OPERATOR = os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true'
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(self.BLS_KEY_STORE_PATH,
                                                                                self.BLS_KEY_PASSWORD)
 
@@ -221,26 +226,24 @@ class Config:
         self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
         self.fetch_network_state()
-        # self.fetch_tag()
-        # self.NODES = self.fetch_nodes_info()
 
-        self.NODE: dict[str, Any] = {}
+        if self.ADDRESS in self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes:
+            self.NODE = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[self.ADDRESS]
+            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
+            public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
+            error_msg = "the bls key pair public key does not match public of the node in the nodes list"
+            assert public_key_g2 == public_key_g2_from_private, error_msg
+        else:
+            if self.REGISTER_OPERATOR:
+                self.register_operator(ecdsa_private_key, bls_key_pair)
+                zlogger.warning("Operator registration transaction sent.")
+            zlogger.warning("Operator not found in the nodes' list")
+            sys.exit()
 
-        # if self.ADDRESS in self.NODES:
-        #     self.NODE = self.NODES[self.ADDRESS]
-        #     public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
-        #     public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
-        #     error_msg: str = "the bls key pair public key does not match public of the node in the nodes list"
-        #     assert public_key_g2 == public_key_g2_from_private, error_msg
-        # else:
-        #     if os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true':
-        #         self.register_operator(ecdsa_private_key, bls_key_pair)
-        #         zlogger.warning("Operator registration transaction sent.")
-        #     zlogger.warning("Operator not found in the nodes' list")
-        #     sys.exit()
-
-        self.NODE["ecdsa_private_key"] = ecdsa_private_key
-        self.NODE["bls_key_pair"] = bls_key_pair
+        self.NODE.update({
+            'ecdsa_private_key': ecdsa_private_key,
+            'bls_key_pair': bls_key_pair
+        })
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
