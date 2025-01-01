@@ -222,6 +222,14 @@ class Config:
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
+    def NODES(self):
+        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
+
+    @property
+    def TOTAL_STAKE(self):
+        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
+
+    @property
     def nodes_last_state(self):
         return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
 
