@@ -6,70 +6,75 @@ import cProfile
 import functools
 import json
 import os
-import sys
 import pstats
+import sys
 import time
-import requests
-import utils
 from random import randbytes
-from tenacity import retry, stop_after_attempt, wait_fixed
-
-from historical_nodes_registry import NodesRegistryClient
-from schema import NetworkState, NodeSource, get_node_source
-from typing import Any, List, Dict, Optional
+from typing import Any, Dict
 from urllib.parse import urlparse
 
-from eigensdk.crypto.bls import attestation
-from web3 import Account
+import requests
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
+from eigensdk.crypto.bls import attestation
+from tenacity import retry, stop_after_attempt, wait_fixed
+from web3 import Account
+
+import utils
 from common.logger import zlogger
+from schema import NetworkState, NodeSource, NodeConfig, get_node_source
 
 
 class Config:
     _instance = None
 
-    def __init__(self):
-        self.APPS = None
-        self.IS_SYNCING = None
-        self.THRESHOLD_PERCENT = None
-        self.INIT_SEQUENCER_ID = None
-        self.API_BATCHES_LIMIT = None
-        self.FETCH_APPS_AND_NODES_INTERVAL = None
-        self.AGGREGATION_TIMEOUT = None
-        self.FINALIZATION_TIME_BORDER = None
-        self.SYNC_INTERVAL = None
-        self.SEND_BATCH_INTERVAL = None
-        self.REMOVE_CHUNK_BORDER = None
-        self.SNAPSHOT_CHUNK = None
-        self.PORT = None
-        self.NODE = {}
+    def __init__(self, node_config: NodeConfig):
+        self.node_config = node_config
         self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
+        self.NODE = {}
+        self.APPS = {}
         self.NETWORK_STATUS_TAG = None
-        self.NODE_SOURCE = None
         self.ADDRESS = None
-        self.OPERATOR_STATE_RETRIEVER = None
-        self.REGISTRY_COORDINATOR = None
-        self.RPC_NODE = None
-        self.SUBGRAPH_URL = None
-        self.SNAPSHOT_PATH = None
-        self.APPS_FILE = None
-        self.HISTORICAL_NODES_REGISTRY = None
-        self.NODES_FILE = None
-        self.NODES_INFO_SYNC_BORDER = None
-        self.HEADERS = None
-        self.VERSION = None
-        self.BLS_KEY_STORE_PATH = None
-        self.ECDSA_KEY_STORE_PATH = None
-        self.BLS_KEY_PASSWORD = None
-        self.ECDSA_KEY_PASSWORD = None
-        self.REGISTER_OPERATOR = None
+        self.IS_SYNCING = None
 
-    def __new__(cls) -> "Config":
-        if cls._instance is None:
-            cls._instance = super(Config, cls).__new__(cls)
-            cls._instance._load_environment_variables()
-            cls._instance._init_network_config()
-        return cls._instance
+        # Load fields from config
+        self.THRESHOLD_PERCENT = node_config.THRESHOLD_PERCENT
+        self.INIT_SEQUENCER_ID = node_config.INIT_SEQUENCER_ID
+        self.API_BATCHES_LIMIT = node_config.API_BATCHES_LIMIT
+        self.FETCH_APPS_AND_NODES_INTERVAL = node_config.FETCH_APPS_AND_NODES_INTERVAL
+        self.AGGREGATION_TIMEOUT = node_config.AGGREGATION_TIMEOUT
+        self.FINALIZATION_TIME_BORDER = node_config.FINALIZATION_TIME_BORDER
+        self.SYNC_INTERVAL = node_config.SYNC_INTERVAL
+        self.SEND_BATCH_INTERVAL = node_config.SEND_BATCH_INTERVAL
+        self.REMOVE_CHUNK_BORDER = node_config.REMOVE_CHUNK_BORDER
+        self.SNAPSHOT_CHUNK = node_config.SNAPSHOT_CHUNK
+        self.PORT = node_config.PORT
+        self.NODE_SOURCE = node_config.NODE_SOURCE
+        self.OPERATOR_STATE_RETRIEVER = node_config.OPERATOR_STATE_RETRIEVER
+        self.REGISTRY_COORDINATOR = node_config.REGISTRY_COORDINATOR
+        self.RPC_NODE = node_config.RPC_NODE
+        self.SUBGRAPH_URL = node_config.SUBGRAPH_URL
+        self.SNAPSHOT_PATH = node_config.SNAPSHOT_PATH
+        self.APPS_FILE = node_config.APPS_FILE
+        self.HISTORICAL_NODES_REGISTRY = node_config.HISTORICAL_NODES_REGISTRY
+        self.NODES_FILE = node_config.NODES_FILE
+        self.NODES_INFO_SYNC_BORDER = node_config.NODES_INFO_SYNC_BORDER
+        self.HEADERS = node_config.HEADERS
+        self.VERSION = node_config.VERSION
+        self.BLS_KEY_STORE_PATH = node_config.BLS_KEY_STORE_PATH
+        self.ECDSA_KEY_STORE_PATH = node_config.ECDSA_KEY_STORE_PATH
+        self.BLS_KEY_PASSWORD = node_config.BLS_KEY_PASSWORD
+        self.ECDSA_KEY_PASSWORD = node_config.ECDSA_KEY_PASSWORD
+        self.REGISTER_OPERATOR = node_config.REGISTER_OPERATOR
+
+        # Init node encryption and networks configurations
+        self._init_node()
+        self._init_network_config()
+
+    @staticmethod
+    def get_instance(node_config: NodeConfig):
+        if not Config._instance:
+            Config._instance = Config(node_config=node_config)
+        return Config._instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def get_network_state(self, tag: int) -> NetworkState:
@@ -176,47 +181,7 @@ class Config:
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
 
-    def _load_environment_variables(self):
-        self.NODE_SOURCE = get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE"))
-        utils.validate_env_variables(self.NODE_SOURCE)
-
-        self.VERSION = "v0.0.12"
-        self.HEADERS: dict[str, Any] = {
-            "Content-Type": "application/json",
-            "Version": self.VERSION
-        }
-        self.NODES_INFO_SYNC_BORDER = 5  # in seconds
-        self.IS_SYNCING: bool = True
-        self.NODES_FILE: str = os.getenv("ZSEQUENCER_NODES_FILE", "./nodes.json")
-        self.HISTORICAL_NODES_REGISTRY = os.getenv("ZSEQUENCER_HISTORICAL_NODES_REGISTRY", "")
-        self.APPS_FILE: str = os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json")
-        self.SNAPSHOT_PATH: str = os.getenv("ZSEQUENCER_SNAPSHOT_PATH", "./data/")
-
-        self.SUBGRAPH_URL = os.getenv('ZSEQUENCER_SUBGRAPH_URL', '')
-        self.RPC_NODE = os.getenv('ZSEQUENCER_RPC_NODE', '')
-        self.REGISTRY_COORDINATOR = os.getenv('ZSEQUENCER_REGISTRY_COORDINATOR', '')
-        self.OPERATOR_STATE_RETRIEVER = os.getenv('ZSEQUENCER_OPERATOR_STATE_RETRIEVER', '')
-
-        self.PORT: int = int(os.getenv("ZSEQUENCER_PORT", "6000"))
-
-        self.SNAPSHOT_CHUNK: int = int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000"))
-        self.REMOVE_CHUNK_BORDER: int = int(os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2"))
-
-        self.SEND_BATCH_INTERVAL: float = float(os.getenv("ZSEQUENCER_SEND_TXS_INTERVAL", "5"))
-        self.SYNC_INTERVAL: float = float(os.getenv("ZSEQUENCER_SYNC_INTERVAL", "30"))
-        self.FINALIZATION_TIME_BORDER: int = int(os.getenv("ZSEQUENCER_FINALIZATION_TIME_BORDER", "120"))
-        self.AGGREGATION_TIMEOUT: int = int(os.getenv("ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT", "5"))
-        self.FETCH_APPS_AND_NODES_INTERVAL: int = int(os.getenv("ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL", "60"))
-        self.API_BATCHES_LIMIT: int = int(os.getenv("ZSEQUENCER_API_BATCHES_LIMIT", "100"))
-        self.INIT_SEQUENCER_ID: str = os.getenv("ZSEQUENCER_INIT_SEQUENCER_ID")
-        self.THRESHOLD_PERCENT: int = float(os.getenv("ZSEQUENCER_THRESHOLD_PERCENT", '100'))
-
-        self.BLS_KEY_STORE_PATH: str = os.getenv("ZSEQUENCER_BLS_KEY_FILE", "")
-        self.ECDSA_KEY_STORE_PATH: str = os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", "")
-        self.BLS_KEY_PASSWORD: str = os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", "")
-        self.ECDSA_KEY_PASSWORD: str = os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", "")
-
-        self.REGISTER_OPERATOR = os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true'
+    def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(self.BLS_KEY_STORE_PATH,
                                                                                self.BLS_KEY_PASSWORD)
 
@@ -302,4 +267,4 @@ class Config:
         return decorator
 
 
-zconfig: Config = Config()
+zconfig = Config.get_instance(NodeConfig.from_env())

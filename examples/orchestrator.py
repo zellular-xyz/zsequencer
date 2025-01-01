@@ -160,7 +160,9 @@ def prepare_nodes() -> None:
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
             "ZSEQUENCER_NODES_SOURCE": ZSEQUENCER_NODES_SOURCES[1],
-            "ZSEQUENCER_REGISTER_OPERATOR": "false"
+            "ZSEQUENCER_REGISTER_OPERATOR": "false",
+            "ZSEQUENCER_VERSION": "v0.0.12",
+            "ZSEQUENCER_NODES_FILE": ""
         })
 
         generate_bash_command_file(os.path.join(Path(__file__).parent.parent, "run.py"),
