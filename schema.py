@@ -5,10 +5,11 @@ from typing import Any, Dict
 from pydantic import BaseModel
 
 
+# Todo: handle aggregated_public_key type
 class NetworkState(BaseModel):
     tag: int
     nodes: Dict
-    aggregated_public_key: str
+    aggregated_public_key: Any
     total_stake: int
 
 
@@ -30,7 +31,7 @@ class NodeConfig(BaseModel):
     HEADERS: Dict[str, Any]
     NODES_INFO_SYNC_BORDER: int
 
-    NODE_SOURCE: str
+    NODE_SOURCE: NodeSource
     NODES_FILE: str
     HISTORICAL_NODES_REGISTRY: str
     APPS_FILE: str
@@ -71,7 +72,7 @@ class NodeConfig(BaseModel):
                 "Version": os.getenv("ZSEQUENCER_VERSION", "v0.0.12")
             },
             NODES_INFO_SYNC_BORDER=5,  # You can adjust if needed
-            NODE_SOURCE=os.getenv("ZSEQUENCER_NODES_SOURCE"),
+            NODE_SOURCE=get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE")),
             NODES_FILE=os.getenv("ZSEQUENCER_NODES_FILE"),
             HISTORICAL_NODES_REGISTRY=os.getenv("ZSEQUENCER_HISTORICAL_NODES_REGISTRY", ""),
             APPS_FILE=os.getenv("ZSEQUENCER_APPS_FILE", "./apps.json"),

@@ -21,7 +21,7 @@ from web3 import Account
 
 import utils
 from common.logger import zlogger
-from schema import NetworkState, NodeSource, NodeConfig, get_node_source
+from schema import NetworkState, NodeSource, NodeConfig
 
 
 class Config:
@@ -31,6 +31,7 @@ class Config:
         self.node_config = node_config
         self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
         self.NODE = {}
+
         self.APPS = {}
         self.NETWORK_STATUS_TAG = None
         self.ADDRESS = None
@@ -39,6 +40,7 @@ class Config:
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.THRESHOLD_PERCENT
         self.INIT_SEQUENCER_ID = node_config.INIT_SEQUENCER_ID
+        self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
         self.API_BATCHES_LIMIT = node_config.API_BATCHES_LIMIT
         self.FETCH_APPS_AND_NODES_INTERVAL = node_config.FETCH_APPS_AND_NODES_INTERVAL
         self.AGGREGATION_TIMEOUT = node_config.AGGREGATION_TIMEOUT
@@ -68,7 +70,6 @@ class Config:
 
         # Init node encryption and networks configurations
         self._init_node()
-        self._init_network_config()
 
     @staticmethod
     def get_instance(node_config: NodeConfig):
@@ -79,7 +80,7 @@ class Config:
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def get_network_state(self, tag: int) -> NetworkState:
         if tag in self.HISTORICAL_NETWORK_STATE:
-            return self.HISTORICAL_NETWORK_STATE.get(tag)
+            return self.HISTORICAL_NETWORK_STATE[tag]
 
         nodes_data: Dict[str, Dict[str, Any]] = {}
         if self.NODE_SOURCE == NodeSource.FILE:
@@ -103,7 +104,6 @@ class Config:
                                      nodes=nodes_data,
                                      aggregated_public_key=aggregated_public_key,
                                      total_stake=total_stake)
-
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
         return network_state
 
@@ -119,23 +119,14 @@ class Config:
     def fetch_network_state(self):
         """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
 
-        try:
-            self.fetch_tag()
-        except:
-            zlogger.error('Unable to fetch latest network tag')
-            return
-
-        try:
-            network_state = self.get_network_state(tag=self.NETWORK_STATUS_TAG)
-        except:
-            zlogger.error('Unable to get network state with tag {}'.format(self.NETWORK_STATUS_TAG))
-            return
+        # Todo: properly handle exception on fetching tag and corresponding network state
+        self.fetch_tag()
+        network_state = self.get_network_state(tag=self.NETWORK_STATUS_TAG)
 
         nodes_data = network_state.nodes
-        sequencer_id = self.SEQUENCER['id']
 
         self.NODE.update(nodes_data[self.ADDRESS])
-        self.SEQUENCER.update(nodes_data[sequencer_id])
+        self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
 
         return nodes_data
 
@@ -158,24 +149,27 @@ class Config:
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
+        current_network_nodes = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
+        total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
+
         sequencers_stake: dict[str, Any] = {
-            node_id: 0 for node_id in list(self.NODES.keys())
+            node_id: 0 for node_id in list(current_network_nodes.keys())
         }
-        for node_id in list(self.NODES.keys()):
+        for node_id in list(current_network_nodes.keys()):
             if node_id == self.NODE["id"]:
                 continue
-            url: str = f"{self.NODES[node_id]['socket']}/node/state"
+            url: str = f"{current_network_nodes[node_id]['socket']}/node/state"
             try:
                 response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += self.NODES[node_id]["stake"]
+                sequencers_stake[sequencer_id] += current_network_nodes[node_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if 100 * sequencers_stake[max_stake_id] / self.TOTAL_STAKE >= self.THRESHOLD_PERCENT and \
+        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT and \
                 sequencers_stake[max_stake_id] > self.NODE["stake"]:
             self.update_sequencer(max_stake_id)
         else:
@@ -217,17 +211,14 @@ class Config:
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
 
-    def _init_network_config(self):
-        self.fetch_network_state()
         self.init_sequencer()
-
         if self.SEQUENCER["id"] == self.NODE["id"]:
             self.IS_SYNCING = False
 
-        self.APPS: dict[str, dict[str, Any]] = utils.get_file_content(self.APPS_FILE)
+        self.APPS = utils.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
-            snapshot_path: str = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
+            snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
@@ -237,7 +228,7 @@ class Config:
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:
-            self.SEQUENCER = self.NODES[sequencer_id]
+            self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[sequencer_id]
 
     # TODO: remove
     @staticmethod
