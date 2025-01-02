@@ -8,6 +8,7 @@ from pydantic import BaseModel
 # Todo: handle aggregated_public_key type
 class NetworkState(BaseModel):
     tag: int
+    timestamp: int
     nodes: Dict
     aggregated_public_key: Any
     total_stake: int

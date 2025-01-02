@@ -101,6 +101,7 @@ class Config:
         total_stake = sum([node['stake'] for node in nodes_data.values()])
 
         network_state = NetworkState(tag=tag,
+                                     timestamp=int(time.time()),
                                      nodes=nodes_data,
                                      aggregated_public_key=aggregated_public_key,
                                      total_stake=total_stake)
@@ -222,16 +223,24 @@ class Config:
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
+    def last_state(self) -> NetworkState:
+        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG]
+
+    @property
     def NODES(self):
-        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
+        return self.last_state.nodes
 
     @property
     def TOTAL_STAKE(self):
-        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
+        return self.last_state.total_stake
 
     @property
     def nodes_last_state(self):
-        return self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
+        return {
+            "total_stake": self.TOTAL_STAKE,
+            "aggregated_public_key": self.last_state.aggregated_public_key,
+            "timestamp": self.last_state.timestamp
+        }
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
