@@ -233,7 +233,8 @@ def main() -> None:
 
     time.sleep(5)
 
-    run_command(command_name=os.path.join(BASE_DIRECTORY, "{args.test}_test.py"),
+    test_script_fullpath = os.path.join(BASE_DIRECTORY, f"{args.test}_test.py")
+    run_command(command_name=test_script_fullpath,
                 command_args=f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
                 env_variables=env_variables)
 
