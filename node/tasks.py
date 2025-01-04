@@ -105,22 +105,13 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
 
 
 def sync_with_sequencer(
-        app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
+    app_name: str, initialized_batches: dict[str, Any], sequencer_response: dict[str, Any]
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(app_name=app_name, batches_data=sequencer_response["batches"])
     last_locked_index: str = zdb.apps[app_name]["last_locked_batch"].get("index", 0)
-    last_finalized_index: str = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
-
-    if (sequencer_response["locked"]["index"] != 0 and
-            sequencer_response["locked"]["index"] <= last_locked_index):
-        zlogger.error("Invalid locking signature received from sequencer")
-
-    if (sequencer_response["finalized"]["index"] != 0 and
-            sequencer_response["finalized"]["index"] <= last_finalized_index):
-        zlogger.error("Invalid finalizing signature received from sequencer")
-
-    if is_sync_point_signature_verified(
+    if sequencer_response["locked"]["index"] > last_locked_index:
+        if is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
             index=sequencer_response["locked"]["index"],
@@ -129,15 +120,17 @@ def sync_with_sequencer(
             tag=sequencer_response["locked"]["tag"],
             signature_hex=sequencer_response["locked"]["signature"],
             nonsigners=sequencer_response["locked"]["nonsigners"],
-    ):
-        zdb.update_locked_batches(
-            app_name=app_name,
-            sig_data=sequencer_response["locked"],
-        )
-    else:
-        zlogger.error("Invalid locking signature received from sequencer")
+        ):
+            zdb.update_locked_batches(
+                app_name=app_name,
+                sig_data=sequencer_response["locked"],
+            )
+        else:
+            zlogger.error("Invalid locking signature received from sequencer")
 
-    if is_sync_point_signature_verified(
+    last_finalized_index: str = zdb.apps[app_name]["last_finalized_batch"].get("index", 0)
+    if sequencer_response["finalized"]["index"] > last_finalized_index:
+        if is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
             index=sequencer_response["finalized"]["index"],
@@ -146,13 +139,14 @@ def sync_with_sequencer(
             tag=sequencer_response["finalized"]["tag"],
             signature_hex=sequencer_response["finalized"]["signature"],
             nonsigners=sequencer_response["finalized"]["nonsigners"],
-    ):
-        zdb.update_finalized_batches(
-            app_name=app_name,
-            sig_data=sequencer_response["finalized"],
-        )
-    else:
-        zlogger.error("Invalid finalizing signature received from sequencer")
+        ):
+            zdb.update_finalized_batches(
+                app_name=app_name,
+                sig_data=sequencer_response["finalized"],
+            )
+        else:
+            zlogger.error("Invalid finalizing signature received from sequencer")
+
 
     return check_censorship(
         app_name=app_name,

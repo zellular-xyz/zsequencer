@@ -8,7 +8,7 @@ from typing import Any
 import requests
 from threading import Thread
 from config import zconfig
-
+from utils import get_file_content
 from . import utils
 from .logger import zlogger
 
@@ -40,7 +40,8 @@ class InMemoryDB:
 
     def fetch_apps(self) -> None:
         """Fetchs the apps data."""
-        data = zconfig.get_file_content(zconfig.APPS_FILE)
+        data = get_file_content(zconfig.APPS_FILE)
+
         new_apps = {}
         for app_name in data:
             if self.apps.get(app_name):
@@ -54,6 +55,7 @@ class InMemoryDB:
                 "last_locked_batch": {},
                 "last_finalized_batch": {},
             }
+
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
@@ -65,13 +67,13 @@ class InMemoryDB:
     def schedule_fetch(self) -> None:
         """Periodically fetches apps and nodes data."""
         while True:
-            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
             try:
                 self.fetch_apps()
             except:
                 zlogger.error("An unexpected error occurred while fetching apps data")
 
             zconfig.fetch_network_state()
+            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
