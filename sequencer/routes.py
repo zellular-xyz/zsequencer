@@ -45,9 +45,9 @@ def put_batches() -> Response:
         message=concat_hash,
     )
     if (
-        not is_eth_sig_verified
-        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
-        or req_data["app_name"] not in list(zconfig.APPS.keys())
+            not is_eth_sig_verified
+            or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
+            or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
@@ -73,15 +73,15 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         app_name=req_data["app_name"], state="locked"
     )
     if batches:
-        if batches[-1]["index"] < last_finalized_batch.get("index",0):
+        if batches[-1]["index"] < last_finalized_batch.get("index", 0):
             last_finalized_batch: dict[str, Any] = next(
                 (d for d in reversed(batches) if "finalization_signature" in d), {}
             )
-        if batches[-1]["index"] < last_locked_batch.get("index",0):
+        if batches[-1]["index"] < last_locked_batch.get("index", 0):
             last_locked_batch: dict[str, Any] = next(
                 (d for d in reversed(batches) if "lock_signature" in d), {}
             )
-        
+
     zdb.upsert_node_state(
         {
             "app_name": req_data["app_name"],
@@ -107,7 +107,8 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_finalized_batch.get("hash", ""),
             "signature": last_finalized_batch.get("finalization_signature", ""),
             "nonsigners": last_finalized_batch.get("finalized_nonsigners", []),
-            "tag": last_finalized_batch.get("tag", 0),
+            # Todo: Note to make sure about retrieving tag state from the proper time of computing finalized state
+            "tag": zconfig.last_tag,
         },
         "locked": {
             "index": last_locked_batch.get("index", 0),
@@ -115,6 +116,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_locked_batch.get("hash", ""),
             "signature": last_locked_batch.get("lock_signature", ""),
             "nonsigners": last_locked_batch.get("locked_nonsigners", []),
-            "tag": last_locked_batch.get("tag", 0),
+            # Todo: Note to make sure about retrieving tag state from the proper time of computing locked state
+            "tag": zconfig.last_tag,
         },
     }

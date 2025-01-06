@@ -230,6 +230,10 @@ class Config:
         return self.last_state.nodes
 
     @property
+    def last_tag(self):
+        return self.NETWORK_STATUS_TAG
+
+    @property
     def TOTAL_STAKE(self):
         return self.last_state.total_stake
 

@@ -44,17 +44,17 @@ class InMemoryDB:
 
         new_apps = {}
         for app_name in data:
-            if self.apps.get(app_name):
+            if app_name in self.apps:
                 new_apps[app_name] = self.apps[app_name]
-                continue
-            new_apps[app_name] = {
-                "nodes_state": {},
-                "batches": {},
-                "missed_batches": {},
-                "last_sequenced_batch": {},
-                "last_locked_batch": {},
-                "last_finalized_batch": {},
-            }
+            else:
+                new_apps[app_name] = {
+                    "nodes_state": {},
+                    "batches": {},
+                    "missed_batches": {},
+                    "last_sequenced_batch": {},
+                    "last_locked_batch": {},
+                    "last_finalized_batch": {},
+                }
 
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
@@ -369,9 +369,9 @@ class InMemoryDB:
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""
         return [
-            v
-            for k, v in self.apps[app_name]["nodes_state"].items()
-            if k in list(zconfig.NODES.keys())
+            node_info
+            for address, node_info in self.apps[app_name]["nodes_state"].items()
+            if address in list(zconfig.NODES.keys())
         ]
 
     def upsert_locked_sync_point(self, app_name: str, state: dict[str, Any]) -> None:

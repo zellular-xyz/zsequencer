@@ -228,6 +228,7 @@ def is_sync_point_signature_verified(
     '''
 
     nodes_info = zconfig.get_network_state(tag=tag).nodes
+    # print('\n' * 4, 'tag', tag, 'nodes_info', nodes_info, '\n' * 4)
 
     nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
     agg_pub_key = get_aggregated_public_key(nodes_info, nonsigners)
