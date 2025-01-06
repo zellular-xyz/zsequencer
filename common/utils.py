@@ -22,7 +22,7 @@ def sequencer_only(func: Callable[..., Any]) -> Decorator:
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        if zconfig.get_node()["id"] != zconfig.get_sequencer()["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
         return func(*args, **kwargs)
 
@@ -34,7 +34,7 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+        if zconfig.get_node()["id"] == zconfig.get_sequencer()["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
         return func(*args, **kwargs)
 
@@ -62,7 +62,7 @@ def eth_sign(message: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=message)
     account_instance: Account = Account()
     return account_instance.sign_message(
-        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"]
+        signable_message=message_encoded, private_key=zconfig.get_node()["ecdsa_private_key"]
     ).signature.hex()
 
 
@@ -122,9 +122,9 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
     if not all(key in proof for key in required_keys):
         return False
 
-    new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
+    new_sequencer_id: str = get_next_sequencer_id(zconfig.get_sequencer()["id"])
     if (
-        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
+        proof["old_sequencer_id"] != zconfig.get_sequencer()["id"]
         or proof["new_sequencer_id"] != new_sequencer_id
     ):
         return False
@@ -136,7 +136,7 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
     if not is_eth_sig_verified(
         signature=proof["signature"],
         node_id=proof["node_id"],
-        message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
+        message=f'{zconfig.get_sequencer()["id"]}{proof["timestamp"]}',
     ):
         return False
 

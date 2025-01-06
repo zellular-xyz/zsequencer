@@ -10,3 +10,4 @@ uvicorn==0.32.0
 requests==2.32.3
 pydantic==2.9.2
 tenacity==9.0.0
+readerwriterlock==1.0.9

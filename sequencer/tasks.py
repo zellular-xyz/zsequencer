@@ -30,7 +30,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
             if s["sequenced_index"] >= state["sequenced_index"]
         }
         stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
-        stake += zconfig.NODE["stake"]
+        stake += zconfig.get_node()["stake"]
         if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
             return {"state": state, "party": party}
     return None
@@ -58,7 +58,7 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
             if s["locked_index"] >= state["locked_index"]
         }
         stake = sum([zconfig.NODES[node_id]['stake'] for node_id in party])
-        stake += zconfig.NODE["stake"]
+        stake += zconfig.get_node()["stake"]
         if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
             return {"state": state, "party": party}
     return None
@@ -66,7 +66,7 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
 
 async def sync() -> None:
     """Synchronize all apps."""
-    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+    if zconfig.get_node()["id"] != zconfig.get_sequencer()["id"]:
         return
 
     for app_name in list(zconfig.APPS.keys()):

@@ -239,7 +239,7 @@ class InMemoryDB:
             if batch_hash not in batches:
                 batches[batch_hash] = {
                     "app_name": app_name,
-                    "node_id": zconfig.NODE["id"],
+                    "node_id": zconfig.get_node()["id"],
                     "timestamp": now,
                     "state": "initialized",
                     "hash": batch_hash,
@@ -446,7 +446,7 @@ class InMemoryDB:
             all_nodes_last_finalized_batch,
         )
 
-        if zconfig.NODE["id"] == new_sequencer_id:
+        if zconfig.get_node()["id"] == new_sequencer_id:
             self.resequence_batches(app_name, all_nodes_last_finalized_batch)
         else:
             self.reinitialize_batches(app_name, all_nodes_last_finalized_batch)

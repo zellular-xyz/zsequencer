@@ -41,7 +41,7 @@ def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
         time.sleep(zconfig.SEND_BATCH_INTERVAL)
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+        if zconfig.get_node()["id"] == zconfig.get_sequencer()["id"]:
             continue
 
         if zdb.pause_node.is_set():
@@ -62,7 +62,7 @@ async def run_sequencer_tasks_async() -> None:
     """Asynchronously run sequencer tasks."""
     while True:
         await asyncio.sleep(zconfig.SYNC_INTERVAL)
-        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        if zconfig.get_node()["id"] != zconfig.get_sequencer()["id"]:
             continue
 
         if zdb.pause_node.is_set():

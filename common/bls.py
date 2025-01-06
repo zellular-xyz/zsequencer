@@ -17,14 +17,14 @@ from .logger import zlogger
 
 def bls_sign(message: str) -> str:
     """Sign a message using BLS."""
-    signature: attestation.Signature = zconfig.NODE["bls_key_pair"].sign_message(
+    signature: attestation.Signature = zconfig.get_node()["bls_key_pair"].sign_message(
         message.encode("utf-8")
     )
     return signature.getStr(10).decode("utf-8")
 
 
 def get_signers_aggregated_public_key(
-    nonsigners: list[str], aggregated_public_key: attestation.G2Point
+        nonsigners: list[str], aggregated_public_key: attestation.G2Point
 ) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     for nonsigner in nonsigners:
@@ -34,12 +34,13 @@ def get_signers_aggregated_public_key(
 
 
 def is_bls_sig_verified(
-    signature_hex: str, message: str, public_key: attestation.G2Point
+        signature_hex: str, message: str, public_key: attestation.G2Point
 ) -> bool:
     """Verify a BLS signature."""
     signature: attestation.Signature = attestation.new_zero_signature()
     signature.setStr(signature_hex.encode("utf-8"))
     return signature.verify(public_key, message.encode("utf-8"))
+
 
 async def gather_signatures(
         sign_tasks: dict[asyncio.Task, str]
@@ -47,7 +48,7 @@ async def gather_signatures(
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
-    stake_percent = 100 * zconfig.NODE['stake'] / zconfig.TOTAL_STAKE
+    stake_percent = 100 * zconfig.get_node()['stake'] / zconfig.TOTAL_STAKE
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -59,21 +60,21 @@ async def gather_signatures(
                 stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
 
     except Exception as error:
-        if not isinstance(error, ValueError): # For empty list
+        if not isinstance(error, ValueError):  # For empty list
             zlogger.exception(f"An unexpected error occurred: {error}")
     return completed_results, stake_percent
-    
+
+
 async def gather_and_aggregate_signatures(
-    data: dict[str, Any], node_ids: set[str]
+        data: dict[str, Any], node_ids: set[str]
 ) -> dict[str, Any] | None:
     """
     Gather and aggregate signatures from nodes.
     Lock NODES and TAG and other zconfig
     """
     network_nodes_info = zconfig.NODES
-    node_info = zconfig.NODE
+    node_info = zconfig.get_node()
     total_stake = zconfig.TOTAL_STAKE
-    tag = zconfig.NETWORK_STATUS_TAG
 
     stake = sum([network_nodes_info[node_id]['stake'] for node_id in node_ids]) + node_info['stake']
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
@@ -92,7 +93,7 @@ async def gather_and_aggregate_signatures(
                 message=message,
                 timeout=120,
             )
-        ) : node_id 
+        ): node_id
         for node_id in node_ids
     }
     try:
@@ -118,12 +119,12 @@ async def gather_and_aggregate_signatures(
         "message": message,
         "signature": aggregated_signature,
         "nonsigners": nonsigners,
-        'tag': tag
+        'tag': zconfig.get_tag()
     }
 
 
 async def request_signature(
-    node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120
+        node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
@@ -136,8 +137,8 @@ async def request_signature(
                 signature: attestation.Signature = attestation.new_zero_signature()
                 signature.setStr(response_json["data"]["signature"].encode("utf-8"))
                 if not signature.verify(
-                    pub_key=zconfig.NODES[node_id]["public_key_g2"],
-                    msg_bytes=message.encode("utf-8"),
+                        pub_key=zconfig.NODES[node_id]["public_key_g2"],
+                        msg_bytes=message.encode("utf-8"),
                 ):
                     return None
                 return response_json["data"]

@@ -61,16 +61,16 @@ def post_dispute() -> Response:
     error_message: str = utils.validate_keys(req_data, required_keys)
     if error_message:
         return error_response(ErrorCodes.INVALID_REQUEST, error_message)
-    if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
+    if req_data["sequencer_id"] != zconfig.get_sequencer()["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
     if zdb.has_missed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
+            "node_id": zconfig.get_node()["id"],
+            "old_sequencer_id": zconfig.get_sequencer()["id"],
+            "new_sequencer_id": utils.get_next_sequencer_id(zconfig.get_sequencer()["id"]),
             "timestamp": timestamp,
-            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
+            "signature": utils.eth_sign(f'{zconfig.get_sequencer()["id"]}{timestamp}'),
         }
         return success_response(data=data)
     
@@ -105,12 +105,12 @@ def post_switch_sequencer() -> Response:
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
-        "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
+        "sequencer": zconfig.get_node()["id"] == zconfig.get_sequencer()["id"],
         "version": zconfig.VERSION,
-        "sequencer_id": zconfig.SEQUENCER["id"],
-        "node_id": zconfig.NODE["id"],
-        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
-        "address": zconfig.NODE["address"],
+        "sequencer_id": zconfig.get_sequencer()["id"],
+        "node_id": zconfig.get_node()["id"],
+        "public_key_g2": zconfig.get_node()["public_key_g2"].getStr(10).decode('utf-8'),
+        "address": zconfig.get_node()["address"],
         "apps": {},
     }
 
