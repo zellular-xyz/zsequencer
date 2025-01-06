@@ -100,28 +100,28 @@ class Config:
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node['stake'] for node in nodes_data.values()])
 
-        self.HISTORICAL_NETWORK_STATE[tag] = NetworkState(tag=tag,
-                                                          timestamp=int(time.time()),
-                                                          nodes=nodes_data,
-                                                          aggregated_public_key=aggregated_public_key,
-                                                          total_stake=total_stake)
-        return self.HISTORICAL_NETWORK_STATE[tag]
+        return NetworkState(tag=tag,
+                            timestamp=int(time.time()),
+                            nodes=nodes_data,
+                            aggregated_public_key=aggregated_public_key,
+                            total_stake=total_stake)
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def fetch_tag(self):
         if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
-            self.NETWORK_STATUS_TAG = utils.fetch_eigen_layer_last_block_number(sub_graph_socket=self.SUBGRAPH_URL)
+            return utils.fetch_eigen_layer_last_block_number(sub_graph_socket=self.SUBGRAPH_URL)
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
-            self.NETWORK_STATUS_TAG = utils.get_nodes_registry_last_tag()
+            return utils.get_nodes_registry_last_tag()
         elif self.NODE_SOURCE == NodeSource.FILE:
-            self.NETWORK_STATUS_TAG = 0
+            return 0
 
     def fetch_network_state(self):
         """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
 
         # Todo: properly handle exception on fetching tag and corresponding network state
-        self.fetch_tag()
-        network_state = self.get_network_state(tag=self.NETWORK_STATUS_TAG)
+        tag = self.fetch_tag()
+        network_state = self.get_network_state(tag=tag)
+        self.NETWORK_STATUS_TAG, self.HISTORICAL_NETWORK_STATE[tag] = tag, network_state
 
         nodes_data = network_state.nodes
 

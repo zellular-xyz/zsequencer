@@ -131,16 +131,16 @@ def main() -> None:
         target=send_batches_with_threads,
         args=[args.app_name, batches, args.node_url, NUM_THREADS]
     )
-    # sync_thread = threading.Thread(
-    #     target=check_state,
-    #     args=[args.app_name, args.node_url, BATCH_NUMBER],
-    # )
+    sync_thread = threading.Thread(
+        target=check_state,
+        args=[args.app_name, args.node_url, BATCH_NUMBER],
+    )
     #
     sender_thread.start()
-    # sync_thread.start()
+    sync_thread.start()
     #
     sender_thread.join()
-    # sync_thread.join()
+    sync_thread.join()
 
 
 if __name__ == "__main__":
