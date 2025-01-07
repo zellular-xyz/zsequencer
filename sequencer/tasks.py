@@ -98,6 +98,12 @@ async def sync_app(app_name: str) -> None:
                 sig_data=locked_data,
             )
 
+    ############################################################
+    ############################################################
+    ############################################################
+    ############################################################
+
+
     finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
     if finalized_sync_point:
         finalized_data: dict[str, Any] = {
