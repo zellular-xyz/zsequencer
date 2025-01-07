@@ -107,7 +107,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_finalized_batch.get("hash", ""),
             "signature": last_finalized_batch.get("finalization_signature", ""),
             "nonsigners": last_finalized_batch.get("finalized_nonsigners", []),
-            # Todo: Note to make sure about retrieving tag state from the proper time of computing finalized state
             "tag": last_finalized_batch.get("tag", 0),
         },
         "locked": {
@@ -116,7 +115,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_locked_batch.get("hash", ""),
             "signature": last_locked_batch.get("lock_signature", ""),
             "nonsigners": last_locked_batch.get("locked_nonsigners", []),
-            # Todo: Note to make sure about retrieving tag state from the proper time of computing locked state
             "tag": last_locked_batch.get("tag", 0),
         },
     }

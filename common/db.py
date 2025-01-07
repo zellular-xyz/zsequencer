@@ -72,7 +72,8 @@ class InMemoryDB:
             except:
                 zlogger.error("An unexpected error occurred while fetching apps data")
 
-            zconfig.fetch_network_state()
+            if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+                zconfig.fetch_network_state()
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
     def load_state(self) -> None:

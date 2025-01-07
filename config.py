@@ -100,11 +100,14 @@ class Config:
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node['stake'] for node in nodes_data.values()])
 
-        return NetworkState(tag=tag,
-                            timestamp=int(time.time()),
-                            nodes=nodes_data,
-                            aggregated_public_key=aggregated_public_key,
-                            total_stake=total_stake)
+        network_state = NetworkState(tag=tag,
+                                     timestamp=int(time.time()),
+                                     nodes=nodes_data,
+                                     aggregated_public_key=aggregated_public_key,
+                                     total_stake=total_stake)
+
+        self.HISTORICAL_NETWORK_STATE[tag] = network_state
+        return network_state
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def fetch_tag(self):
@@ -121,7 +124,7 @@ class Config:
         # Todo: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
-        self.NETWORK_STATUS_TAG, self.HISTORICAL_NETWORK_STATE[tag] = tag, network_state
+        self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
 
