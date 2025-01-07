@@ -192,14 +192,7 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
 
 def _validate_nonsigners_stake(nonsigners_stake: int):
     """Verify the nonsigners' stake."""
-    return (
-            100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT or
-            (
-                    100 * nonsigners_stake / zconfig.nodes_last_state[
-                "total_stake"] <= 100 - zconfig.THRESHOLD_PERCENT and
-                    int(time.time()) - zconfig.nodes_last_state["timestamp"] <= zconfig.NODES_INFO_SYNC_BORDER
-            )
-    )
+    return 100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT
 
 
 def get_aggregated_public_key(nodes_info, non_signers: List[str]) -> attestation.G2Point:
@@ -248,22 +241,9 @@ def is_sync_point_signature_verified(
     )
     message: str = utils.gen_hash(data)
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
-    res = bls.is_bls_sig_verified(
-        signature_hex=signature_hex,
-        message=message,
-        public_key=agg_pub_key,
-    )
-    if not res:
-        if int(time.time()) - zconfig.nodes_last_state["timestamp"] < zconfig.NODES_INFO_SYNC_BORDER:
-            public_key: attestation.G2Point = bls.get_signers_aggregated_public_key(
-                nonsigners, zconfig.nodes_last_state["aggregated_public_key"]
-            )
-            res = bls.is_bls_sig_verified(
-                signature_hex=signature_hex,
-                message=message,
-                public_key=public_key,
-            )
-    return res
+    return bls.is_bls_sig_verified(signature_hex=signature_hex,
+                                   message=message,
+                                   public_key=agg_pub_key, )
 
 
 async def gather_disputes(

@@ -237,14 +237,6 @@ class Config:
     def TOTAL_STAKE(self):
         return self.last_state.total_stake
 
-    @property
-    def nodes_last_state(self):
-        return {
-            "total_stake": self.TOTAL_STAKE,
-            "aggregated_public_key": self.last_state.aggregated_public_key,
-            "timestamp": self.last_state.timestamp
-        }
-
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:
