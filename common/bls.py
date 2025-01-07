@@ -72,10 +72,11 @@ async def gather_and_aggregate_signatures(
     Gather and aggregate signatures from nodes.
     Lock NODES and TAG and other zconfig
     """
-    network_nodes_info, node_info, total_stake, tag = (zconfig.NODES,
-                                                       zconfig.NODE,
-                                                       zconfig.TOTAL_STAKE,
-                                                       zconfig.NETWORK_STATUS_TAG)
+    tag = zconfig.NETWORK_STATUS_TAG
+    network_state = zconfig.get_network_state(tag)
+    node_info, network_nodes_info, total_stake = (zconfig.NODE,
+                                                  network_state.nodes,
+                                                  network_state.total_stake)
 
     stake = sum([network_nodes_info[node_id]['stake'] for node_id in node_ids]) + node_info['stake']
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
