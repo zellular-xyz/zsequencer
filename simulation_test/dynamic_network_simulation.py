@@ -8,16 +8,27 @@ import json
 import time
 import secrets
 import shutil
-import subprocess
 import threading
 import socket
 from pathlib import Path
-from typing import Any, Optional
-from historical_nodes_registry import NodesRegistryClient, NodeInfo, run_registry_server
+from typing import Any, Dict, Tuple
+from functools import reduce
+from historical_nodes_registry import (NodesRegistryClient,
+                                       NodeInfo,
+                                       SnapShotType,
+                                       run_registry_server)
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
+TIMESERIES_NODES_COUNT = [3, 5, 7, 10]
+TIMESERIES_LAST_NODE_INDEX = reduce(lambda acc,
+                                           i: acc +
+                                              [acc[-1] + (TIMESERIES_NODES_COUNT[i] - TIMESERIES_NODES_COUNT[i - 1])
+                                               if TIMESERIES_NODES_COUNT[i - 1] < TIMESERIES_NODES_COUNT[i]
+                                               else acc[-1]], range(1, len(TIMESERIES_NODES_COUNT)),
+                                    [TIMESERIES_NODES_COUNT[0] - 1])
 NUM_INSTANCES: int = 3
+HOST = "http://127.0.0.1"
 BASE_PORT: int = 6000
 THRESHOLD_PERCENT: int = 67
 DST_DIR: str = "/tmp/zellular_dev_net"
@@ -37,62 +48,137 @@ ZSEQUENCER_NODES_SOURCES = ["file",
                             "historical_nodes_registry",
                             "eigenlayer"]
 APP_NAME: str = "simple_app"
-
 BASE_DIRECTORY = './examples'
+nodes_registry_client = NodesRegistryClient(socket=HISTORICAL_NODES_REGISTRY_SOCKET)
 
 
-def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
-    """Generate private keys and nodes information for the network."""
-    nodes_info_dict: dict[str, Any] = {}
-    bls_privates_list: list[str] = []
-    ecdsa_privates_list: list[str] = []
+def generate_keys() -> Dict:
+    bls_private_key: str = secrets.token_hex(32)
+    bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(bls_private_key)
+    ecdsa_private_key: str = secrets.token_hex(32)
 
-    for i in range(NUM_INSTANCES):
-        bls_private_key: str = secrets.token_hex(32)
-        bls_privates_list.append(bls_private_key)
-        bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(
-            bls_private_key
-        )
-        ecdsa_private_key: str = secrets.token_hex(32)
-        ecdsa_privates_list.append(ecdsa_private_key)
-        address: str = Account().from_key(ecdsa_private_key).address.lower()
-        nodes_info_dict[address] = {
-            "id": address,
-            "public_key_g2": bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
-            "address": address,
-            "socket": f"http://127.0.0.1:{str(BASE_PORT + i + 1)}",
-            "stake": 10,
-        }
-
-    return bls_privates_list, ecdsa_privates_list, nodes_info_dict
+    return dict(bls_private_key=bls_private_key,
+                bls_key_pair=bls_key_pair,
+                ecdsa_private_key=ecdsa_private_key)
 
 
-def generate_bash_command_file(
-        command_name: str,
-        command_args: str,
-        env_variables: dict[str, str],
-        bash_filename: Optional[str]
-) -> None:
+def generate_node_info(node_idx: int, keys: Dict) -> NodeInfo:
+    bls_private_key, bls_key_pair, ecdsa_private_key = (keys.get('bls_private_key'),
+                                                        keys.get('bls_key_pair'),
+                                                        keys.get('ecdsa_private_key'))
+    address = Account().from_key(ecdsa_private_key).address.lower()
+
+    return NodeInfo(id=address,
+                    public_key_g2=bls_key_pair.pub_g2.getStr(10).decode("utf-8"),
+                    address=address,
+                    socket=f"{HOST}:{str(BASE_PORT + node_idx)}",
+                    stake=10)
+
+
+def generate_node_execution_command(command_name: str, command_args: str) -> str:
     """Run a command in a new terminal tab."""
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
-    env_script = "export " + " ".join([f"{key}='{value}'" for key, value in env_variables.items()])
-    command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
-    full_command = f"{env_script} && {command}"
-
-    if bash_filename is not None:
-        file_path = os.path.join(BASE_DIRECTORY, bash_filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        with open(file_path, "w+") as bash_file:
-            bash_file.write(full_command)
+    return f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
 
 
-def prepare_nodes() -> None:
-    bls_privates_list, ecdsa_privates_list, nodes_info_dict = generate_privates_and_nodes_info()
+def prepare_node(node_idx: int,
+                 keys: Dict,
+                 sequencer_initial_address: str) -> Tuple[str, Dict]:
+    bls_private_key, bls_key_pair, ecdsa_private_key = (keys.get('bls_private_key'),
+                                                        keys.get('bls_key_pair'),
+                                                        keys.get('ecdsa_private_key'))
 
+    data_dir: str = f"{DST_DIR}/db_{node_idx}"
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+
+    bls_key_file: str = f"{DST_DIR}/bls_key{node_idx}.json"
+    bls_passwd: str = f'a{node_idx}'
+    bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(bls_private_key)
+    bls_key_pair.save_to_file(bls_key_file, bls_passwd)
+
+    ecdsa_key_file: str = f"{DST_DIR}/ecdsa_key{node_idx}.json"
+    ecdsa_passwd: str = f'b{node_idx}'
+    encrypted_json = Account.encrypt(ecdsa_private_key, ecdsa_passwd)
+    with open(ecdsa_key_file, 'w') as f:
+        f.write(json.dumps(encrypted_json))
+
+    # Create environment variables for a node instance
+    env_variables: dict[str, Any] = os.environ.copy()
+    env_variables.update({
+        "ZSEQUENCER_BLS_KEY_FILE": bls_key_file,
+        "ZSEQUENCER_BLS_KEY_PASSWORD": bls_passwd,
+        "ZSEQUENCER_ECDSA_KEY_FILE": ecdsa_key_file,
+        "ZSEQUENCER_ECDSA_KEY_PASSWORD": ecdsa_passwd,
+        "ZSEQUENCER_APPS_FILE": APPS_FILE,
+        "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
+        "ZSEQUENCER_HISTORICAL_NODES_REGISTRY": HISTORICAL_NODES_REGISTRY_SOCKET,
+        "ZSEQUENCER_PORT": str(BASE_PORT + node_idx),
+        "ZSEQUENCER_SNAPSHOT_CHUNK": str(ZSEQUENCER_SNAPSHOT_CHUNK),
+        "ZSEQUENCER_REMOVE_CHUNK_BORDER": str(ZSEQUENCER_REMOVE_CHUNK_BORDER),
+        "ZSEQUENCER_THRESHOLD_PERCENT": str(THRESHOLD_PERCENT),
+        "ZSEQUENCER_SEND_TXS_INTERVAL": str(ZSEQUENCER_SEND_TXS_INTERVAL),
+        "ZSEQUENCER_SYNC_INTERVAL": str(ZSEQUENCER_SYNC_INTERVAL),
+        "ZSEQUENCER_FINALIZATION_TIME_BORDER": str(ZSEQUENCER_FINALIZATION_TIME_BORDER),
+        "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT": str(ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT),
+        "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
+        "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
+        "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_initial_address,
+        "ZSEQUENCER_NODES_SOURCE": ZSEQUENCER_NODES_SOURCES[1],
+        "ZSEQUENCER_REGISTER_OPERATOR": "false",
+        "ZSEQUENCER_VERSION": "v0.0.12",
+        "ZSEQUENCER_NODES_FILE": ""})
+
+    return (generate_node_execution_command(os.path.join(Path(__file__).parent.parent), "run.py"),
+            env_variables)
+
+
+def transfer_state(current_network_nodes_state: SnapShotType,
+                   next_network_nodes_number: int,
+                   nodes_last_index: int,
+                   sequencer_address: str) -> SnapShotType:
+    current_network_nodes_number = len(current_network_nodes_state)
+    next_network_state = current_network_nodes_state.copy()
+
+    # Todo: Handle killing sessions for simulating node exit from network
+    if current_network_nodes_number < next_network_nodes_number:
+        first_new_node_idx = nodes_last_index + 1
+        new_nodes_number = next_network_nodes_number - current_network_nodes_number
+        for node_idx in range(first_new_node_idx, first_new_node_idx + new_nodes_number):
+            keys = generate_keys()
+            node_info = generate_node_info(node_idx=node_idx, keys=keys)
+            next_network_state[node_info.id] = node_info
+
+            prepare_node(node_idx=node_idx,
+                         keys=keys,
+                         sequencer_initial_address=sequencer_address)
+
+    return next_network_state
+
+
+def initialize_network(nodes_number: int) -> Tuple[str, SnapShotType]:
+    sequencer_address = None
+    initialized_network_snapshot: SnapShotType = {}
+    execution_cmds = {}
+    for node_idx in range(nodes_number):
+        keys = generate_keys()
+        node_info = generate_node_info(node_idx=node_idx, keys=keys)
+        if node_idx == 0:
+            sequencer_address = node_info.id
+
+        initialized_network_snapshot[node_info.id] = node_info
+        execution_cmds[node_info.id] = prepare_node(node_idx=node_idx,
+                                                    keys=keys,
+                                                    sequencer_initial_address=sequencer_address)
+
+    nodes_registry_client.add_snapshot(initialized_network_snapshot)
+    return sequencer_address, initialized_network_snapshot
+
+
+def simulate_network():
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
 
@@ -103,75 +189,18 @@ def prepare_nodes() -> None:
     with open(file=APPS_FILE, mode="w", encoding="utf-8") as file:
         file.write(json.dumps({f"{APP_NAME}": {"url": "", "public_keys": []}}))
 
-    '''
-        Register initial nodes info on historical registry server to be fetch in future 
-    '''
-    nodes_registry_client = NodesRegistryClient(socket=HISTORICAL_NODES_REGISTRY_SOCKET)
-    initial_snapshot = {
-        id: NodeInfo(id=id,
-                     public_key_g2=node_dict.get('public_key_g2'),
-                     address=id,
-                     socket=node_dict.get('socket'),
-                     stake=node_dict.get('stake'))
-        for id, node_dict in nodes_info_dict.items()
-    }
-    nodes_registry_client.add_snapshot(initial_snapshot)
+    sequencer_address, network_nodes_state = initialize_network(TIMESERIES_NODES_COUNT[0])
 
-    for i in range(NUM_INSTANCES):
-        data_dir: str = f"{DST_DIR}/db_{i + 1}"
-        if os.path.exists(data_dir):
-            shutil.rmtree(data_dir)
+    for next_network_state_idx in range(1, len(TIMESERIES_NODES_COUNT) - 1):
+        time.sleep(2)
 
-        bls_key_file: str = f"{DST_DIR}/bls_key{i + 1}.json"
-        bls_passwd: str = f'a{i + 1}'
-        bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(
-            bls_privates_list[i]
+        network_nodes_state = transfer_state(
+            current_network_nodes_state=network_nodes_state,
+            next_network_nodes_number=TIMESERIES_NODES_COUNT[next_network_state_idx],
+            nodes_last_index=TIMESERIES_LAST_NODE_INDEX[next_network_state_idx - 1],
+            sequencer_address=sequencer_address
         )
-        bls_key_pair.save_to_file(bls_key_file, bls_passwd)
-
-        ecdsa_key_file: str = f"{DST_DIR}/ecdsa_key{i + 1}.json"
-        ecdsa_passwd: str = f'b{i + 1}'
-        encrypted_json = Account.encrypt(ecdsa_privates_list[i], ecdsa_passwd)
-        with open(ecdsa_key_file, 'w') as f:
-            f.write(json.dumps(encrypted_json))
-
-        # Create environment variables for a node instance
-        env_variables: dict[str, Any] = os.environ.copy()
-        env_variables.update({
-            "ZSEQUENCER_BLS_KEY_FILE": bls_key_file,
-            "ZSEQUENCER_BLS_KEY_PASSWORD": bls_passwd,
-            "ZSEQUENCER_ECDSA_KEY_FILE": ecdsa_key_file,
-            "ZSEQUENCER_ECDSA_KEY_PASSWORD": ecdsa_passwd,
-            "ZSEQUENCER_APPS_FILE": APPS_FILE,
-            "ZSEQUENCER_SNAPSHOT_PATH": data_dir,
-            "ZSEQUENCER_HISTORICAL_NODES_REGISTRY": HISTORICAL_NODES_REGISTRY_SOCKET,
-            "ZSEQUENCER_PORT": str(BASE_PORT + i + 1),
-            "ZSEQUENCER_SNAPSHOT_CHUNK": str(ZSEQUENCER_SNAPSHOT_CHUNK),
-            "ZSEQUENCER_REMOVE_CHUNK_BORDER": str(ZSEQUENCER_REMOVE_CHUNK_BORDER),
-            "ZSEQUENCER_THRESHOLD_PERCENT": str(THRESHOLD_PERCENT),
-            "ZSEQUENCER_SEND_TXS_INTERVAL": str(ZSEQUENCER_SEND_TXS_INTERVAL),
-            "ZSEQUENCER_SYNC_INTERVAL": str(ZSEQUENCER_SYNC_INTERVAL),
-            "ZSEQUENCER_FINALIZATION_TIME_BORDER": str(
-                ZSEQUENCER_FINALIZATION_TIME_BORDER),
-            "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT": str(
-                ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT),
-            "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
-                ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
-            "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
-            "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
-            "ZSEQUENCER_NODES_SOURCE": ZSEQUENCER_NODES_SOURCES[1],
-            "ZSEQUENCER_REGISTER_OPERATOR": "false",
-            "ZSEQUENCER_VERSION": "v0.0.12",
-            "ZSEQUENCER_NODES_FILE": ""
-        })
-
-        generate_bash_command_file(os.path.join(Path(__file__).parent.parent, "run.py"),
-                                   f"{i + 1}",
-                                   env_variables,
-                                   f'node_{(i + 1)}.sh')
-
-        nodes_file_path = os.path.join(BASE_DIRECTORY, f'node_{(i + 1)}.sh')
-        subprocess.run(['chmod', '+x', nodes_file_path])
+        nodes_registry_client.add_snapshot(network_nodes_state)
 
 
 def wait_for_server(host: str, port: int, timeout: float = 20.0, interval: float = 0.5) -> None:
@@ -223,7 +252,7 @@ def main():
         print(f"Error: {e}")
         return
 
-    prepare_nodes()
+    simulate_network()
 
     # Wait until a shutdown signal is received
     print("Historical Nodes Registry server is running. Press Ctrl+C to stop.")
