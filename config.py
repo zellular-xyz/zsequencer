@@ -245,6 +245,9 @@ class Config:
         if sequencer_id:
             self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[sequencer_id]
 
+    def is_sequencer(self):
+        return self.NODE["id"] == self.SEQUENCER["id"]
+
     # TODO: remove
     @staticmethod
     def profile_function(output_file: str) -> Any:

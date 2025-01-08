@@ -87,14 +87,20 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
             return {}
 
+        sequencer_resp = response["data"]
         censored_batches = sync_with_sequencer(
             app_name=app_name,
             initialized_batches=initialized_batches,
-            sequencer_response=response["data"],
+            sequencer_response=sequencer_resp,
         )
         zdb.is_sequencer_down = False
         if not censored_batches:
             zdb.empty_missed_batches(app_name)
+
+            seq_tag = max(sequencer_resp["locked"]["tag"], sequencer_resp["finalized"]["tag"])
+            if seq_tag != 0:
+                zconfig.NETWORK_STATUS_TAG = seq_tag
+
     except Exception:
         zlogger.exception("An unexpected error occurred:")
         zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
