@@ -49,14 +49,13 @@ def run_macos_command_on_terminal(command: str, env_variables: dict):
         command (str): The command to run in the Terminal.
         env_variables (dict): A dictionary of environment variables to set.
     """
-    env_string = " && ".join(f'export {key}={shlex.quote(value)}' for key, value in env_variables.items())
+    env_string = "export " + " ".join([f"{key}={shlex.quote(value)}" for key, value in env_variables.items()])
     full_command = f"{env_string} && {command}"
 
     cmd_temporary_file_path = os.path.join(BASE_DIRECTORY, 'old_runner', f'{generate_random_string()}.sh')
 
     # Write the command to a temporary bash file
     with open(cmd_temporary_file_path, 'w') as bash_file:
-        bash_file.write("#!/bin/bash\n")
         bash_file.write(full_command)
 
     # Make the script executable

@@ -17,6 +17,7 @@ from historical_nodes_registry import (NodesRegistryClient,
                                        NodeInfo,
                                        SnapShotType,
                                        run_registry_server)
+from terminal_exeuction import run_command_on_terminal
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 
@@ -51,6 +52,24 @@ APP_NAME: str = "simple_app"
 BASE_DIRECTORY = './examples'
 nodes_registry_client = NodesRegistryClient(socket=HISTORICAL_NODES_REGISTRY_SOCKET)
 
+import os
+import shutil
+
+
+def delete_directory_contents(directory):
+    if not os.path.exists(directory):
+        raise FileNotFoundError(f"Directory '{directory}' does not exist.")
+
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print(f"Error deleting {file_path}: {e}")
+
 
 def generate_keys() -> Dict:
     bls_private_key: str = secrets.token_hex(32)
@@ -75,13 +94,17 @@ def generate_node_info(node_idx: int, keys: Dict) -> NodeInfo:
                     stake=10)
 
 
-def generate_node_execution_command(command_name: str, command_args: str) -> str:
+def generate_node_execution_command(project_root_dir: str, node_idx: int) -> str:
     """Run a command in a new terminal tab."""
     script_dir: str = os.path.dirname(os.path.abspath(__file__))
     parent_dir: str = os.path.dirname(script_dir)
     os.chdir(parent_dir)
 
-    return f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
+    project_virtual_env = 'venv/bin/activate'
+    virtual_env_path = os.path.join(project_root_dir, project_virtual_env)
+    node_runner_path = os.path.join(project_root_dir, 'run.py')
+
+    return f"source {virtual_env_path}; python -u {node_runner_path} {str(node_idx)}; echo; read -p 'Press enter to exit...'"
 
 
 def prepare_node(node_idx: int,
@@ -106,9 +129,7 @@ def prepare_node(node_idx: int,
     with open(ecdsa_key_file, 'w') as f:
         f.write(json.dumps(encrypted_json))
 
-    # Create environment variables for a node instance
-    env_variables: dict[str, Any] = os.environ.copy()
-    env_variables.update({
+    env_variables = {
         "ZSEQUENCER_BLS_KEY_FILE": bls_key_file,
         "ZSEQUENCER_BLS_KEY_PASSWORD": bls_passwd,
         "ZSEQUENCER_ECDSA_KEY_FILE": ecdsa_key_file,
@@ -130,10 +151,14 @@ def prepare_node(node_idx: int,
         "ZSEQUENCER_NODES_SOURCE": ZSEQUENCER_NODES_SOURCES[1],
         "ZSEQUENCER_REGISTER_OPERATOR": "false",
         "ZSEQUENCER_VERSION": "v0.0.12",
-        "ZSEQUENCER_NODES_FILE": ""})
+        "ZSEQUENCER_NODES_FILE": ""}
 
-    return (generate_node_execution_command(os.path.join(Path(__file__).parent.parent), "run.py"),
-            env_variables)
+    project_root_dir = str(Path(__file__).parent.parent)
+    return generate_node_execution_command(project_root_dir, node_idx), env_variables
+
+
+def launch_node(execution_cmd: str, env_vars: Dict):
+    run_command_on_terminal(execution_cmd, env_vars)
 
 
 def transfer_state(current_network_nodes_state: SnapShotType,
@@ -175,10 +200,16 @@ def initialize_network(nodes_number: int) -> Tuple[str, SnapShotType]:
                                                     sequencer_initial_address=sequencer_address)
 
     nodes_registry_client.add_snapshot(initialized_network_snapshot)
+
+    for node_address, (cmd, env_variables) in execution_cmds.items():
+        launch_node(cmd, env_variables)
+
     return sequencer_address, initialized_network_snapshot
 
 
 def simulate_network():
+    delete_directory_contents(DST_DIR)
+
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
 
@@ -191,16 +222,16 @@ def simulate_network():
 
     sequencer_address, network_nodes_state = initialize_network(TIMESERIES_NODES_COUNT[0])
 
-    for next_network_state_idx in range(1, len(TIMESERIES_NODES_COUNT) - 1):
-        time.sleep(2)
-
-        network_nodes_state = transfer_state(
-            current_network_nodes_state=network_nodes_state,
-            next_network_nodes_number=TIMESERIES_NODES_COUNT[next_network_state_idx],
-            nodes_last_index=TIMESERIES_LAST_NODE_INDEX[next_network_state_idx - 1],
-            sequencer_address=sequencer_address
-        )
-        nodes_registry_client.add_snapshot(network_nodes_state)
+    # for next_network_state_idx in range(1, len(TIMESERIES_NODES_COUNT) - 1):
+    #     time.sleep(2)
+    #
+    #     network_nodes_state = transfer_state(
+    #         current_network_nodes_state=network_nodes_state,
+    #         next_network_nodes_number=TIMESERIES_NODES_COUNT[next_network_state_idx],
+    #         nodes_last_index=TIMESERIES_LAST_NODE_INDEX[next_network_state_idx - 1],
+    #         sequencer_address=sequencer_address
+    #     )
+    #     nodes_registry_client.add_snapshot(network_nodes_state)
 
 
 def wait_for_server(host: str, port: int, timeout: float = 20.0, interval: float = 0.5) -> None:
