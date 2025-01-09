@@ -11,6 +11,8 @@ import secrets
 import threading
 import socket
 import shutil
+import random
+import requests
 from pathlib import Path
 from typing import Dict, Tuple, List
 from functools import reduce
@@ -22,6 +24,7 @@ from historical_nodes_registry import (NodesRegistryClient,
 from terminal_exeuction import run_command_on_terminal
 from eigensdk.crypto.bls import attestation
 from web3 import Account
+from requests.exceptions import RequestException
 
 
 class SimulationConfig(BaseModel):
@@ -51,7 +54,7 @@ class SimulationConfig(BaseModel):
     )
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 5, 6, 8],
+    TIMESERIES_NODES_COUNT: List[int] = Field([3, 5, 6, 8, 10],
                                               description="count of nodes available on network at different states")
 
     class Config:
@@ -71,6 +74,8 @@ class DynamicNetworkSimulation:
     def __init__(self, simulation_config: SimulationConfig):
         self.simulation_config = simulation_config
         self.nodes_registry_thread = None
+        self.network_transition_thread = None
+        self.send_batches_thread = None
         self.sequencer_address = None
         self.network_nodes_state = None
         self.shutdown_event = threading.Event()
@@ -250,7 +255,7 @@ class DynamicNetworkSimulation:
         self.network_nodes_state = next_network_state
         self.nodes_registry_client.add_snapshot(self.network_nodes_state)
 
-    def simulate_network(self):
+    def simulate_network_nodes_transition(self):
         self.delete_directory_contents(self.simulation_config.DST_DIR)
 
         if not os.path.exists(self.simulation_config.DST_DIR):
@@ -272,6 +277,40 @@ class DynamicNetworkSimulation:
                 next_network_nodes_number=self.simulation_config.TIMESERIES_NODES_COUNT[next_network_state_idx],
                 nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1])
 
+    @staticmethod
+    def generate_transactions(batch_size: int) -> List[Dict]:
+        return [
+            {
+                "operation": "foo",
+                "serial": tx_num,
+                "version": 6,
+            } for tx_num in range(batch_size)
+        ]
+
+    def simulate_send_batches(self):
+        sending_batches_count = 0
+        while sending_batches_count < 100:
+            if self.network_nodes_state and self.sequencer_address:
+                random_node_address = random.choice(
+                    list(set(list(self.network_nodes_state.keys())) - {self.sequencer_address}))
+                node_socket = self.network_nodes_state[random_node_address].socket
+
+                try:
+                    string_data = json.dumps(self.generate_transactions(random.randint(200, 600)))
+                    response: requests.Response = requests.put(
+                        url=f"{node_socket}/node/{self.simulation_config.APP_NAME}/batches",
+                        data=string_data,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    response.raise_for_status()
+                    sending_batches_count += 1
+                except RequestException as error:
+                    print(f"Error sending batch of transactions: {error}")
+
+            time.sleep(1)
+
+        print('sending batches completed!')
+
     def run(self):
         self.nodes_registry_thread = threading.Thread(
             target=run_registry_server,
@@ -285,12 +324,18 @@ class DynamicNetworkSimulation:
         except TimeoutError as e:
             print(f"Error: {e}")
             return
-
-        self.simulate_network()
-
         print("Historical Nodes Registry server is running. Press Ctrl+C to stop.")
+
+        self.network_transition_thread = threading.Thread(target=self.simulate_network_nodes_transition)
+        self.send_batches_thread = threading.Thread(target=self.simulate_send_batches)
+
+        self.network_transition_thread.start()
+        self.send_batches_thread.start()
+
+        self.network_transition_thread.join()
+        self.send_batches_thread.join()
+
         self.shutdown_event.wait()
-        print("Main program exiting.")
 
 
 def main():
