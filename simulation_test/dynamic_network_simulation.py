@@ -1,8 +1,10 @@
 """This script sets up and runs a simple app network for testing."""
-import os
 import sys
+import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import copy
 
 import json
 import time
@@ -166,20 +168,24 @@ def transfer_state(current_network_nodes_state: SnapShotType,
                    nodes_last_index: int,
                    sequencer_address: str) -> SnapShotType:
     current_network_nodes_number = len(current_network_nodes_state)
-    next_network_state = current_network_nodes_state.copy()
+    next_network_state = copy.deepcopy(current_network_nodes_state)
 
-    # Todo: Handle killing sessions for simulating node exit from network
     if current_network_nodes_number < next_network_nodes_number:
         first_new_node_idx = nodes_last_index + 1
         new_nodes_number = next_network_nodes_number - current_network_nodes_number
+        new_nodes_cmds = {}
         for node_idx in range(first_new_node_idx, first_new_node_idx + new_nodes_number):
             keys = generate_keys()
             node_info = generate_node_info(node_idx=node_idx, keys=keys)
             next_network_state[node_info.id] = node_info
 
-            prepare_node(node_idx=node_idx,
-                         keys=keys,
-                         sequencer_initial_address=sequencer_address)
+            new_nodes_cmds[node_info.id] = prepare_node(node_idx=node_idx,
+                                                        keys=keys,
+                                                        sequencer_initial_address=sequencer_address)
+
+        nodes_registry_client.add_snapshot(next_network_state)
+        for node_address, (cmd, env_variables) in new_nodes_cmds.items():
+            launch_node(cmd, env_variables)
 
     return next_network_state
 
@@ -222,16 +228,16 @@ def simulate_network():
 
     sequencer_address, network_nodes_state = initialize_network(TIMESERIES_NODES_COUNT[0])
 
-    # for next_network_state_idx in range(1, len(TIMESERIES_NODES_COUNT) - 1):
-    #     time.sleep(2)
-    #
-    #     network_nodes_state = transfer_state(
-    #         current_network_nodes_state=network_nodes_state,
-    #         next_network_nodes_number=TIMESERIES_NODES_COUNT[next_network_state_idx],
-    #         nodes_last_index=TIMESERIES_LAST_NODE_INDEX[next_network_state_idx - 1],
-    #         sequencer_address=sequencer_address
-    #     )
-    #     nodes_registry_client.add_snapshot(network_nodes_state)
+    for next_network_state_idx in range(1, len(TIMESERIES_NODES_COUNT) - 1):
+        time.sleep(6)
+
+        network_nodes_state = transfer_state(
+            current_network_nodes_state=network_nodes_state,
+            next_network_nodes_number=TIMESERIES_NODES_COUNT[next_network_state_idx],
+            nodes_last_index=TIMESERIES_LAST_NODE_INDEX[next_network_state_idx - 1],
+            sequencer_address=sequencer_address
+        )
+        nodes_registry_client.add_snapshot(network_nodes_state)
 
 
 def wait_for_server(host: str, port: int, timeout: float = 20.0, interval: float = 0.5) -> None:
