@@ -51,7 +51,7 @@ class SimulationConfig(BaseModel):
     )
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 5, 6],
+    TIMESERIES_NODES_COUNT: List[int] = Field([3, 5, 6, 8],
                                               description="count of nodes available on network at different states")
 
     class Config:
@@ -71,6 +71,8 @@ class DynamicNetworkSimulation:
     def __init__(self, simulation_config: SimulationConfig):
         self.simulation_config = simulation_config
         self.nodes_registry_thread = None
+        self.sequencer_address = None
+        self.network_nodes_state = None
         self.shutdown_event = threading.Event()
         self.nodes_registry_client = NodesRegistryClient(socket=self.simulation_config.HISTORICAL_NODES_REGISTRY_SOCKET)
 
@@ -202,7 +204,7 @@ class DynamicNetworkSimulation:
                 time.sleep(interval)
         raise TimeoutError(f"Server did not start within {timeout} seconds.")
 
-    def initialize_network(self, nodes_number: int) -> Tuple[str, SnapShotType]:
+    def initialize_network(self, nodes_number: int):
         sequencer_address = None
         initialized_network_snapshot: SnapShotType = {}
         execution_cmds = {}
@@ -222,15 +224,11 @@ class DynamicNetworkSimulation:
         for node_address, (cmd, env_variables) in execution_cmds.items():
             self.launch_node(cmd, env_variables)
 
-        return sequencer_address, initialized_network_snapshot
+        self.sequencer_address, self.network_nodes_state = sequencer_address, initialized_network_snapshot
 
-    def transfer_state(self,
-                       current_network_nodes_state: SnapShotType,
-                       next_network_nodes_number: int,
-                       nodes_last_index: int,
-                       sequencer_address: str) -> SnapShotType:
-        current_network_nodes_number = len(current_network_nodes_state)
-        next_network_state = copy.deepcopy(current_network_nodes_state)
+    def transfer_state(self, next_network_nodes_number: int, nodes_last_index: int):
+        current_network_nodes_number = len(self.network_nodes_state)
+        next_network_state = copy.deepcopy(self.network_nodes_state)
 
         if current_network_nodes_number < next_network_nodes_number:
             first_new_node_idx = nodes_last_index + 1
@@ -243,13 +241,14 @@ class DynamicNetworkSimulation:
 
                 new_nodes_cmds[node_info.id] = self.prepare_node(node_idx=node_idx,
                                                                  keys=keys,
-                                                                 sequencer_initial_address=sequencer_address)
+                                                                 sequencer_initial_address=self.sequencer_address)
 
             self.nodes_registry_client.add_snapshot(next_network_state)
             for node_address, (cmd, env_variables) in new_nodes_cmds.items():
                 self.launch_node(cmd, env_variables)
 
-        return next_network_state
+        self.network_nodes_state = next_network_state
+        self.nodes_registry_client.add_snapshot(self.network_nodes_state)
 
     def simulate_network(self):
         self.delete_directory_contents(self.simulation_config.DST_DIR)
@@ -264,20 +263,14 @@ class DynamicNetworkSimulation:
         with open(file=self.simulation_config.APPS_FILE, mode="w", encoding="utf-8") as file:
             file.write(json.dumps({f"{self.simulation_config.APP_NAME}": {"url": "", "public_keys": []}}))
 
-        sequencer_address, network_nodes_state = self.initialize_network(
-            self.simulation_config.TIMESERIES_NODES_COUNT[0])
+        self.initialize_network(self.simulation_config.TIMESERIES_NODES_COUNT[0])
 
         timeseries_nodes_last_idx = self.get_timeseries_last_node_idx()
         for next_network_state_idx in range(1, len(self.simulation_config.TIMESERIES_NODES_COUNT) - 1):
             time.sleep(6)
-
-            network_nodes_state = self.transfer_state(
-                current_network_nodes_state=network_nodes_state,
+            self.transfer_state(
                 next_network_nodes_number=self.simulation_config.TIMESERIES_NODES_COUNT[next_network_state_idx],
-                nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1],
-                sequencer_address=sequencer_address
-            )
-            self.nodes_registry_client.add_snapshot(network_nodes_state)
+                nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1])
 
     def run(self):
         self.nodes_registry_thread = threading.Thread(
