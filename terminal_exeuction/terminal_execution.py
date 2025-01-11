@@ -7,7 +7,7 @@ import string
 import subprocess
 from enum import Enum
 
-BASE_DIRECTORY = '/Users/alimoosavi/projects/zellular/zsequencer/examples'
+BASE_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples")
 
 
 class OSType(Enum):

@@ -54,7 +54,7 @@ class SimulationConfig(BaseModel):
     )
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 5, 6, 8, 10],
+    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 5, 6, 7, 8, 10, 11, 12, 13],
                                               description="count of nodes available on network at different states")
 
     class Config:
