@@ -46,7 +46,7 @@ class SimulationConfig(BaseModel):
     ZSEQUENCER_SYNC_INTERVAL: float = Field(0.05, description="Sync interval for ZSequencer")
     ZSEQUENCER_FINALIZATION_TIME_BORDER: int = Field(10, description="Finalization time border for ZSequencer")
     ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT: int = Field(5, description="Timeout for signatures aggregation")
-    ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL: int = Field(30, description="Interval to fetch apps and nodes")
+    ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL: int = Field(60, description="Interval to fetch apps and nodes")
     ZSEQUENCER_API_BATCHES_LIMIT: int = Field(100, description="API batches limit for ZSequencer")
     ZSEQUENCER_NODES_SOURCES: List[str] = Field(
         ["file", "historical_nodes_registry", "eigenlayer"],
@@ -54,7 +54,7 @@ class SimulationConfig(BaseModel):
     )
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 5, 6, 7, 9],
+    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 6],
                                               description="count of nodes available on network at different states")
 
     class Config:
@@ -272,7 +272,7 @@ class DynamicNetworkSimulation:
 
         timeseries_nodes_last_idx = self.get_timeseries_last_node_idx()
         for next_network_state_idx in range(1, len(self.simulation_config.TIMESERIES_NODES_COUNT) - 1):
-            time.sleep(0.01)
+            time.sleep(15)
             self.transfer_state(
                 next_network_nodes_number=self.simulation_config.TIMESERIES_NODES_COUNT[next_network_state_idx],
                 nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1])
