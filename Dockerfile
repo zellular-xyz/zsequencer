@@ -35,6 +35,8 @@ RUN pip3 install --break-system-packages -r requirements.txt
 COPY node /app/zsequencer/node
 COPY sequencer /app/zsequencer/sequencer
 COPY common /app/zsequencer/common
+COPY common /app/zsequencer/terminal_exeuction
+COPY common /app/zsequencer/historical_nodes_registry
 COPY config.py /app/zsequencer/config.py
 COPY run.py /app/zsequencer/run.py
 
