@@ -30,6 +30,10 @@ current_os = get_os_type()
 
 
 def run_linux_command_on_terminal(command: str, env_variables):
+    for env_variable in os.environ:
+        if env_variable not in env_variables:
+            env_variables[env_variable] = os.environ[env_variable]
+
     launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
     with subprocess.Popen(args=launch_command, env=env_variables) as process:
         process.wait()
