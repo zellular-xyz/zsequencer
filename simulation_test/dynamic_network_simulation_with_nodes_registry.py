@@ -54,7 +54,7 @@ class SimulationConfig(BaseModel):
     )
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 5, 6, 7, 8, 10, 11, 12, 13],
+    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 5, 6, 7, 9],
                                               description="count of nodes available on network at different states")
 
     class Config:
@@ -272,7 +272,7 @@ class DynamicNetworkSimulation:
 
         timeseries_nodes_last_idx = self.get_timeseries_last_node_idx()
         for next_network_state_idx in range(1, len(self.simulation_config.TIMESERIES_NODES_COUNT) - 1):
-            time.sleep(6)
+            time.sleep(0.01)
             self.transfer_state(
                 next_network_nodes_number=self.simulation_config.TIMESERIES_NODES_COUNT[next_network_state_idx],
                 nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1])
@@ -289,7 +289,7 @@ class DynamicNetworkSimulation:
 
     def simulate_send_batches(self):
         sending_batches_count = 0
-        while sending_batches_count < 100:
+        while sending_batches_count < 10:
             if self.network_nodes_state and self.sequencer_address:
                 random_node_address = random.choice(
                     list(set(list(self.network_nodes_state.keys())) - {self.sequencer_address}))
@@ -307,7 +307,7 @@ class DynamicNetworkSimulation:
                 except RequestException as error:
                     print(f"Error sending batch of transactions: {error}")
 
-            time.sleep(1)
+            time.sleep(0.1)
 
         print('sending batches completed!')
 

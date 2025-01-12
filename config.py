@@ -79,7 +79,7 @@ class Config:
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def get_network_state(self, tag: int) -> NetworkState:
-        if tag in self.HISTORICAL_NETWORK_STATE:
+        if tag != 0 and (tag in self.HISTORICAL_NETWORK_STATE):
             return self.HISTORICAL_NETWORK_STATE[tag]
 
         nodes_data: Dict[str, Dict[str, Any]] = {}
@@ -107,6 +107,7 @@ class Config:
                                      total_stake=total_stake)
 
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
+        print('\n' * 4, '  count of nodes of network  ', len(self.HISTORICAL_NETWORK_STATE[tag].nodes), '\n' * 4)
         return network_state
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -120,14 +121,12 @@ class Config:
 
     def fetch_network_state(self):
         """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
-
         # Todo: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
         self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
-
         self.NODE.update(nodes_data[self.ADDRESS])
         self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
 
@@ -216,6 +215,7 @@ class Config:
 
         self.init_sequencer()
         if self.SEQUENCER["id"] == self.NODE["id"]:
+            print('\n' * 5, '*' * 20, '    SEQUENCER ', '*' * 20, '\n' * 5)
             self.IS_SYNCING = False
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
@@ -244,9 +244,6 @@ class Config:
         """Update the sequencer configuration."""
         if sequencer_id:
             self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[sequencer_id]
-
-    def is_sequencer(self):
-        return self.NODE["id"] == self.SEQUENCER["id"]
 
     # TODO: remove
     @staticmethod

@@ -22,6 +22,7 @@ from terminal_exeuction import run_command_on_terminal
 from eigensdk.crypto.bls import attestation
 from web3 import Account
 from requests.exceptions import RequestException
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class SimulationConfig(BaseModel):
@@ -40,7 +41,7 @@ class SimulationConfig(BaseModel):
     ZSEQUENCER_SYNC_INTERVAL: float = Field(0.05, description="Sync interval for ZSequencer")
     ZSEQUENCER_FINALIZATION_TIME_BORDER: int = Field(10, description="Finalization time border for ZSequencer")
     ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT: int = Field(5, description="Timeout for signatures aggregation")
-    ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL: int = Field(30, description="Interval to fetch apps and nodes")
+    ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL: float = Field(70, description="Interval to fetch apps and nodes")
     ZSEQUENCER_API_BATCHES_LIMIT: int = Field(100, description="API batches limit for ZSequencer")
     ZSEQUENCER_NODES_SOURCES: List[str] = Field(
         ["file", "historical_nodes_registry", "eigenlayer"],
@@ -49,7 +50,7 @@ class SimulationConfig(BaseModel):
     ZSEQUENCER_NODES_FILE: str = Field("/tmp/zellular_dev_net/nodes.json", description="Nodes Static File")
     APP_NAME: str = Field("simple_app", description="Name of the application")
     BASE_DIRECTORY: str = Field("./examples", description="Base directory path")
-    TIMESERIES_NODES_COUNT: List[int] = Field([3, 4, 5, 6, 7, 8, 10, 11, 12, 13],
+    TIMESERIES_NODES_COUNT: List[int] = Field([1, 3, 6, 7],
                                               description="count of nodes available on network at different states")
 
     class Config:
@@ -135,7 +136,7 @@ class DynamicNetworkSimulation:
                         socket=f"{self.simulation_config.HOST}:{str(self.simulation_config.BASE_PORT + node_idx)}",
                         stake=10)
 
-    def prepare_node(self, node_idx: int, keys: Dict, sequencer_initial_address: str) -> Tuple[str, Dict]:
+    def prepare_node(self, node_idx: int, keys: Dict, sequencer_address: str) -> Tuple[str, Dict]:
         bls_private_key, bls_key_pair, ecdsa_private_key = (keys.get('bls_private_key'),
                                                             keys.get('bls_key_pair'),
                                                             keys.get('ecdsa_private_key'))
@@ -176,7 +177,7 @@ class DynamicNetworkSimulation:
             "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": str(
                 self.simulation_config.ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL),
             "ZSEQUENCER_API_BATCHES_LIMIT": str(self.simulation_config.ZSEQUENCER_API_BATCHES_LIMIT),
-            "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_initial_address,
+            "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_address,
             "ZSEQUENCER_NODES_SOURCE": self.simulation_config.ZSEQUENCER_NODES_SOURCES[0],
             "ZSEQUENCER_REGISTER_OPERATOR": "false",
             "ZSEQUENCER_VERSION": "v0.0.12",
@@ -205,7 +206,7 @@ class DynamicNetworkSimulation:
             initialized_network_snapshot[node_info.id] = node_info
             execution_cmds[node_info.id] = self.prepare_node(node_idx=node_idx,
                                                              keys=keys,
-                                                             sequencer_initial_address=sequencer_address)
+                                                             sequencer_address=sequencer_address)
 
         self.update_nodes_file(sequencer_address, initialized_network_snapshot)
         for node_address, (cmd, env_variables) in execution_cmds.items():
@@ -215,10 +216,11 @@ class DynamicNetworkSimulation:
         current_network_nodes_number = len(self.network_nodes_state)
         next_network_state = copy.deepcopy(self.network_nodes_state)
 
+        new_nodes_cmds = {}
         if current_network_nodes_number < next_network_nodes_number:
             first_new_node_idx = nodes_last_index + 1
             new_nodes_number = next_network_nodes_number - current_network_nodes_number
-            new_nodes_cmds = {}
+
             for node_idx in range(first_new_node_idx, first_new_node_idx + new_nodes_number):
                 keys = self.generate_keys()
                 node_info = self.generate_node_info(node_idx=node_idx, keys=keys)
@@ -226,12 +228,11 @@ class DynamicNetworkSimulation:
 
                 new_nodes_cmds[node_info.id] = self.prepare_node(node_idx=node_idx,
                                                                  keys=keys,
-                                                                 sequencer_initial_address=self.sequencer_address)
-
-            for node_address, (cmd, env_variables) in new_nodes_cmds.items():
-                self.launch_node(cmd, env_variables)
+                                                                 sequencer_address=self.sequencer_address)
 
         self.update_nodes_file(self.sequencer_address, next_network_state)
+        for node_address, (cmd, env_variables) in new_nodes_cmds.items():
+            self.launch_node(cmd, env_variables)
 
     def simulate_network_nodes_transition(self):
         self.delete_directory_contents(self.simulation_config.DST_DIR)
@@ -250,7 +251,7 @@ class DynamicNetworkSimulation:
 
         timeseries_nodes_last_idx = self.get_timeseries_last_node_idx()
         for next_network_state_idx in range(1, len(self.simulation_config.TIMESERIES_NODES_COUNT) - 1):
-            time.sleep(6)
+            time.sleep(15)
             self.transfer_state(
                 next_network_nodes_number=self.simulation_config.TIMESERIES_NODES_COUNT[next_network_state_idx],
                 nodes_last_index=timeseries_nodes_last_idx[next_network_state_idx - 1])
@@ -265,25 +266,45 @@ class DynamicNetworkSimulation:
             } for tx_num in range(batch_size)
         ]
 
+    @staticmethod
+    def send_transactions_to_socket(socket, app_name, transactions):
+        try:
+            string_data = json.dumps(transactions)
+            response = requests.put(
+                url=f"{socket}/node/{app_name}/batches",
+                data=string_data,
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            return True
+        except RequestException as error:
+            print(f"Error sending batch of transactions to {socket}: {error}")
+            return False
+
     def simulate_send_batches(self):
         sending_batches_count = 0
-        while sending_batches_count < 100:
+        while sending_batches_count < 10:
             if self.network_nodes_state and self.sequencer_address:
-                random_node_address = random.choice(
-                    list(set(list(self.network_nodes_state.keys())) - {self.sequencer_address}))
-                node_socket = self.network_nodes_state[random_node_address].socket
+                znode_list = list(set(list(self.network_nodes_state.keys())) - {self.sequencer_address})
+                if len(znode_list) == 0:
+                    continue
 
-                try:
-                    string_data = json.dumps(self.generate_transactions(random.randint(200, 600)))
-                    response: requests.Response = requests.put(
-                        url=f"{node_socket}/node/{self.simulation_config.APP_NAME}/batches",
-                        data=string_data,
-                        headers={"Content-Type": "application/json"},
-                    )
-                    response.raise_for_status()
-                    sending_batches_count += 1
-                except RequestException as error:
-                    print(f"Error sending batch of transactions: {error}")
+                sockets = [self.network_nodes_state[address].socket for address in znode_list]
+
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = {
+                        executor.submit(self.send_transactions_to_socket,
+                                        socket,
+                                        self.simulation_config.APP_NAME,
+                                        self.generate_transactions(random.randint(5, 10))): socket
+                        for socket in sockets
+                    }
+
+                    results = [future.result() for future in as_completed(futures)]
+
+                    # Increment the count if all futures are successful
+                    if all(results):
+                        sending_batches_count += 1
 
             time.sleep(1)
 
