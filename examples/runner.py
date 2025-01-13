@@ -3,10 +3,15 @@
 import argparse
 import json
 import os
+import platform
 import secrets
+import shlex
 import shutil
 import subprocess
 import time
+import random
+import string
+from enum import Enum
 from typing import Any
 
 from eigensdk.crypto.bls import attestation
@@ -28,6 +33,78 @@ ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL = 30
 ZSEQUENCER_API_BATCHES_LIMIT = 100
 
 APP_NAME: str = "simple_app"
+BASE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+
+
+class OSType(Enum):
+    MACOS = "macos"
+    LINUX = "linux"
+    UNKNOWN = "unknown"
+
+
+def get_os_type():
+    os_type = platform.system()
+    if os_type == "Darwin":
+        return OSType.MACOS
+    elif os_type == "Linux":
+        return OSType.LINUX
+    else:
+        return OSType.UNKNOWN
+
+
+current_os = get_os_type()
+
+
+def run_linux_command_on_terminal(command: str, env_variables):
+    launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
+    with subprocess.Popen(args=launch_command, env=env_variables) as process:
+        process.wait()
+
+
+def generate_random_string(length=5):
+    characters = string.ascii_letters + string.digits  # Combine letters and digits
+    random_string = ''.join(random.choices(characters, k=length))
+    return random_string
+
+
+def run_macos_command_on_terminal(command: str, env_variables: dict):
+    """
+    Opens a new Terminal window on macOS, sets environment variables, and runs a command.
+
+    Args:
+        command (str): The command to run in the Terminal.
+        env_variables (dict): A dictionary of environment variables to set.
+    """
+    env_string = " && ".join(f'export {key}={shlex.quote(value)}' for key, value in env_variables.items())
+    full_command = f"{env_string} && {command}"
+
+    cmd_temporary_file_path = os.path.join(BASE_DIRECTORY, 'old_runner', f'{generate_random_string()}.sh')
+
+    # Write the command to a temporary bash file
+    with open(cmd_temporary_file_path, 'w') as bash_file:
+        bash_file.write("#!/bin/bash\n")
+        bash_file.write(full_command)
+
+    # Make the script executable
+    subprocess.run(['chmod', '+x', cmd_temporary_file_path])
+
+    # AppleScript to open Terminal and run the bash script
+    apple_script = f"""
+    tell application "Terminal"
+        do script "{cmd_temporary_file_path}"
+        activate
+    end tell
+    """
+
+    # Run the AppleScript
+    subprocess.run(["osascript", "-e", apple_script])
+
+
+def run_command_on_terminal(command: str, env_variables):
+    if current_os == OSType.LINUX:
+        run_linux_command_on_terminal(command, env_variables)
+    elif current_os == OSType.MACOS:
+        run_macos_command_on_terminal(command, env_variables)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,17 +148,17 @@ def generate_privates_and_nodes_info() -> tuple[list[str], dict[str, Any]]:
 
 
 def run_command(
-    command_name: str, command_args: str, env_variables: dict[str, str]
+        command_name: str,
+        command_args: str,
+        env_variables: dict[str, str]
 ) -> None:
     """Run a command in a new terminal tab."""
-    script_dir: str = os.path.dirname(os.path.abspath(__file__))
-    parent_dir: str = os.path.dirname(script_dir)
+    parent_dir: str = os.path.dirname(BASE_DIRECTORY)
     os.chdir(parent_dir)
 
     command: str = f"python -u {command_name} {command_args}; echo; read -p 'Press enter to exit...'"
-    launch_command: list[str] = ["gnome-terminal", "--tab", "--", "bash", "-c", command]
-    with subprocess.Popen(args=launch_command, env=env_variables) as process:
-        process.wait()
+
+    run_command_on_terminal(command, env_variables)
 
 
 def main() -> None:
@@ -93,8 +170,7 @@ def main() -> None:
     if not os.path.exists(DST_DIR):
         os.makedirs(DST_DIR)
 
-    script_dir: str = os.path.dirname(os.path.abspath(__file__))
-    parent_dir: str = os.path.dirname(script_dir)
+    parent_dir: str = os.path.dirname(BASE_DIRECTORY)
     os.chdir(parent_dir)
 
     with open(file=NODES_FILE, mode="w", encoding="utf-8") as file:
@@ -146,18 +222,21 @@ def main() -> None:
             "ZSEQUENCER_API_BATCHES_LIMIT": str(ZSEQUENCER_API_BATCHES_LIMIT),
             "ZSEQUENCER_INIT_SEQUENCER_ID": list(nodes_info_dict.keys())[0],
             "ZSEQUENCER_NODES_SOURCE": "file",
-            "ZSEQUENCER_REGISTER_OPERATOR": "false"
+            "ZSEQUENCER_REGISTER_OPERATOR": "false",
+            "ZSEQUENCER_VERSION": "v0.0.12"
         })
-
-        run_command("run.py", f"{i + 1}", env_variables)
+        node_run_script_fullpath = os.path.join(os.path.dirname(BASE_DIRECTORY), "run.py")
+        run_command(command_name=node_run_script_fullpath,
+                    command_args=f"{i + 1}",
+                    env_variables=env_variables)
         time.sleep(2)
 
     time.sleep(5)
-    run_command(
-        f"examples/{args.test}_test.py",
-        f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
-        env_variables,
-    )
+
+    test_script_fullpath = os.path.join(BASE_DIRECTORY, f"{args.test}_test.py")
+    run_command(command_name=test_script_fullpath,
+                command_args=f"--app_name {APP_NAME} --node_url http://localhost:{BASE_PORT + i + 1}",
+                env_variables=env_variables)
 
 
 if __name__ == "__main__":

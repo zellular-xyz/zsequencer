@@ -7,35 +7,16 @@ from fastapi import FastAPI, Depends, HTTPException
 
 from historical_nodes_registry.registry_state_manager import RegistryStateManager
 from historical_nodes_registry.schema import NodeInfo
+from historical_nodes_registry.errors import SnapshotQueryError
 
 # Constants
 HTTP_400_BAD_REQUEST = 400
-HTTP_500_INTERNAL_SERVER_ERROR = 500
 
 
-def create_server_app(persistence_filepath: str,
-                      commitment_interval: int) -> FastAPI:
-    """
-    Create and return a FastAPI app instance.
-
-    Args:
-        commitment_interval (int): The commitment interval for the StateManager.
-
-    Returns:
-        FastAPI: The FastAPI application.
-        :param commitment_interval:
-        :param persistence_filepath:
-    """
+def create_server_app() -> FastAPI:
     app = FastAPI()
 
-    # Initialize StateManager
-    state_manager = RegistryStateManager(persistence_filepath,
-                                         commitment_interval,
-                                         logging.getLogger('historical_nodes_registry.server'))
-
-    # Start StateManager daemon thread
-    daemon_thread = threading.Thread(target=state_manager.run, daemon=True)
-    daemon_thread.start()
+    state_manager = RegistryStateManager(logging.getLogger('historical_nodes_registry.server'))
 
     async def get_snapshot(
             timestamp: Optional[int] = None,
@@ -58,8 +39,8 @@ def create_server_app(persistence_filepath: str,
             timestamp, snapshot = manager.get_snapshot_by_timestamp(timestamp)
             return dict(timestamp=timestamp,
                         snapshot=snapshot)
-        except Exception as e:
-            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        except SnapshotQueryError:
+            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail='Snapshot not found.')
 
     async def add_snapshot(
             nodes_info_snapshot: Dict[str, NodeInfo],
@@ -80,7 +61,7 @@ def create_server_app(persistence_filepath: str,
         """
         try:
             timestamp = time.time()
-            manager.update_temporary_snapshot(nodes_info_snapshot)
+            manager.add_snapshot(nodes_info_snapshot)
             return {"message": "Snapshot added successfully.", "timestamp": timestamp}
         except Exception as e:
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))
