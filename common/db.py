@@ -72,7 +72,11 @@ class InMemoryDB:
             except:
                 zlogger.error("An unexpected error occurred while fetching apps data")
 
-            zconfig.fetch_network_state()
+            try:
+                zconfig.fetch_network_state()
+            except:
+                zlogger.error("An unexpected error occurred while fetching network state")
+
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
     def load_state(self) -> None:
@@ -320,7 +324,7 @@ class InMemoryDB:
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["lock_signature"] = sig_data["signature"]
         target_batch["locked_nonsigners"] = sig_data["nonsigners"]
-        target_batch["tag"] = sig_data["tag"]
+        target_batch["locked_tag"] = sig_data["tag"]
         self.apps[app_name]["last_locked_batch"] = target_batch
         if not self.apps[app_name]["last_sequenced_batch"]:
             self.apps[app_name]["last_sequenced_batch"] = target_batch
@@ -347,7 +351,7 @@ class InMemoryDB:
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["finalization_signature"] = sig_data["signature"]
         target_batch["finalized_nonsigners"] = sig_data["nonsigners"]
-        target_batch["tag"] = sig_data["tag"]
+        target_batch["finalized_tag"] = sig_data["tag"]
         self.apps[app_name]["last_finalized_batch"] = target_batch
 
         for snapshot_index in snapshot_indexes:

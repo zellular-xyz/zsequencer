@@ -107,7 +107,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_finalized_batch.get("hash", ""),
             "signature": last_finalized_batch.get("finalization_signature", ""),
             "nonsigners": last_finalized_batch.get("finalized_nonsigners", []),
-            "tag": last_finalized_batch.get("tag", 0),
+            "tag": last_finalized_batch.get("finalized_tag", 0),
         },
         "locked": {
             "index": last_locked_batch.get("index", 0),
@@ -115,6 +115,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "hash": last_locked_batch.get("hash", ""),
             "signature": last_locked_batch.get("lock_signature", ""),
             "nonsigners": last_locked_batch.get("locked_nonsigners", []),
-            "tag": last_locked_batch.get("tag", 0),
+            "tag": last_locked_batch.get("locked_tag", 0),
         },
     }
