@@ -196,9 +196,9 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     return signature
 
 
-def _validate_nonsigners_stake(nonsigners_stake: int):
+def _validate_nonsigners_stake(nonsigners_stake: int, total_stake: int):
     """Verify the nonsigners' stake."""
-    return 100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT
+    return 100 * nonsigners_stake / total_stake <= 100 - zconfig.THRESHOLD_PERCENT
 
 
 def compute_signature_public_key(nodes_info, agg_pub_key, non_signers: List[str]) -> attestation.G2Point:
@@ -231,7 +231,7 @@ def is_sync_point_signature_verified(
                                                network_state.aggregated_public_key,
                                                nonsigners)
 
-    if not _validate_nonsigners_stake(nonsigners_stake):
+    if not _validate_nonsigners_stake(nonsigners_stake, network_state.total_stake):
         zlogger.exception(f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
         return False
 
