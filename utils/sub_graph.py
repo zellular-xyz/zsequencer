@@ -25,7 +25,7 @@ def get_eigen_network_info(sub_graph_socket: str, block_number: int):
             "id": item.get("id"),
             "address": item.get("id"),
             "socket": item.get("socket"),
-            "stake": int(item.get("socket")),
+            "stake": int(item.get("stake")),
             "public_key_g2": '1 ' + item['pubkeyG2_X'][1] + ' ' + item['pubkeyG2_X'][0] + ' ' \
                              + item['pubkeyG2_Y'][1] + ' ' + item['pubkeyG2_Y'][0]
         }
