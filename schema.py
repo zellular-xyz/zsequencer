@@ -67,7 +67,7 @@ class NodeConfig(BaseModel):
     @classmethod
     def from_env(cls):
         return cls(
-            VERSION=os.getenv("ZSEQUENCER_VERSION"),
+            VERSION="v0.0.13",
             HEADERS={
                 "Content-Type": "application/json",
                 "Version": os.getenv("ZSEQUENCER_VERSION", "v0.0.12")
