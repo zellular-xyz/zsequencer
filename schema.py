@@ -70,7 +70,7 @@ class NodeConfig(BaseModel):
             VERSION="v0.0.13",
             HEADERS={
                 "Content-Type": "application/json",
-                "Version": os.getenv("ZSEQUENCER_VERSION", "v0.0.12")
+                "Version": os.getenv("ZSEQUENCER_VERSION", "v0.0.13")
             },
             NODES_INFO_SYNC_BORDER=5,  # You can adjust if needed
             NODE_SOURCE=get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE")),
