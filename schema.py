@@ -11,7 +11,7 @@ class NetworkState(BaseModel):
     timestamp: int
     nodes: Dict
     aggregated_public_key: Any
-    total_stake: int
+    total_stake: float
 
 
 class NodeSource(Enum):
