@@ -232,7 +232,7 @@ def is_sync_point_signature_verified(
                                                nonsigners)
 
     if not _validate_nonsigners_stake(nonsigners_stake):
-        zlogger.exception("Signature with invalid stake from sequencer")
+        zlogger.exception("Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
         return False
 
     data: str = json.dumps(
@@ -246,10 +246,10 @@ def is_sync_point_signature_verified(
         sort_keys=True,
     )
     message: str = utils.gen_hash(data)
-    zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
+    zlogger.info(f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}")
     return bls.is_bls_sig_verified(signature_hex=signature_hex,
                                    message=message,
-                                   public_key=agg_pub_key, )
+                                   public_key=agg_pub_key)
 
 
 async def gather_disputes(

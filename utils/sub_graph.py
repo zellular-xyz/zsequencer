@@ -52,11 +52,15 @@ def fetch_eigen_layer_last_block_number(sub_graph_socket: str) -> int:
 
     if response.status_code == 200:
         block_number = int(response.json()["data"]["_meta"]["block"]["number"])
-        return block_number
+        # add a delay to ensure no reorg happens
+        return block_number - 5
 
 if __name__ == '__main__':
     url = 'https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest'
     block_number = fetch_eigen_layer_last_block_number(url)
     operators = get_eigen_network_info(url, block_number)
+    total = 0
     for _, op in operators.items():
         print(op['socket'], op['stake'])
+        total += op['stake']
+    print(total)
