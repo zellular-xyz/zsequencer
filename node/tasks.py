@@ -201,7 +201,7 @@ def _validate_nonsigners_stake(nonsigners_stake: int):
     return 100 * nonsigners_stake / zconfig.TOTAL_STAKE <= 100 - zconfig.THRESHOLD_PERCENT
 
 
-def get_aggregated_public_key(nodes_info, agg_pub_key, non_signers: List[str]) -> attestation.G2Point:
+def compute_signature_public_key(nodes_info, agg_pub_key, non_signers: List[str]) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = agg_pub_key
     for node_id in non_signers:
         aggregated_public_key -= nodes_info[node_id]["public_key_g2"]
@@ -227,9 +227,9 @@ def is_sync_point_signature_verified(
     nodes_info = network_state.nodes
 
     nonsigners_stake = sum([nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners])
-    agg_pub_key = get_aggregated_public_key(nodes_info,
-                                            network_state.aggregated_public_key,
-                                            nonsigners)
+    agg_pub_key = compute_signature_public_key(nodes_info,
+                                               network_state.aggregated_public_key,
+                                               nonsigners)
 
     if not _validate_nonsigners_stake(nonsigners_stake):
         zlogger.exception("Signature with invalid stake from sequencer")
