@@ -1,7 +1,7 @@
 import time
 from typing import Optional, Dict, Any
 
-from historical_nodes_registry import NodesRegistryClient
+from utils.historical_nodes_registry.client import NodesRegistryClient
 
 
 def fetch_historical_nodes_registry_data(nodes_registry_socket: str, timestamp: Optional[int]) -> Dict[str, Any]:

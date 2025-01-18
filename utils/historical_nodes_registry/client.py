@@ -1,7 +1,7 @@
 import requests
 from urllib.parse import urljoin
 from typing import Optional
-from historical_nodes_registry.schema import NodeInfo, SnapShotType
+from utils.historical_nodes_registry.schema import NodeInfo, SnapShotType
 
 
 class NodesRegistryClient:

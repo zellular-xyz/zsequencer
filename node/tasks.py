@@ -13,7 +13,7 @@ import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 from typing import List
-from historical_nodes_registry import NodesRegistryClient
+from utils import NodesRegistryClient
 from common import bls, utils
 from common.db import zdb
 from common.logger import zlogger
