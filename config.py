@@ -107,7 +107,6 @@ class Config:
                                      total_stake=total_stake)
 
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
-        print('\n' * 4, '  count of nodes of network  ', len(self.HISTORICAL_NETWORK_STATE[tag].nodes), '\n' * 4)
         return network_state
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -215,7 +214,6 @@ class Config:
 
         self.init_sequencer()
         if self.SEQUENCER["id"] == self.NODE["id"]:
-            print('\n' * 5, '*' * 20, '    SEQUENCER ', '*' * 20, '\n' * 5)
             self.IS_SYNCING = False
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
