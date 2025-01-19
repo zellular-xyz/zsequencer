@@ -5,10 +5,10 @@ import os
 import threading
 import time
 from typing import Any
-
+import requests
 from threading import Thread
 from config import zconfig
-
+from utils import get_file_content
 from . import utils
 from .logger import zlogger
 
@@ -25,7 +25,7 @@ class InMemoryDB:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialize()
-                fetch_data = Thread(target=cls._instance.fetch_nodes_and_apps)
+                fetch_data = Thread(target=cls._instance.schedule_fetch)
                 fetch_data.start()
             return cls._instance
 
@@ -37,23 +37,25 @@ class InMemoryDB:
         self.apps: dict[str, Any] = {}
         self.is_sequencer_down: bool = False
         self.load_state()
-    
+
     def fetch_apps(self) -> None:
         """Fetchs the apps data."""
-        data = zconfig.get_file_content(zconfig.APPS_FILE)
+        data = get_file_content(zconfig.APPS_FILE)
+
         new_apps = {}
         for app_name in data:
-            if self.apps.get(app_name):
+            if app_name in self.apps:
                 new_apps[app_name] = self.apps[app_name]
-                continue
-            new_apps[app_name] = {
-                "nodes_state": {},
-                "batches": {},
-                "missed_batches": {},
-                "last_sequenced_batch": {},
-                "last_locked_batch": {},
-                "last_finalized_batch": {},
-            }
+            else:
+                new_apps[app_name] = {
+                    "nodes_state": {},
+                    "batches": {},
+                    "missed_batches": {},
+                    "last_sequenced_batch": {},
+                    "last_locked_batch": {},
+                    "last_finalized_batch": {},
+                }
+
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
@@ -61,19 +63,21 @@ class InMemoryDB:
                 zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
             )
             os.makedirs(snapshot_path, exist_ok=True)
-    
-    def fetch_nodes_and_apps(self) -> None:
+
+    def schedule_fetch(self) -> None:
         """Periodically fetches apps and nodes data."""
         while True:
-            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
             try:
                 self.fetch_apps()
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
+            except:
+                zlogger.error("An unexpected error occurred while fetching apps data")
+
             try:
-                zconfig.fetch_nodes()
-            except Exception:
-                zlogger.exception("An unexpected error occurred:")
+                zconfig.fetch_network_state()
+            except:
+                zlogger.error("An unexpected error occurred while fetching network state")
+
+            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
     def load_state(self) -> None:
         """Load the initial state from the snapshot files."""
@@ -81,7 +85,7 @@ class InMemoryDB:
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches: dict[str, dict[str, Any]] = self.load_finalized_batches(app_name)
             last_finalized_batch: dict[str, Any] = max(
-                (batch for batch in finalized_batches.values() if batch.get("finalization_signature")) ,
+                (batch for batch in finalized_batches.values() if batch.get("finalization_signature")),
                 key=lambda batch: batch["index"],
                 default={},
             )
@@ -127,7 +131,7 @@ class InMemoryDB:
 
         try:
             with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz"
-                    ,"rt", encoding="UTF-8") as file:
+                    , "rt", encoding="UTF-8") as file:
                 return json.load(file)
         except (FileNotFoundError, EOFError):
             pass
@@ -162,17 +166,17 @@ class InMemoryDB:
             )
 
     def save_batches_to_file(
-        self, app_name: str, index: int, snapshot_border: int, snapshot_dir
+            self, app_name: str, index: int, snapshot_border: int, snapshot_dir
     ) -> None:
         """Helper function to save batches to a snapshot file."""
-        with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz", 
+        with gzip.open(snapshot_dir + f"/{str(index).zfill(7)}.json.gz",
                        "wt", encoding="UTF-8") as file:
             json.dump(
                 {
                     batch["hash"]: batch
                     for batch in self.apps[app_name]["batches"].values()
                     if batch["state"] == "finalized"
-                    and snapshot_border < batch["index"] <= index
+                       and snapshot_border < batch["index"] <= index
                 },
                 file,
             )
@@ -185,18 +189,17 @@ class InMemoryDB:
             if batch["state"] != "finalized" or batch["index"] > remove_border
         }
 
-
     def __process_batches(
-        self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
+            self, loaded_batches: dict[str, Any], states: set[str], after: float, batches: dict[str, Any]) -> int:
         """Filter and add batches to the result based on state and index."""
         # fixme: sort should be removed after updating batches dict to list
         sorter = lambda batch: batch.get("index", 0)
-        for batch in sorted(list(loaded_batches.values()), key = sorter):
+        for batch in sorted(list(loaded_batches.values()), key=sorter):
             if len(batches) >= zconfig.API_BATCHES_LIMIT:
                 return
             if batch["state"] in states and batch.get("index", 0) > after:
                 batches[batch["hash"]] = batch
-    
+
     def get_batches(self, app_name: str, states: set[str], after: float = -1) -> dict[str, Any]:
         """Get batches filtered by state and optionally by index."""
         batches: dict[str, Any] = {}
@@ -208,7 +211,7 @@ class InMemoryDB:
             loaded_batches = self.load_finalized_batches(app_name, after + 1)
             self.__process_batches(loaded_batches, states, after, batches)
         if len(batches) < zconfig.API_BATCHES_LIMIT and \
-           next_chunk not in [current_chunk, finalized_chunk]:
+                next_chunk not in [current_chunk, finalized_chunk]:
             loaded_batches = self.load_finalized_batches(app_name, after + 1 + len(batches))
             self.__process_batches(loaded_batches, states, after, batches)
         self.__process_batches(self.apps[app_name]["batches"], states, after, batches)
@@ -246,8 +249,6 @@ class InMemoryDB:
                     "hash": batch_hash,
                     "body": body,
                 }
-
-            
 
     def get_last_batch(self, app_name: str, state: str) -> dict[str, Any]:
         """Get the last batch for a given state."""
@@ -315,7 +316,7 @@ class InMemoryDB:
             return
         batches: dict[str, Any] = self.apps[app_name]["batches"]
         # fixme: sort should be removed after updating batches dict to list
-        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
+        for batch in sorted(list(batches.values()), key=lambda batch: batch.get("index", 0)):
             if "index" in batch and batch["index"] <= sig_data["index"] and batch["state"] != "finalized":
                 batch["state"] = "locked"
         if not batches.get(sig_data["hash"]):
@@ -323,6 +324,7 @@ class InMemoryDB:
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["lock_signature"] = sig_data["signature"]
         target_batch["locked_nonsigners"] = sig_data["nonsigners"]
+        target_batch["locked_tag"] = sig_data["tag"]
         self.apps[app_name]["last_locked_batch"] = target_batch
         if not self.apps[app_name]["last_sequenced_batch"]:
             self.apps[app_name]["last_sequenced_batch"] = target_batch
@@ -330,7 +332,7 @@ class InMemoryDB:
     def update_finalized_batches(self, app_name: str, sig_data: dict[str, Any]) -> None:
         """Update batches to 'finalized' state up to a specified index and save snapshots."""
         if sig_data.get("index", 0) <= self.apps[app_name]["last_finalized_batch"].get(
-            "index", 0
+                "index", 0
         ):
             return
 
@@ -338,7 +340,7 @@ class InMemoryDB:
 
         snapshot_indexes: list[int] = []
         # fixme: sort should be removed after updating batches dict to list
-        for batch in sorted(list(batches.values()), key = lambda batch: batch.get("index", 0)):
+        for batch in sorted(list(batches.values()), key=lambda batch: batch.get("index", 0)):
             if "index" in batch and batch["index"] <= sig_data["index"]:
                 batch["state"] = "finalized"
                 if batch["state"] == "finalized" and batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
@@ -349,6 +351,7 @@ class InMemoryDB:
         target_batch: dict[str, Any] = batches[sig_data["hash"]]
         target_batch["finalization_signature"] = sig_data["signature"]
         target_batch["finalized_nonsigners"] = sig_data["nonsigners"]
+        target_batch["finalized_tag"] = sig_data["tag"]
         self.apps[app_name]["last_finalized_batch"] = target_batch
 
         for snapshot_index in snapshot_indexes:
@@ -358,8 +361,8 @@ class InMemoryDB:
             self.save_snapshot(app_name, snapshot_index)
 
     def upsert_node_state(
-        self,
-        node_state: dict[str, Any],
+            self,
+            node_state: dict[str, Any],
     ) -> None:
         """Upsert the state of a node."""
         if not node_state["sequenced_index"]:
@@ -372,9 +375,9 @@ class InMemoryDB:
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""
         return [
-            v
-            for k, v in self.apps[app_name]["nodes_state"].items()
-            if k in list(zconfig.NODES.keys())
+            node_info
+            for address, node_info in self.apps[app_name]["nodes_state"].items()
+            if address in list(zconfig.NODES.keys())
         ]
 
     def upsert_locked_sync_point(self, app_name: str, state: dict[str, Any]) -> None:
@@ -385,6 +388,7 @@ class InMemoryDB:
             "hash": state["hash"],
             "signature": state["signature"],
             "nonsigners": state["nonsigners"],
+            "tag": state["tag"]
         }
 
     def upsert_finalized_sync_point(self, app_name: str, state: dict[str, Any]) -> None:
@@ -395,6 +399,7 @@ class InMemoryDB:
             "hash": state["hash"],
             "signature": state["signature"],
             "nonsigners": state["nonsigners"],
+            "tag": state["tag"]
         }
 
     def get_locked_sync_point(self, app_name: str) -> dict[str, Any]:
@@ -429,10 +434,10 @@ class InMemoryDB:
         return False
 
     def reinitialize_db(
-        self,
-        app_name: str,
-        new_sequencer_id: str,
-        all_nodes_last_finalized_batch: dict[str, Any],
+            self,
+            app_name: str,
+            new_sequencer_id: str,
+            all_nodes_last_finalized_batch: dict[str, Any],
     ):
         """Reinitialize the database after a switch in the sequencer."""
         self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
@@ -453,7 +458,7 @@ class InMemoryDB:
             self.reinitialize_batches(app_name, all_nodes_last_finalized_batch)
 
     def resequence_batches(
-        self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
+            self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
     ) -> None:
         """Resequence batches after a switch in the sequencer."""
         keys_to_retain: set[str] = {"app_name", "node_id", "timestamp", "hash", "body"}
@@ -481,14 +486,14 @@ class InMemoryDB:
             )
             self.apps[app_name]["batches"][filtered_batch["hash"]] = filtered_batch
             self.apps[app_name]["last_sequenced_batch"] = filtered_batch
-    
+
     def reset_timestamps(self, app_name: str) -> None:
         for batch in list(self.apps[app_name]["batches"].values()):
             if batch["state"] != "finalized":
                 batch["timestamp"] = int(time.time())
 
     def reinitialize_batches(
-        self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
+            self, app_name: str, all_nodes_last_finalized_batch: dict[str, Any]
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
         keys_to_retain: set[str] = {

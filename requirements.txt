@@ -1,5 +1,10 @@
+validators==0.34.0
 Flask==3.0.3
-web3==6.19.0
+web3==7.4.0
 python-dotenv==1.0.1
 xxhash==3.4.1
-https://github.com/zellular-xyz/eigensdk-python/archive/refs/tags/latest.zip
+validators==0.34.0
+eigensdk==0.0.3
+requests==2.32.3
+pydantic==2.9.2
+tenacity==9.0.0
