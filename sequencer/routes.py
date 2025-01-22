@@ -57,21 +57,28 @@ def put_batches() -> Response:
 
 def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the batches data."""
-    with zdb.sequencer_put_batches_lock:
-        zdb.sequencer_init_batches(app_name=req_data["app_name"], batches_data=req_data["batches"])
+    app_name = req_data["app_name"]
+    batches_data = req_data["batches"]
 
-    batches: dict[str, Any] = zdb.get_batches(
-        app_name=req_data["app_name"],
+
+    with zdb.sequencer_put_batches_lock:
+        zdb.sequencer_init_batches(app_name=app_name, batches_data=batches_data)
+
+    batches_mapping: dict[str, Any] = zdb.get_batches(
+        app_name=app_name,
         states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
-    batches = sorted(batches.values(), key=lambda x: x["index"])
+
+    batches = sorted(batches_mapping.values(), key=lambda x: x["index"])
+
     last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
-        app_name=req_data["app_name"], state="finalized"
+        app_name=app_name, state="finalized"
     )
     last_locked_batch: dict[str, Any] = zdb.get_last_batch(
-        app_name=req_data["app_name"], state="locked"
+        app_name=app_name, state="locked"
     )
+
     if batches:
         if batches[-1]["index"] < last_finalized_batch.get("index", 0):
             last_finalized_batch: dict[str, Any] = next(
@@ -82,22 +89,18 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
                 (d for d in reversed(batches) if "lock_signature" in d), {}
             )
 
-    zdb.upsert_node_state(
-        {
-            "app_name": req_data["app_name"],
-            "node_id": req_data["node_id"],
-            "sequenced_index": req_data["sequenced_index"],
-            "sequenced_hash": req_data["sequenced_hash"],
-            "sequenced_chaining_hash": req_data["sequenced_chaining_hash"],
-            "locked_index": req_data["locked_index"],
-            "locked_hash": req_data["locked_hash"],
-            "locked_chaining_hash": req_data["locked_chaining_hash"],
-        },
-    )
+    node_state = {
+        "app_name": app_name,
+        "node_id": req_data["node_id"],
+        "sequenced_index": req_data["sequenced_index"],
+        "sequenced_hash": req_data["sequenced_hash"],
+        "sequenced_chaining_hash": req_data["sequenced_chaining_hash"],
+        "locked_index": req_data["locked_index"],
+        "locked_hash": req_data["locked_hash"],
+        "locked_chaining_hash": req_data["locked_chaining_hash"],
+    }
 
-    # TODO: remove (create issue for testing)
-    # if zconfig.NODE["id"] == "1":
-    #     txs = {}
+    zdb.upsert_node_state(node_state)
 
     return {
         "batches": batches,
