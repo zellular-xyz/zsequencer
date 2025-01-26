@@ -225,9 +225,11 @@ class InMemoryDB:
         """Get batches that are not finalized based on the finalization time border."""
         border: int = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
         batches: dict[str, Any] = self.apps[app_name]["batches"]
+
+        batches_mapping = list(batches.copy().items())
         return {
             batch_hash: batch
-            for batch_hash, batch in list(batches.items())
+            for batch_hash, batch in batches_mapping
             if batch["state"] == "sequenced" and batch["timestamp"] < border
         }
 
