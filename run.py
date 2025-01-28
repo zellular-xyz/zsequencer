@@ -101,4 +101,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import debugpy
+    if "1" in sys.argv or "2" in sys.argv:
+        debugpy.listen(("0.0.0.0", 5678 + int(sys.argv[1]) - 1))
+        debugpy.wait_for_client()
+        debugpy.breakpoint()
     main()

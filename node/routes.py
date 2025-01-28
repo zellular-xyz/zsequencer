@@ -151,28 +151,27 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches: dict[str, dict] = zdb.get_batches(app_name, { state }, after)
-    if len(batches) == 0:
+    batches_sequence = zdb.get_entire_operational_batches_sequence(app_name, { state }, after)
+    if not batches_sequence:
         return success_response(data=None)
 
-    batches: list[dict] = list(batches.values())
-    batches.sort(key = lambda batch: batch["index"])
+    for i, batch in enumerate(batches_sequence):
+        assert batch["index"] == after + i + 1, f'error in getting batches: {batch["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches_sequence]}\n{zdb.apps[app_name]["operational_batches_sequence"]}'
 
-    for i in range(len(batches)):
-        assert batches[i]["index"] == after + i + 1, f'error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}'
+    first_chaining_hash: str = batches_sequence[0]["chaining_hash"]
 
-    first_chaining_hash: str = batches[0]["chaining_hash"]
-
-    finalized: dict = {}
-    for batch in reversed(batches):
+    finalized = {}
+    for batch in reversed(batches_sequence):
         if "finalization_signature" in batch:
             for k in ("finalization_signature", "index", "hash", "chaining_hash"):
                 finalized[k] = batch[k]
             finalized["nonsigners"] = batch["finalized_nonsigners"]
             break
-    res: dict[str, dict] = {
-        "batches": [batch["body"] for batch in batches],
-        "first_chaining_hash": first_chaining_hash,
-        "finalized": finalized,
-    }
-    return success_response(data=res)
+
+    return success_response(
+        data={
+            "batches": [batch["body"] for batch in batches_sequence],
+            "first_chaining_hash": first_chaining_hash,
+            "finalized": finalized,
+        }
+    )

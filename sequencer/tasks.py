@@ -93,9 +93,9 @@ async def sync_app(app_name: str) -> None:
         if lock_signature:
             locked_data.update(lock_signature)
             zdb.upsert_locked_sync_point(app_name=app_name, state=locked_data)
-            zdb.update_locked_batches(
+            zdb.lock_batches(
                 app_name=app_name,
-                sig_data=locked_data,
+                signature_data=locked_data,
             )
 
     ############################################################
@@ -121,7 +121,7 @@ async def sync_app(app_name: str) -> None:
         if finalization_signature:
             finalized_data.update(finalization_signature)
             zdb.upsert_finalized_sync_point(app_name=app_name, state=finalized_data)
-            zdb.update_finalized_batches(
+            zdb.finalize_batches(
                 app_name=app_name,
-                sig_data=finalized_data,
+                signature_data=finalized_data,
             )
