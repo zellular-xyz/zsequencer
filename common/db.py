@@ -545,26 +545,26 @@ class InMemoryDB:
             if address in list(zconfig.NODES.keys())
         ]
 
-    def upsert_locked_sync_point(self, app_name: str, value: SignatureData) -> None:
+    def upsert_locked_sync_point(self, app_name: str, signature_data: SignatureData) -> None:
         """Upsert the locked sync point for an app."""
         self.apps[app_name]["nodes_state"]["locked_sync_point"] = {
-            "index": value["index"],
-            "chaining_hash": value["chaining_hash"],
-            "hash": value["hash"],
-            "signature": value["signature"],
-            "nonsigners": value["nonsigners"],
-            "tag": value["tag"],
+            "index": signature_data["index"],
+            "chaining_hash": signature_data["chaining_hash"],
+            "hash": signature_data["hash"],
+            "signature": signature_data["signature"],
+            "nonsigners": signature_data["nonsigners"],
+            "tag": signature_data["tag"],
         }
 
-    def upsert_finalized_sync_point(self, app_name: str, value: SignatureData) -> None:
+    def upsert_finalized_sync_point(self, app_name: str, signature_data: SignatureData) -> None:
         """Upsert the finalized sync point for an app."""
         self.apps[app_name]["nodes_state"]["finalized_sync_point"] = {
-            "index": value["index"],
-            "chaining_hash": value["chaining_hash"],
-            "hash": value["hash"],
-            "signature": value["signature"],
-            "nonsigners": value["nonsigners"],
-            "tag": value["tag"],
+            "index": signature_data["index"],
+            "chaining_hash": signature_data["chaining_hash"],
+            "hash": signature_data["hash"],
+            "signature": signature_data["signature"],
+            "nonsigners": signature_data["nonsigners"],
+            "tag": signature_data["tag"],
         }
 
     def get_locked_sync_point(self, app_name: str) -> dict[str, Any]:
@@ -731,18 +731,22 @@ class InMemoryDB:
         batches_hash_set: set[str],
     ) -> None:
         """Filter and add batches to the result based on state and index."""
-        # fixme: sort should be removed after updating batches dict to list
         if not loaded_finalized_batches or "finalized" not in states:
             return
 
+        # TODO: Remove duplication.
         first_loaded_batch_index = loaded_finalized_batches[0]["index"]
-        relative_after = first_loaded_batch_index + after
-        for batch in loaded_finalized_batches[relative_after + 1 :]:
+        relative_after = after - first_loaded_batch_index + 1
+
+        for batch in loaded_finalized_batches[relative_after:]:
             if len(batches_sequence) >= zconfig.API_BATCHES_LIMIT:
                 break
 
             if batch["hash"] in batches_hash_set:
                 continue
+
+            batches_sequence.append(batch)
+            batches_hash_set.add(batch["hash"])
 
     def _filter_operational_batches_sequence(
         self,
