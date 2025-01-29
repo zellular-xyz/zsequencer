@@ -16,9 +16,6 @@ import itertools
 import portion  # type: ignore[import-untyped]
 from typing import TypedDict, Iterable
 import typeguard
-import debugpy  # type: ignore[import-untyped]
-import random
-import sys
 
 State = Literal["initialized", "sequenced", "locked", "finalized"]
 OperationalState = Literal["sequenced", "locked", "finalized"]
@@ -83,29 +80,11 @@ class InMemoryDB:
 
     def _initialize(self) -> None:
         """Initialize the InMemoryDB instance."""
-        # if "1" in sys.argv:
-        #     listening_port = 5678
-        #     zlogger.error(f"Listening on {listening_port}")
-        #     debugpy.listen(("0.0.0.0", listening_port))
-        #     debugpy.wait_for_client()
-        #     debugpy.breakpoint()
-
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self._last_saved_index = 0
         self.is_sequencer_down = False
         self.apps = self._load_finalized_batches_for_all_apps()
-
-        # def on_change() -> None:
-        #     for app_name, app in self.apps.items():
-        #         zlogger.warning(
-        #             "s: {}, l: {}, f: {}".format(
-        #                 app.get("last_sequenced_batch", {}).get("index", -1),
-        #                 app.get("last_locked_batch", {}).get("index", -1),
-        #                 app.get("last_finalized_batch", {}).get("index", -1),
-        #             )
-        #         )
-        # self.apps.bind_callback(on_change)
 
     def _fetch_apps(self) -> None:
         """Fetchs the apps data."""
@@ -545,7 +524,9 @@ class InMemoryDB:
             if address in list(zconfig.NODES.keys())
         ]
 
-    def upsert_locked_sync_point(self, app_name: str, signature_data: SignatureData) -> None:
+    def upsert_locked_sync_point(
+        self, app_name: str, signature_data: SignatureData
+    ) -> None:
         """Upsert the locked sync point for an app."""
         self.apps[app_name]["nodes_state"]["locked_sync_point"] = {
             "index": signature_data["index"],
@@ -556,7 +537,9 @@ class InMemoryDB:
             "tag": signature_data["tag"],
         }
 
-    def upsert_finalized_sync_point(self, app_name: str, signature_data: SignatureData) -> None:
+    def upsert_finalized_sync_point(
+        self, app_name: str, signature_data: SignatureData
+    ) -> None:
         """Upsert the finalized sync point for an app."""
         self.apps[app_name]["nodes_state"]["finalized_sync_point"] = {
             "index": signature_data["index"],
