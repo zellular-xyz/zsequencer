@@ -393,7 +393,7 @@ class InMemoryDB:
 
         last_sequenced_batch = self.apps[app_name]["last_sequenced_batch"]
         chaining_hash = last_sequenced_batch.get("chaining_hash", "")
-        index = last_sequenced_batch.get("index", self._GLOBAL_FIRST_BATCH_INDEX)
+        index = last_sequenced_batch.get("index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX)
 
         for batch in initializing_batches:
             if self._batch_exists(app_name, batch["hash"]):
@@ -406,6 +406,7 @@ class InMemoryDB:
                 )
                 continue
 
+            index += 1
             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
             batch.update(
                 {
@@ -420,7 +421,6 @@ class InMemoryDB:
                 batch["index"]
             )
             self.apps[app_name]["last_sequenced_batch"] = batch
-            index += 1
 
     def upsert_sequenced_batches(
         self, app_name: str, sequenced_batches: list[Batch]
@@ -659,7 +659,7 @@ class InMemoryDB:
     ) -> None:
         """Resequence batches after a switch in the sequencer."""
         index = all_nodes_last_finalized_batch.get(
-            "index", self._GLOBAL_FIRST_BATCH_INDEX
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
         )
         chaining_hash = all_nodes_last_finalized_batch.get("chaining_hash", "")
         resequencing_batches = itertools.chain(
@@ -675,6 +675,7 @@ class InMemoryDB:
         )
         resequenced_batches: list[Batch] = []
         for resequencing_batch in resequencing_batches:
+            index += 1
             chaining_hash = utils.gen_hash(chaining_hash + resequencing_batch["hash"])
             resequenced_batch: Batch = {
                 "app_name": resequencing_batch["app_name"],
@@ -690,7 +691,6 @@ class InMemoryDB:
             self.apps[app_name]["operational_batches_hash_index_map"][
                 resequenced_batch["hash"]
             ] = index
-            index += 1
 
         self.apps[app_name]["initialized_batches_map"] = {}
         self.apps[app_name]["operational_batches_sequence"] = (
