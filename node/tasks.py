@@ -173,7 +173,7 @@ def check_censorship(
     # remove sequenced batches from the missed batches dict
     missed_batches: list[dict[str, Any]] = [
         batch
-        for batch_hash, batch in zdb.get_missed_batches(app_name).items()
+        for batch_hash, batch in zdb.get_missed_batches_map(app_name).items()
         if batch_hash not in sequenced_hashes
     ]
 
@@ -292,7 +292,7 @@ async def send_dispute_requests() -> None:
     apps_missed_batches: dict[str, Any] = {}
 
     for app_name in list(zconfig.APPS.keys()):
-        app_missed_batches = zdb.get_missed_batches(app_name)
+        app_missed_batches = zdb.get_missed_batches_map(app_name)
         if len(app_missed_batches) > 0:
             apps_missed_batches[app_name] = app_missed_batches
 

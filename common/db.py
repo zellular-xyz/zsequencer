@@ -67,11 +67,17 @@ class InMemoryDB:
     """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
 
     _GLOBAL_FIRST_BATCH_INDEX = 1
+    _BEFORE_GLOBAL_FIRST_BATCH_INDEX = _GLOBAL_FIRST_BATCH_INDEX - 1
     _NOT_SET_BATCH_INDEX = _GLOBAL_FIRST_BATCH_INDEX - 1
 
-    # TODO: We only have one instantiation of this class, why we use locking and singleton here?
+    # TODO: We only have one instantiation of this class, why we use locking and
+    # singleton here?
     _instance: InMemoryDB | None = None
     instance_lock: threading.Lock = threading.Lock()
+
+    # TODO: It seems that there are some possible race-condition situations where
+    # multiple data structures are mutated together, or a chain of methods needs
+    # to be called atomically.
 
     def __new__(cls) -> InMemoryDB:
         """Singleton pattern implementation to ensure only one instance exists."""
@@ -89,7 +95,7 @@ class InMemoryDB:
         """Initialize the InMemoryDB instance."""
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
-        self._last_saved_index = 0
+        self._last_saved_index = self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
         self.is_sequencer_down = False
         self.apps = self._load_finalized_batches_for_all_apps()
 
@@ -173,7 +179,7 @@ class InMemoryDB:
     @staticmethod
     def _load_keys() -> dict[str, Any]:
         """Load keys from the snapshot file."""
-        keys_path: str = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
+        keys_path = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
         try:
             with gzip.open(keys_path, "rt", encoding="UTF-8") as file:
                 return json.load(file)
@@ -219,7 +225,10 @@ class InMemoryDB:
         return []
 
     def _save_snapshot_then_prune(self, app_name: str, index: int) -> None:
-        """Save a snapshot of the finalized batches to a file."""
+        """
+        Save a snapshot of the finalized batches to a file and prune old \
+        initialized and operational batches.
+        """
         snapshot_border = index - zconfig.SNAPSHOT_CHUNK
         remove_border = max(
             index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
@@ -274,14 +283,17 @@ class InMemoryDB:
         return self.apps[app_name]["initialized_batches_map"]
 
     def get_global_operational_batches_sequence(
-        self, app_name: str, states: set[OperationalState], after: int = 0
+        self,
+        app_name: str,
+        states: set[OperationalState],
+        after: int = _BEFORE_GLOBAL_FIRST_BATCH_INDEX,
     ) -> list[Batch]:
         """Get batches filtered by state and optionally by index."""
         batches_sequence: list[Batch] = []
         batches_hash_set: set[str] = set()  # TODO: Check if this is necessary.
 
         last_finalized_index = self.apps[app_name]["last_finalized_batch"].get(
-            "index", 0
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
         )
         current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
         next_chunk = math.ceil(
@@ -328,12 +340,7 @@ class InMemoryDB:
         if batch_hash in self.apps[app_name]["initialized_batches_map"]:
             return self.apps[app_name]["initialized_batches_map"][batch_hash]
         elif batch_hash in self.apps[app_name]["operational_batches_hash_index_map"]:
-            batch_index = self.apps[app_name]["operational_batches_hash_index_map"][
-                batch_hash
-            ]
-            return self.apps[app_name]["operational_batches_sequence"][
-                self._calculate_relative_index(app_name, batch_index)
-            ]
+            return self._get_operational_batch_by_hash(app_name, batch_hash)
         return {}
 
     def get_still_sequenced_batches(self, app_name: str) -> list[Batch]:
@@ -354,7 +361,7 @@ class InMemoryDB:
 
         now = int(time.time())
         for body in bodies:
-            batch_hash: str = utils.gen_hash(body)
+            batch_hash = utils.gen_hash(body)
             if not self._batch_exists(app_name, batch_hash):
                 self.apps[app_name]["initialized_batches_map"][batch_hash] = {
                     "app_name": app_name,
@@ -386,7 +393,7 @@ class InMemoryDB:
 
         last_sequenced_batch = self.apps[app_name]["last_sequenced_batch"]
         chaining_hash = last_sequenced_batch.get("chaining_hash", "")
-        index = last_sequenced_batch.get("index", 0)
+        index = last_sequenced_batch.get("index", self._GLOBAL_FIRST_BATCH_INDEX)
 
         for batch in initializing_batches:
             if self._batch_exists(app_name, batch["hash"]):
@@ -399,7 +406,6 @@ class InMemoryDB:
                 )
                 continue
 
-            index += 1
             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
             batch.update(
                 {
@@ -408,11 +414,13 @@ class InMemoryDB:
                     "chaining_hash": chaining_hash,
                 }
             )
+
             self.apps[app_name]["operational_batches_sequence"].append(batch)
             self.apps[app_name]["operational_batches_hash_index_map"][batch_hash] = (
                 batch["index"]
             )
             self.apps[app_name]["last_sequenced_batch"] = batch
+            index += 1
 
     def upsert_sequenced_batches(
         self, app_name: str, sequenced_batches: list[Batch]
@@ -426,7 +434,7 @@ class InMemoryDB:
         )
         now = int(time.time())
         for batch in sequenced_batches:
-            if chaining_hash or batch["index"] == 1:
+            if chaining_hash or batch["index"] == self._GLOBAL_FIRST_BATCH_INDEX:
                 chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
                 if batch["chaining_hash"] != chaining_hash:
                     zlogger.warning(
@@ -449,7 +457,7 @@ class InMemoryDB:
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """Update batches to 'locked' state up to a specified index."""
         if signature_data["index"] <= self.apps[app_name]["last_locked_batch"].get(
-            "index", 0
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
         ):
             return
 
@@ -462,7 +470,9 @@ class InMemoryDB:
         for batch in self._filter_operational_batches_sequence(
             app_name,
             self._get_batch_index_interval(app_name, state="finalized").complement()
-            & portion.closed(lower=1, upper=signature_data["index"]),
+            & portion.closed(
+                lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
+            ),
         ):
             batch["state"] = "locked"
 
@@ -478,9 +488,11 @@ class InMemoryDB:
 
     def finalize_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """Update batches to 'finalized' state up to a specified index and save snapshots."""
-        if signature_data.get("index", 0) <= self.apps[app_name][
-            "last_finalized_batch"
-        ].get("index", 0):
+        if signature_data.get(
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
+        ) <= self.apps[app_name]["last_finalized_batch"].get(
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
+        ):
             return
 
         if (
@@ -492,7 +504,9 @@ class InMemoryDB:
         snapshot_indexes: list[int] = []
         for batch in self._filter_operational_batches_sequence(
             app_name,
-            portion.closed(lower=1, upper=signature_data["index"]),
+            portion.closed(
+                lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
+            ),
         ):
             batch["state"] = "finalized"
             if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
@@ -586,7 +600,7 @@ class InMemoryDB:
         """Empty missed batches."""
         self.apps[app_name]["missed_batches_map"] = {}
 
-    def get_missed_batches(self, app_name: str) -> dict[str, Batch]:
+    def get_missed_batches_map(self, app_name: str) -> dict[str, Batch]:
         """Get missed batches."""
         return self.apps[app_name]["missed_batches_map"]
 
@@ -619,7 +633,7 @@ class InMemoryDB:
         all_nodes_last_finalized_batch: Batch,
     ) -> None:
         """Reinitialize the database after a switch in the sequencer."""
-        # TODO: should get the batches from other nodes if they are missing
+        # TODO: Should get the batches from other nodes if they are missing.
         self.finalize_batches(
             app_name,
             signature_data={
@@ -644,18 +658,23 @@ class InMemoryDB:
         self, app_name: str, all_nodes_last_finalized_batch: Batch
     ) -> None:
         """Resequence batches after a switch in the sequencer."""
-        index = all_nodes_last_finalized_batch["index"]
+        index = all_nodes_last_finalized_batch.get(
+            "index", self._GLOBAL_FIRST_BATCH_INDEX
+        )
         chaining_hash = all_nodes_last_finalized_batch.get("chaining_hash", "")
         resequencing_batches = itertools.chain(
             self._filter_operational_batches_sequence(
                 app_name,
+                # TODO: I guess we should resequence all batches until the index of
+                # the last finalized batch across all nodes instead of all locally
+                # non-finalized batches, as the fully finalized batch across all nodes
+                # may differ from the local last finalized batch.
                 self._get_batch_index_interval(app_name, "finalized").complement(),
             ),
             self.apps[app_name]["initialized_batches_map"].values(),
         )
         resequenced_batches: list[Batch] = []
         for resequencing_batch in resequencing_batches:
-            index += 1
             chaining_hash = utils.gen_hash(chaining_hash + resequencing_batch["hash"])
             resequenced_batch: Batch = {
                 "app_name": resequencing_batch["app_name"],
@@ -671,16 +690,19 @@ class InMemoryDB:
             self.apps[app_name]["operational_batches_hash_index_map"][
                 resequenced_batch["hash"]
             ] = index
+            index += 1
 
-        self.apps[app_name]["operational_batches_sequence"] = self.apps[app_name][
-            "operational_batches_sequence"
-        ][: self.apps[app_name]["last_finalized_batch"].get("index", 0)]
-        self.apps[app_name]["operational_batches_sequence"].extend(resequenced_batches)
+        self.apps[app_name]["initialized_batches_map"] = {}
+        self.apps[app_name]["operational_batches_sequence"] = (
+            self._filter_operational_batches_sequence(
+                app_name, self._get_batch_index_interval(app_name, "finalized")
+            )
+            + resequenced_batches
+        )
         if resequenced_batches:
             self.apps[app_name]["last_sequenced_batch"] = resequenced_batches[-1]
-        self.apps[app_name]["initialized_batches_map"] = {}
-
-        self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
+        else:
+            self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_locked_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_finalized_batch"] = all_nodes_last_finalized_batch
 
@@ -688,9 +710,11 @@ class InMemoryDB:
         self, app_name: str, all_nodes_last_finalized_batch: Batch
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
-        index = all_nodes_last_finalized_batch["index"]
+        all_nodes_last_finalized_batch_index = all_nodes_last_finalized_batch.get(
+            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
+        )
         for batch in self._filter_operational_batches_sequence(
-            app_name, portion.open(index, portion.inf)
+            app_name, portion.open(all_nodes_last_finalized_batch_index, portion.inf)
         ):
             reinitialized_batch: Batch = {
                 "app_name": batch["app_name"],
@@ -701,12 +725,18 @@ class InMemoryDB:
                 "state": "initialized",
             }
             self.apps[app_name]["initialized_batches_map"][
-                reinitialized_batch["hash"]
+                batch["hash"]
             ] = reinitialized_batch
             self.apps[app_name]["operational_batches_hash_index_map"].pop(batch["hash"])
-        self.apps[app_name]["operational_batches_sequence"] = self.apps[app_name][
-            "operational_batches_sequence"
-        ][: self._calculate_relative_index(app_name, index) + 1]
+
+        self.apps[app_name]["operational_batches_sequence"] = (
+            self._filter_operational_batches_sequence(
+                app_name,
+                portion.closed(
+                    self._GLOBAL_FIRST_BATCH_INDEX, all_nodes_last_finalized_batch_index
+                ),
+            )
+        )
         self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_locked_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_finalized_batch"] = all_nodes_last_finalized_batch
@@ -779,7 +809,9 @@ class InMemoryDB:
         )
 
     def _calculate_relative_index(self, app_name: str, index: int) -> int:
-        return index - self._get_first_batch_index(app_name)
+        return index - self._get_first_batch_index(
+            app_name, default=self._GLOBAL_FIRST_BATCH_INDEX
+        )
 
     def _get_batch_index_interval(
         self,
@@ -787,15 +819,19 @@ class InMemoryDB:
         state: OperationalState | None = None,
     ) -> portion.Interval:
         return portion.closed(
-            self._get_first_batch_index(app_name, state),
-            self._get_last_batch_index(app_name, state),
+            self._get_first_batch_index(
+                app_name, state, default=self._GLOBAL_FIRST_BATCH_INDEX
+            ),
+            self._get_last_batch_index(
+                app_name, state, default=self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
+            ),
         )
 
     def _get_first_batch_index(
         self,
         app_name: str,
         state: OperationalState | None = None,
-        default: int = _GLOBAL_FIRST_BATCH_INDEX,
+        default: int = _NOT_SET_BATCH_INDEX,
     ) -> int:
         if not self._has_any_operational_batch(app_name, state):
             return default
@@ -807,9 +843,16 @@ class InMemoryDB:
         state: OperationalState | None = None,
         default: int = _NOT_SET_BATCH_INDEX,
     ) -> int:
-        if not self._has_any_operational_batch(app_name, state):
-            return default
-        return self.get_last_operational_batch(app_name, state).get("index", default)
+        if state is None:
+            batches_sequence = self.apps[app_name]["operational_batches_sequence"]
+            if batches_sequence:
+                return batches_sequence[-1]["index"]
+            else:
+                return default
+        else:
+            return self.get_last_operational_batch(app_name, state).get(
+                "index", default
+            )
 
     def _has_any_batch(
         self,
@@ -828,7 +871,12 @@ class InMemoryDB:
     def _has_any_operational_batch(
         self, app_name: str, state: OperationalState | None = None
     ) -> bool:
-        return self._get_last_batch_index(app_name, state, default=0) != 0
+        return (
+            self._get_last_batch_index(
+                app_name, state, default=self._NOT_SET_BATCH_INDEX
+            )
+            != self._NOT_SET_BATCH_INDEX
+        )
 
     @classmethod
     def _generate_batches_map(cls, batches: Iterable[Batch]) -> dict[str, Batch]:
