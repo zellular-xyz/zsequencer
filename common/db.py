@@ -15,10 +15,25 @@ from typing import Literal
 import itertools
 import portion  # type: ignore[import-untyped]
 from typing import TypedDict, Iterable
-import typeguard
+import typeguard  # TODO: Remove.
+
 
 State = Literal["initialized", "sequenced", "locked", "finalized"]
 OperationalState = Literal["sequenced", "locked", "finalized"]
+
+
+class App(TypedDict, total=False):
+    # TODO: Annotate the keys and values.
+    nodes_state: dict[str, Any]
+    initialized_batches_map: dict[str, Batch]
+    operational_batches_sequence: list[Batch]
+    # TODO: Check if it's necessary.
+    operational_batches_hash_index_map: dict[str, int]
+    missed_batches_map: dict[str, Batch]
+    # TODO: Store the batch hash or index instead of the entire batch.
+    last_sequenced_batch: Batch
+    last_locked_batch: Batch
+    last_finalized_batch: Batch
 
 
 class Batch(TypedDict, total=False):
@@ -47,20 +62,12 @@ class SignatureData(TypedDict, total=False):
     tag: int
 
 
-class App(TypedDict, total=False):
-    nodes_state: dict[str, Any]
-    initialized_batches_map: dict[str, Batch]
-    operational_batches_sequence: list[Batch]
-    operational_batches_hash_index_map: dict[str, int]
-    missed_batches_map: dict[str, Batch]
-    last_sequenced_batch: Batch
-    last_locked_batch: Batch
-    last_finalized_batch: Batch
-
-
 @typeguard.typechecked
 class InMemoryDB:
     """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
+
+    _GLOBAL_FIRST_BATCH_INDEX = 1
+    _NOT_SET_BATCH_INDEX = _GLOBAL_FIRST_BATCH_INDEX - 1
 
     # TODO: We only have one instantiation of this class, why we use locking and singleton here?
     _instance: InMemoryDB | None = None
@@ -155,7 +162,6 @@ class InMemoryDB:
                     finalized_batches
                 ),
                 "missed_batches_map": {},
-                # TODO: store batch hash instead of batch
                 "last_sequenced_batch": last_finalized_batch,
                 "last_locked_batch": last_finalized_batch,
                 "last_finalized_batch": last_finalized_batch,
@@ -163,7 +169,7 @@ class InMemoryDB:
 
         return result
 
-    # NOTE: Unused method.
+    # TODO: Remove the unused method.
     @staticmethod
     def _load_keys() -> dict[str, Any]:
         """Load keys from the snapshot file."""
@@ -267,7 +273,7 @@ class InMemoryDB:
     def get_initialized_batches_map(self, app_name: str) -> dict[str, Batch]:
         return self.apps[app_name]["initialized_batches_map"]
 
-    def get_entire_operational_batches_sequence(
+    def get_global_operational_batches_sequence(
         self, app_name: str, states: set[OperationalState], after: int = 0
     ) -> list[Batch]:
         """Get batches filtered by state and optionally by index."""
@@ -326,7 +332,7 @@ class InMemoryDB:
                 batch_hash
             ]
             return self.apps[app_name]["operational_batches_sequence"][
-                self._get_batch_relative_index(app_name, batch_index)
+                self._calculate_relative_index(app_name, batch_index)
             ]
         return {}
 
@@ -341,7 +347,7 @@ class InMemoryDB:
             if batch["timestamp"] < border
         ]
 
-    def init_batches(self, app_name: str, bodies: list[str]) -> None:
+    def init_batches(self, app_name: str, bodies: Iterable[str]) -> None:
         """Initialize batches of transactions with a given body."""
         if not bodies:
             return
@@ -359,10 +365,12 @@ class InMemoryDB:
                     "body": body,
                 }
 
-    def get_last_batch(self, app_name: str, state: OperationalState) -> Batch:
+    def get_last_operational_batch(
+        self, app_name: str, state: OperationalState | None
+    ) -> Batch:
         """Get the last batch for a given state."""
         match state:
-            case "sequenced":
+            case "sequenced" | None:
                 return self.apps[app_name]["last_sequenced_batch"]
             case "locked":
                 return self.apps[app_name]["last_locked_batch"]
@@ -563,14 +571,14 @@ class InMemoryDB:
     ) -> None:
         """Add missed batches."""
         self.apps[app_name]["missed_batches_map"].update(
-            self._generate_batch_map(missed_batches)
+            self._generate_batches_map(missed_batches)
         )
 
     def set_missed_batches(
         self, app_name: str, missed_batches: Iterable[Batch]
     ) -> None:
         """set missed batches."""
-        self.apps[app_name]["missed_batches_map"] = self._generate_batch_map(
+        self.apps[app_name]["missed_batches_map"] = self._generate_batches_map(
             missed_batches
         )
 
@@ -609,7 +617,7 @@ class InMemoryDB:
         app_name: str,
         new_sequencer_id: str,
         all_nodes_last_finalized_batch: Batch,
-    ):
+    ) -> None:
         """Reinitialize the database after a switch in the sequencer."""
         # TODO: should get the batches from other nodes if they are missing
         self.finalize_batches(
@@ -698,7 +706,7 @@ class InMemoryDB:
             self.apps[app_name]["operational_batches_hash_index_map"].pop(batch["hash"])
         self.apps[app_name]["operational_batches_sequence"] = self.apps[app_name][
             "operational_batches_sequence"
-        ][: self._get_batch_relative_index(app_name, index) + 1]
+        ][: self._calculate_relative_index(app_name, index) + 1]
         self.apps[app_name]["last_sequenced_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_locked_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_finalized_batch"] = all_nodes_last_finalized_batch
@@ -717,11 +725,11 @@ class InMemoryDB:
         if not loaded_finalized_batches or "finalized" not in states:
             return
 
-        # TODO: Remove duplication.
+        # TODO: Remove relative index calculation duplication.
         first_loaded_batch_index = loaded_finalized_batches[0]["index"]
-        relative_after = after - first_loaded_batch_index + 1
+        relative_after = after - first_loaded_batch_index
 
-        for batch in loaded_finalized_batches[relative_after:]:
+        for batch in loaded_finalized_batches[relative_after + 1 :]:
             if len(batches_sequence) >= zconfig.API_BATCHES_LIMIT:
                 break
 
@@ -737,16 +745,13 @@ class InMemoryDB:
         index_interval: portion.Interval,
         limit: int | None = None,
     ) -> list[Batch]:
-        index_interval = index_interval.intersection(
-            portion.closed(
-                self._get_first_batch_index(app_name),
-                self._get_last_batch_index(app_name),
-            )
+        feasible_index_interval = index_interval.intersection(
+            self._get_batch_index_interval(app_name)
         )
-        relative_index_interval = index_interval.apply(
+        relative_index_interval = feasible_index_interval.apply(
             lambda x: x.replace(
-                lower=self._get_batch_relative_index(app_name, x.lower),
-                upper=self._get_batch_relative_index(app_name, x.upper),
+                lower=self._calculate_relative_index(app_name, x.lower),
+                upper=self._calculate_relative_index(app_name, x.upper),
             )
         )
         return [
@@ -764,7 +769,7 @@ class InMemoryDB:
 
     def _get_operational_batch_by_index(self, app_name: str, index: int) -> Batch:
         return self.apps[app_name]["operational_batches_sequence"][
-            self._get_batch_relative_index(app_name, index)
+            self._calculate_relative_index(app_name, index)
         ]
 
     def _batch_exists(self, app_name: str, batch_hash: str) -> bool:
@@ -773,44 +778,38 @@ class InMemoryDB:
             or batch_hash in self.apps[app_name]["operational_batches_hash_index_map"]
         )
 
-    def _get_batch_relative_index(self, app_name: str, index: int) -> int:
-        return index - self._get_first_batch_index(app_name, default=1)
+    def _calculate_relative_index(self, app_name: str, index: int) -> int:
+        return index - self._get_first_batch_index(app_name)
 
     def _get_batch_index_interval(
         self,
         app_name: str,
         state: OperationalState | None = None,
     ) -> portion.Interval:
-        return portion.closedopen(
-            self._get_first_batch_index(app_name, state, default=0),
-            self._get_last_batch_index(app_name, state, default=0),
+        return portion.closed(
+            self._get_first_batch_index(app_name, state),
+            self._get_last_batch_index(app_name, state),
         )
 
     def _get_first_batch_index(
         self,
         app_name: str,
         state: OperationalState | None = None,
-        default: int = 0,
+        default: int = _GLOBAL_FIRST_BATCH_INDEX,
     ) -> int:
-        if self._has_any_operational_batch(app_name, state):
-            return self.apps[app_name]["operational_batches_sequence"][0]["index"]
-        else:
+        if not self._has_any_operational_batch(app_name, state):
             return default
+        return self.apps[app_name]["operational_batches_sequence"][0]["index"]
 
     def _get_last_batch_index(
         self,
         app_name: str,
         state: OperationalState | None = None,
-        default: int = 0,
+        default: int = _NOT_SET_BATCH_INDEX,
     ) -> int:
-        if state is None:
-            batches_sequence = self.apps[app_name]["operational_batches_sequence"]
-            if batches_sequence:
-                return batches_sequence[-1]["index"]
-            else:
-                return default
-        else:
-            return self.get_last_batch(app_name, state).get("index", default)
+        if not self._has_any_operational_batch(app_name, state):
+            return default
+        return self.get_last_operational_batch(app_name, state).get("index", default)
 
     def _has_any_batch(
         self,
@@ -832,7 +831,7 @@ class InMemoryDB:
         return self._get_last_batch_index(app_name, state, default=0) != 0
 
     @classmethod
-    def _generate_batch_map(cls, batches: Iterable[Batch]) -> dict[str, Batch]:
+    def _generate_batches_map(cls, batches: Iterable[Batch]) -> dict[str, Batch]:
         return {batch["hash"]: batch for batch in batches}
 
     @classmethod

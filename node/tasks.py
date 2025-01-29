@@ -48,10 +48,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         app_name=app_name
     )
 
-    last_synced_batch: dict[str, Any] = zdb.get_last_batch(
+    last_synced_batch: dict[str, Any] = zdb.get_last_operational_batch(
         app_name=app_name, state="sequenced"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_batch(
+    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch(
         app_name=app_name, state="locked"
     )
 
@@ -401,7 +401,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
 
 def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
     """Find the last finalized batch from all nodes."""
-    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(
         app_name=app_name, state="finalized"
     )
 

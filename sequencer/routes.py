@@ -60,15 +60,15 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     with zdb.sequencer_put_batches_lock:
         zdb.sequencer_init_batches(app_name=req_data["app_name"], initializing_batches=req_data["batches"])
 
-    batches_sequence = zdb.get_entire_operational_batches_sequence(
+    batches_sequence = zdb.get_global_operational_batches_sequence(
         app_name=req_data["app_name"],
         states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
-    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(
         app_name=req_data["app_name"], state="finalized"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_batch(
+    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch(
         app_name=req_data["app_name"], state="locked"
     )
     if batches_sequence:

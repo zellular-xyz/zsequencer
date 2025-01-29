@@ -115,9 +115,9 @@ def get_state() -> Response:
     }
 
     for app_name in list(zconfig.APPS.keys()):
-        last_sequenced_batch = zdb.get_last_batch(app_name, "sequenced")
-        last_locked_batch = zdb.get_last_batch(app_name, "locked")
-        last_finalized_batch = zdb.get_last_batch(app_name, "finalized")
+        last_sequenced_batch = zdb.get_last_operational_batch(app_name, "sequenced")
+        last_locked_batch = zdb.get_last_operational_batch(app_name, "locked")
+        last_finalized_batch = zdb.get_last_operational_batch(app_name, "finalized")
 
         data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_batch.get("index", 0),
@@ -136,7 +136,7 @@ def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(app_name, "finalized")
     return success_response(data=last_finalized_batch)
 
 
@@ -151,7 +151,7 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches_sequence = zdb.get_entire_operational_batches_sequence(app_name, { state }, after)
+    batches_sequence = zdb.get_global_operational_batches_sequence(app_name, { state }, after)
     if not batches_sequence:
         return success_response(data=None)
 
