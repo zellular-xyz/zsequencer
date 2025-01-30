@@ -85,6 +85,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
                 zlogger.warning(response["error"]["message"])
                 return {}
             zdb.add_missed_batches(app_name=app_name, batches_data=initialized_batches)
+
             return {}
 
         sequencer_resp = response["data"]
@@ -232,7 +233,8 @@ def is_sync_point_signature_verified(
                                                nonsigners)
 
     if not _validate_nonsigners_stake(nonsigners_stake, network_state.total_stake):
-        zlogger.exception(f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
+        zlogger.exception(
+            f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
         return False
 
     data: str = json.dumps(

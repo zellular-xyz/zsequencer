@@ -238,12 +238,12 @@ class InMemoryDB:
         if not bodies:
             return
 
-        batches: dict[str, Any] = self.apps[app_name]["batches"]
+        inited_batches: dict[str, Any] = {}
         for body in bodies:
             now: int = int(time.time())
             batch_hash: str = utils.gen_hash(body)
-            if batch_hash not in batches:
-                batches[batch_hash] = {
+            if batch_hash not in self.apps[app_name]["batches"]:
+                inited_batches[batch_hash] = {
                     "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
                     "timestamp": now,
@@ -251,6 +251,7 @@ class InMemoryDB:
                     "hash": batch_hash,
                     "body": body,
                 }
+        self.apps[app_name]["batches"] = {**self.apps[app_name]["batches"], **inited_batches}
 
     def get_last_batch(self, app_name: str, state: str) -> dict[str, Any]:
         """Get the last batch for a given state."""

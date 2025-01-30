@@ -7,20 +7,20 @@ from flask import Blueprint, Response, request
 
 from common import utils
 from common.db import zdb
-from common.logger import zlogger
 from common.errors import ErrorCodes
+from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
-
 from . import tasks
 
 node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
+@utils.log_execution_time(log_file_path="/tmp/zellular-simulation-logs/put_batch_executions.log")
 @utils.validate_request
 @utils.not_sequencer
-def put_batches(app_name: str) -> Response:
+def put_batch(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
@@ -29,6 +29,21 @@ def put_batches(app_name: str) -> Response:
     data = request.data.decode('latin-1')
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
+    return success_response(data={}, message="The batch is received successfully.")
+
+
+@node_blueprint.route("/<string:app_name>/bulk-batches", methods=["PUT"])
+@utils.validate_request
+@utils.not_sequencer
+def put_batches(app_name: str) -> Response:
+    """Put a new batch into the database."""
+    if not app_name:
+        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
+    if app_name not in list(zconfig.APPS):
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
+    batches = [str(item) for item in list(request.get_json())]
+    zlogger.info(f"The batch is added. app: {app_name}, number of batches: {len(batches)}.")
+    zdb.init_batches(app_name, batches)
     return success_response(data={}, message="The batch is received successfully.")
 
 
@@ -73,12 +88,12 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-    
+
     for app_name, missed_batches in req_data["apps_missed_batches"].items():
         batches = [batch["body"] for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
-    
+
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_request
@@ -151,15 +166,16 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches: dict[str, dict] = zdb.get_batches(app_name, { state }, after)
+    batches: dict[str, dict] = zdb.get_batches(app_name, {state}, after)
     if len(batches) == 0:
         return success_response(data=None)
 
     batches: list[dict] = list(batches.values())
-    batches.sort(key = lambda batch: batch["index"])
+    batches.sort(key=lambda batch: batch["index"])
 
     for i in range(len(batches)):
-        assert batches[i]["index"] == after + i + 1, f'error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}'
+        assert batches[i][
+                   "index"] == after + i + 1, f'error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}'
 
     first_chaining_hash: str = batches[0]["chaining_hash"]
 
