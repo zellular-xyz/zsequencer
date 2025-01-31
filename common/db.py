@@ -15,7 +15,6 @@ from typing import Literal
 import itertools
 import portion  # type: ignore[import-untyped]
 from typing import TypedDict, Iterable
-import typeguard  # TODO: Remove.
 
 
 State = Literal["initialized", "sequenced", "locked", "finalized"]
@@ -62,7 +61,6 @@ class SignatureData(TypedDict, total=False):
     tag: int
 
 
-@typeguard.typechecked
 class InMemoryDB:
     """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
 
@@ -133,13 +131,13 @@ class InMemoryDB:
             try:
                 self._fetch_apps()
             except:
-                zlogger.error("An unexpected error occurred while fetching apps data")
+                zlogger.error("An unexpected error occurred while fetching apps data.")
 
             try:
                 zconfig.fetch_network_state()
             except:
                 zlogger.error(
-                    "An unexpected error occurred while fetching network state"
+                    "An unexpected error occurred while fetching network state."
                 )
 
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
@@ -269,7 +267,7 @@ class InMemoryDB:
         self.apps[app_name]["operational_batches_sequence"] = (
             self._filter_operational_batches_sequence(
                 app_name,
-                self._get_batch_index_interval(app_name, state="finalized").complement()
+                self._get_batch_index_interval(app_name, "finalized").complement()
                 | portion.open(remove_border, portion.inf),
             )
         )
@@ -349,7 +347,10 @@ class InMemoryDB:
         return [
             batch
             for batch in self._filter_operational_batches_sequence(
-                app_name, self._get_batch_index_interval(app_name, "sequenced")
+                app_name,
+                self._get_batch_index_interval(
+                    app_name, "sequenced", exclude_next_states=True
+                ),
             )
             if batch["timestamp"] < border
         ]
@@ -469,7 +470,7 @@ class InMemoryDB:
 
         for batch in self._filter_operational_batches_sequence(
             app_name,
-            self._get_batch_index_interval(app_name, state="finalized").complement()
+            self._get_batch_index_interval(app_name, "finalized").complement()
             & portion.closed(
                 lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
             ),
@@ -617,9 +618,7 @@ class InMemoryDB:
             self.apps[app_name]["initialized_batches_map"].values(),
             self._filter_operational_batches_sequence(
                 app_name,
-                self._get_batch_index_interval(
-                    app_name, state="finalized"
-                ).complement(),
+                self._get_batch_index_interval(app_name, "finalized").complement(),
             ),
         )
         now = int(time.time())
@@ -817,8 +816,9 @@ class InMemoryDB:
         self,
         app_name: str,
         state: OperationalState | None = None,
+        exclude_next_states: bool = False,
     ) -> portion.Interval:
-        return portion.closed(
+        result = portion.closed(
             self._get_first_batch_index(
                 app_name, state, default=self._GLOBAL_FIRST_BATCH_INDEX
             ),
@@ -826,6 +826,17 @@ class InMemoryDB:
                 app_name, state, default=self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
             ),
         )
+
+        if (
+            state is not None
+            and exclude_next_states
+            and (next_state := self._get_next_operational_state(state))
+        ):
+            result -= self._get_batch_index_interval(
+                app_name, next_state, exclude_next_states=False
+            )
+
+        return result
 
     def _get_first_batch_index(
         self,
@@ -887,6 +898,18 @@ class InMemoryDB:
         cls, batches: Iterable[Batch]
     ) -> dict[str, int]:
         return {batch["hash"]: batch["index"] for batch in batches}
+
+    @classmethod
+    def _get_next_operational_state(
+        cls, state: OperationalState
+    ) -> OperationalState | None:
+        match state:
+            case "sequenced":
+                return "locked"
+            case "locked":
+                return "finalized"
+            case "finalized":
+                return None
 
 
 zdb: InMemoryDB = InMemoryDB()
