@@ -233,7 +233,7 @@ class InMemoryDB:
         )
         try:
             self._save_finalized_batches(app_name, index, snapshot_border)
-            self._prune_initialized_and_old_operational_batches(app_name, remove_border)
+            self._prune_old_finalized_batches(app_name, remove_border)
         except Exception as error:
             zlogger.exception(
                 "An error occurred while saving snapshot for %s at index %d: %s",
@@ -259,11 +259,8 @@ class InMemoryDB:
                 file,
             )
 
-    def _prune_initialized_and_old_operational_batches(
-        self, app_name: str, remove_border: int
-    ) -> None:
+    def _prune_old_finalized_batches(self, app_name: str, remove_border: int) -> None:
         """Helper function to prune old batches from memory."""
-        self.apps[app_name]["initialized_batches_map"] = {}
         self.apps[app_name]["operational_batches_sequence"] = (
             self._filter_operational_batches_sequence(
                 app_name,
