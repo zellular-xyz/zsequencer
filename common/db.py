@@ -275,7 +275,9 @@ class InMemoryDB:
         )
 
     def get_initialized_batches_map(self, app_name: str) -> dict[str, Batch]:
-        return self.apps[app_name]["initialized_batches_map"]
+        # NOTE: We copy the dictionary in order to make it safe to work on it
+        # without the fear of change in the middle of processing.
+        return self.apps[app_name]["initialized_batches_map"].copy()
 
     def get_global_operational_batches_sequence(
         self,
