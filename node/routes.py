@@ -42,7 +42,7 @@ def put_batches(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     batches = [str(item) for item in list(request.get_json())]
-    zlogger.info(f"The batch is added. app: {app_name}, number of batches: {len(batches)}.")
+    zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
     zdb.init_batches(app_name, batches)
     return success_response(data={}, message="The batch is received successfully.")
 
