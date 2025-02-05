@@ -62,7 +62,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
 
     batches_sequence = zdb.get_global_operational_batches_sequence(
         app_name=req_data["app_name"],
-        states={"sequenced", "locked", "finalized"},
         after=req_data["sequenced_index"],
     )
     last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(

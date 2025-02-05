@@ -151,7 +151,7 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches_sequence = zdb.get_global_operational_batches_sequence(app_name, { state }, after)
+    batches_sequence = zdb.get_global_operational_batches_sequence(app_name, state, after)
     if not batches_sequence:
         return success_response(data=None)
 

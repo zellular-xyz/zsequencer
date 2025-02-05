@@ -14,7 +14,8 @@ from .logger import zlogger
 from typing import Literal
 import itertools
 import portion  # type: ignore[import-untyped]
-from typing import TypedDict, Iterable
+from typing import TypedDict
+from collections.abc import Iterable
 
 
 State = Literal["initialized", "sequenced", "locked", "finalized"]
@@ -62,40 +63,27 @@ class SignatureData(TypedDict, total=False):
 
 
 class InMemoryDB:
-    """A thread-safe singleton in-memory database class to manage batches of transactions and states for apps."""
+    """In-memory database class to manage batches of transactions and states for apps."""
 
     _GLOBAL_FIRST_BATCH_INDEX = 1
     _BEFORE_GLOBAL_FIRST_BATCH_INDEX = _GLOBAL_FIRST_BATCH_INDEX - 1
     _NOT_SET_BATCH_INDEX = _GLOBAL_FIRST_BATCH_INDEX - 1
 
-    # TODO: We only have one instantiation of this class, why we use locking and
-    # singleton here?
-    _instance: InMemoryDB | None = None
-    instance_lock: threading.Lock = threading.Lock()
-
     # TODO: It seems that there are some possible race-condition situations where
     # multiple data structures are mutated together, or a chain of methods needs
     # to be called atomically.
 
-    def __new__(cls) -> InMemoryDB:
-        """Singleton pattern implementation to ensure only one instance exists."""
-        with cls.instance_lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._initialize()
-                fetching_thread = Thread(
-                    target=cls._instance._fetch_apps_and_network_state_periodically
-                )
-                fetching_thread.start()
-            return cls._instance
-
-    def _initialize(self) -> None:
+    def __init__(self) -> None:
         """Initialize the InMemoryDB instance."""
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self._last_saved_index = self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
         self.is_sequencer_down = False
         self.apps = self._load_finalized_batches_for_all_apps()
+        self._fetching_thread = Thread(
+            target=self._fetch_apps_and_network_state_periodically
+        )
+        self._fetching_thread.start()
 
     def _fetch_apps(self) -> None:
         """Fetchs the apps data."""
@@ -150,14 +138,7 @@ class InMemoryDB:
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
             finalized_batches = cls._load_finalized_batches(app_name)
-            last_finalized_batch: Batch = next(
-                (
-                    batch
-                    for batch in reversed(finalized_batches)
-                    if batch.get("finalization_signature")
-                ),
-                {},
-            )
+            last_finalized_batch = finalized_batches[-1] if finalized_batches else {}
             result[app_name] = {
                 "nodes_state": {},
                 "initialized_batches_map": {},
@@ -222,50 +203,53 @@ class InMemoryDB:
             )
         return []
 
-    def _save_snapshot_then_prune(self, app_name: str, index: int) -> None:
-        """
-        Save a snapshot of the finalized batches to a file and prune old \
-        initialized and operational batches.
-        """
-        snapshot_border = index - zconfig.SNAPSHOT_CHUNK
-        remove_border = max(
-            index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER, 0
-        )
+    def _save_finalized_chunk_then_prune(
+        self, app_name: str, snapshot_index: int
+    ) -> None:
         try:
-            self._save_finalized_batches(app_name, index, snapshot_border)
-            self._prune_old_finalized_batches(app_name, remove_border)
+            snapshot_border_index = max(
+                snapshot_index - zconfig.SNAPSHOT_CHUNK,
+                self._BEFORE_GLOBAL_FIRST_BATCH_INDEX,
+            )
+            self._save_finalized_batches_chunk_to_file(
+                app_name,
+                border_index=snapshot_border_index,
+                end_index=snapshot_index,
+            )
+
+            remove_border_index = max(
+                snapshot_index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER,
+                self._BEFORE_GLOBAL_FIRST_BATCH_INDEX,
+            )
+            self._prune_old_finalized_batches(app_name, remove_border_index)
         except Exception as error:
             zlogger.exception(
                 "An error occurred while saving snapshot for %s at index %d: %s",
                 app_name,
-                index,
+                snapshot_index,
                 error,
             )
 
-    def _save_finalized_batches(
-        self, app_name: str, index: int, snapshot_border: int
+    def _save_finalized_batches_chunk_to_file(
+        self, app_name: str, border_index: int, end_index: int
     ) -> None:
-        """Helper function to save batches to a snapshot file."""
         snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
         with gzip.open(
-            snapshot_dir + f"/{str(index).zfill(7)}.json.gz", "wt", encoding="UTF-8"
+            snapshot_dir + f"/{str(end_index).zfill(7)}.json.gz", "wt", encoding="UTF-8"
         ) as file:
             json.dump(
                 self._filter_operational_batches_sequence(
                     app_name,
-                    self._get_batch_index_interval(app_name, "finalized")
-                    & portion.openclosed(snapshot_border, index),
+                    portion.openclosed(border_index, end_index),
                 ),
                 file,
             )
 
-    def _prune_old_finalized_batches(self, app_name: str, remove_border: int) -> None:
-        """Helper function to prune old batches from memory."""
+    def _prune_old_finalized_batches(self, app_name: str, border_index: int) -> None:
         self.apps[app_name]["operational_batches_sequence"] = (
             self._filter_operational_batches_sequence(
                 app_name,
-                self._get_batch_index_interval(app_name, "finalized").complement()
-                | portion.open(remove_border, portion.inf),
+                portion.open(border_index, portion.inf),
             )
         )
         self.apps[app_name]["operational_batches_hash_index_map"] = (
@@ -282,49 +266,54 @@ class InMemoryDB:
     def get_global_operational_batches_sequence(
         self,
         app_name: str,
-        states: set[OperationalState],
+        state: OperationalState | None = None,
         after: int = _BEFORE_GLOBAL_FIRST_BATCH_INDEX,
     ) -> list[Batch]:
         """Get batches filtered by state and optionally by index."""
         batches_sequence: list[Batch] = []
         batches_hash_set: set[str] = set()  # TODO: Check if this is necessary.
 
-        last_finalized_index = self.apps[app_name]["last_finalized_batch"].get(
-            "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
-        )
-        current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
-        next_chunk = math.ceil(
-            (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
-        )
-        finalized_chunk = math.ceil(last_finalized_index / zconfig.SNAPSHOT_CHUNK)
-        if current_chunk != finalized_chunk:
-            loaded_finalized_batches = self._load_finalized_batches(app_name, after + 1)
-            self._filter_then_add_the_finalized_batches(
-                loaded_finalized_batches,
-                states,
-                after,
-                batches_sequence,
-                batches_hash_set,
-            )
+        includes_finalized_batches = state is None or state == "finalized"
 
-        if len(batches_sequence) < zconfig.API_BATCHES_LIMIT and next_chunk not in [
-            current_chunk,
-            finalized_chunk,
-        ]:
-            loaded_finalized_batches = self._load_finalized_batches(
-                app_name, after + 1 + len(batches_sequence)
+        if includes_finalized_batches:
+            last_finalized_index = self.apps[app_name]["last_finalized_batch"].get(
+                "index", self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
             )
-            self._filter_then_add_the_finalized_batches(
-                loaded_finalized_batches,
-                states,
-                after,
-                batches_sequence,
-                batches_hash_set,
+            current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
+            next_chunk = math.ceil(
+                (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
             )
+            finalized_chunk = math.ceil(last_finalized_index / zconfig.SNAPSHOT_CHUNK)
 
-        self._filter_then_add_the_finalized_batches(
-            self.apps[app_name]["operational_batches_sequence"],
-            states,
+            if current_chunk != finalized_chunk:
+                loaded_finalized_batches = self._load_finalized_batches(
+                    app_name, after + 1
+                )
+                self._append_unique_batches_after_index(
+                    loaded_finalized_batches,
+                    after,
+                    batches_sequence,
+                    batches_hash_set,
+                )
+
+            if len(batches_sequence) < zconfig.API_BATCHES_LIMIT and next_chunk not in [
+                current_chunk,
+                finalized_chunk,
+            ]:
+                loaded_finalized_batches = self._load_finalized_batches(
+                    app_name, after + 1 + len(batches_sequence)
+                )
+                self._append_unique_batches_after_index(
+                    loaded_finalized_batches,
+                    after,
+                    batches_sequence,
+                    batches_hash_set,
+                )
+
+        self._append_unique_batches_after_index(
+            self._filter_operational_batches_sequence(
+                app_name, self._get_batch_index_interval(app_name, state)
+            ),
             after,
             batches_sequence,
             batches_hash_set,
@@ -465,6 +454,10 @@ class InMemoryDB:
             signature_data["hash"]
             not in self.apps[app_name]["operational_batches_hash_index_map"]
         ):
+            zlogger.warning(
+                f"The locking {signature_data=} hash couldn't be found in the "
+                "operational batches."
+            )
             return
 
         for batch in self._filter_operational_batches_sequence(
@@ -499,6 +492,10 @@ class InMemoryDB:
             signature_data["hash"]
             not in self.apps[app_name]["operational_batches_hash_index_map"]
         ):
+            zlogger.warning(
+                f"The finalizing {signature_data=} hash couldn't be found in the "
+                "operational batches."
+            )
             return
 
         snapshot_indexes: list[int] = []
@@ -524,7 +521,7 @@ class InMemoryDB:
             if snapshot_index <= self._last_saved_index:
                 continue
             self._last_saved_index = snapshot_index
-            self._save_snapshot_then_prune(app_name, snapshot_index)
+            self._save_finalized_chunk_then_prune(app_name, snapshot_index)
 
     def upsert_node_state(
         self,
@@ -739,33 +736,33 @@ class InMemoryDB:
         self.apps[app_name]["last_locked_batch"] = all_nodes_last_finalized_batch
         self.apps[app_name]["last_finalized_batch"] = all_nodes_last_finalized_batch
 
-    def _filter_then_add_the_finalized_batches(
+    # TODO: This function should be removed as it contains many duplicate
+    # implementations with other BatchesSequence methods in this class.
+    def _append_unique_batches_after_index(
         self,
-        loaded_finalized_batches: list[Batch],
-        states: set[OperationalState],
+        source_batches_sequence: list[Batch],
         after: int,
         # TODO: In Python, it's very unusual to use parameters as the output of
         # a function.
-        batches_sequence: list[Batch],
-        batches_hash_set: set[str],
+        target_batches_sequence: list[Batch],
+        target_batches_hash_set: set[str],
     ) -> None:
-        """Filter and add batches to the result based on state and index."""
-        if not loaded_finalized_batches or "finalized" not in states:
+        """Filter and add batches to the result based on index."""
+        if not source_batches_sequence:
             return
 
-        # TODO: Remove relative index calculation duplication.
-        first_loaded_batch_index = loaded_finalized_batches[0]["index"]
-        relative_after = after - first_loaded_batch_index
+        first_batch_index = source_batches_sequence[0]["index"]
+        relative_after = after - first_batch_index
 
-        for batch in loaded_finalized_batches[relative_after + 1 :]:
-            if len(batches_sequence) >= zconfig.API_BATCHES_LIMIT:
+        for batch in source_batches_sequence[relative_after + 1 :]:
+            if len(target_batches_sequence) >= zconfig.API_BATCHES_LIMIT:
                 break
 
-            if batch["hash"] in batches_hash_set:
+            if batch["hash"] in target_batches_hash_set:
                 continue
 
-            batches_sequence.append(batch)
-            batches_hash_set.add(batch["hash"])
+            target_batches_sequence.append(batch)
+            target_batches_hash_set.add(batch["hash"])
 
     def _filter_operational_batches_sequence(
         self,
@@ -864,20 +861,6 @@ class InMemoryDB:
                 "index", default
             )
 
-    def _has_any_batch(
-        self,
-        app_name: str,
-        state: State | None = None,
-    ) -> bool:
-        if state is None:
-            return bool(
-                self.apps[app_name]["initialized_batches_map"]
-            ) or self._has_any_operational_batch(app_name, state)
-        elif state == "initialized":
-            return bool(self.apps[app_name]["initialized_batches_map"])
-        else:
-            return self._has_any_operational_batch(app_name, state)
-
     def _has_any_operational_batch(
         self, app_name: str, state: OperationalState | None = None
     ) -> bool:
@@ -911,4 +894,4 @@ class InMemoryDB:
                 return None
 
 
-zdb: InMemoryDB = InMemoryDB()
+zdb = InMemoryDB()
