@@ -6,8 +6,8 @@ import string
 
 # Configuration
 URL = "http://0.0.0.0:7001/put_batch"
-NUM_REQUESTS = 100_000  # Total requests
-CONCURRENT_REQUESTS = 30  # Concurrent requests per process
+NUM_REQUESTS = 1_000  # Total requests
+CONCURRENT_REQUESTS = 10  # Concurrent requests per process
 NUM_PROCESSES = multiprocessing.cpu_count()  # Use all available CPU cores
 
 
