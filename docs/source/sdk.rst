@@ -36,7 +36,7 @@ Zellular Testnet is deployed on the EigenLayer Holesky network. The list of oper
 
     curl \
       --header 'content-type: application/json' \
-      --url 'https://api.studio.thegraph.com/query/85556/bls_apk_registry/version/latest' \
+      --url 'https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest' \
       --data '{"query":"{ operators { id socket stake } }"}'
 
 
