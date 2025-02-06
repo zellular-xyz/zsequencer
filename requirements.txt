@@ -8,3 +8,4 @@ eigensdk==0.0.3
 requests==2.32.3
 pydantic==2.9.2
 tenacity==9.0.0
+portion==2.6.0
