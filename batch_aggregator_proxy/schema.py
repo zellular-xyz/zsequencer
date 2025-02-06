@@ -19,4 +19,4 @@ class ProxyConfig(BaseModel):
                    NODE_HOST=os.getenv("ZSEQUENCER_HOST"),
                    NODE_PORT=int(os.getenv("ZSEQUENCER_PORT")),
                    FLUSH_THRESHOLD_VOLUME=int(os.getenv("PROXY_FLUSH_THRESHOLD_VOLUME", "2000")),
-                   WORKERS_COUNT=int(os.getenv("PROXY_WORKERS_COUNT", "4")))
+                   WORKERS_COUNT=int(os.getenv("PROXY_WORKERS_COUNT", "10")))

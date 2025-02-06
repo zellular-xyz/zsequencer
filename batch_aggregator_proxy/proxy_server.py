@@ -81,6 +81,3 @@ async def forward_request(full_path: str, request: Request):
         return JSONResponse(content=response.json(), status_code=response.status_code)
     except requests.RequestException as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
-
-# if __name__ == "__main__":
-#     uvicorn.run(app, host=config.PROXY_HOST, port=config.PROXY_PORT, workers=config.WORKERS_COUNT)
