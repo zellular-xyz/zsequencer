@@ -37,7 +37,7 @@ def send_batches() -> None:
             response = send_app_batches(app_name).get("data", {})
             sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
             if not sequencer_last_finalized_hash or \
-                    zdb.get_batch(app_name, sequencer_last_finalized_hash):
+                    zdb.get_batch_or_empty(app_name, sequencer_last_finalized_hash):
                 zconfig.IS_SYNCING = False
                 break
 
@@ -186,10 +186,13 @@ def check_censorship(
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """confirm and sign the sync point"""
-    batch: dict[str, Any] = zdb.get_batch(sync_point["app_name"], sync_point["hash"])
-    for key in ["app_name", "state", "index", "hash", "chaining_hash"]:
-        if batch.get(key) != sync_point[key]:
-            return ""
+    batch: dict[str, Any] = zdb.get_batch_or_empty(sync_point["app_name"], sync_point["hash"])
+    batch_state = zdb.get_batch_state_by_index_or_none(sync_point["app_name"], batch.get("index", 0))
+    if any(
+        batch.get(key) != sync_point[key]
+        for key in ["app_name", "index", "hash", "chaining_hash"]
+    ) or batch_state != sync_point["state"]:
+        return ""
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature
