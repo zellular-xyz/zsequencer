@@ -43,7 +43,6 @@ class Batch(TypedDict, total=False):
     body: str
     index: int
     hash: str
-    state: State
     chaining_hash: str
     lock_signature: str
     locked_nonsigners: list[str]
@@ -321,13 +320,27 @@ class InMemoryDB:
 
         return batches_sequence
 
-    def get_batch(self, app_name: str, batch_hash: str) -> Batch:
+    def get_batch_or_empty(self, app_name: str, batch_hash: str) -> Batch:
         """Get a batch by its hash."""
         if batch_hash in self.apps[app_name]["initialized_batches_map"]:
             return self.apps[app_name]["initialized_batches_map"][batch_hash]
         elif batch_hash in self.apps[app_name]["operational_batches_hash_index_map"]:
             return self._get_operational_batch_by_hash(app_name, batch_hash)
         return {}
+
+    def get_batch_state_by_index_or_none(
+        self, app_name: str, index: int
+    ) -> OperationalState | None:
+        if index < self._GLOBAL_FIRST_BATCH_INDEX:
+            return None
+
+        for state in reversed(self._get_operational_states_in_order()):
+            if index <= self._get_last_batch_index(
+                app_name, state, default=self._BEFORE_GLOBAL_FIRST_BATCH_INDEX
+            ):
+                return state
+
+        return None
 
     def get_still_sequenced_batches(self, app_name: str) -> list[Batch]:
         """Get batches that are not finalized based on the finalization time border."""
@@ -356,7 +369,6 @@ class InMemoryDB:
                     "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
                     "timestamp": now,
-                    "state": "initialized",
                     "hash": batch_hash,
                     "body": body,
                 }
@@ -399,7 +411,6 @@ class InMemoryDB:
             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
             batch.update(
                 {
-                    "state": "sequenced",
                     "index": index,
                     "chaining_hash": chaining_hash,
                 }
@@ -431,7 +442,6 @@ class InMemoryDB:
                     )
                     return
 
-            batch["state"] = "sequenced"
             batch["timestamp"] = now
 
             self.apps[app_name]["initialized_batches_map"].pop(batch["hash"], None)
@@ -459,15 +469,6 @@ class InMemoryDB:
                 "operational batches."
             )
             return
-
-        for batch in self._filter_operational_batches_sequence(
-            app_name,
-            self._get_batch_index_interval(app_name, "finalized").complement()
-            & portion.closed(
-                lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
-            ),
-        ):
-            batch["state"] = "locked"
 
         target_batch = self._get_operational_batch_by_hash(
             app_name, signature_data["hash"]
@@ -505,7 +506,6 @@ class InMemoryDB:
                 lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
             ),
         ):
-            batch["state"] = "finalized"
             if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
                 snapshot_indexes.append(batch["index"])
 
@@ -679,7 +679,6 @@ class InMemoryDB:
                 "hash": resequencing_batch["hash"],
                 "body": resequencing_batch["body"],
                 "index": index,
-                "state": "sequenced",
                 "chaining_hash": chaining_hash,
             }
             resequenced_batches.append(resequenced_batch)
@@ -717,7 +716,6 @@ class InMemoryDB:
                 "timestamp": batch["timestamp"],
                 "hash": batch["hash"],
                 "body": batch["body"],
-                "state": "initialized",
             }
             self.apps[app_name]["initialized_batches_map"][
                 batch["hash"]
@@ -885,13 +883,17 @@ class InMemoryDB:
     def _get_next_operational_state(
         cls, state: OperationalState
     ) -> OperationalState | None:
-        match state:
-            case "sequenced":
-                return "locked"
-            case "locked":
-                return "finalized"
-            case "finalized":
-                return None
+        operational_states = cls._get_operational_states_in_order()
+        state_index = operational_states.index(state)
+        return (
+            None
+            if state_index + 1 >= len(operational_states)
+            else operational_states[state_index + 1]
+        )
+
+    @classmethod
+    def _get_operational_states_in_order(cls) -> list[OperationalState]:
+        return ["sequenced", "locked", "finalized"]
 
 
 zdb = InMemoryDB()
