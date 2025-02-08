@@ -12,7 +12,7 @@ from eth_account.messages import SignableMessage, encode_defunct
 from flask import request
 from web3 import Account
 
-from common.file_logger import FileLogger
+
 from config import zconfig
 from . import errors, response_utils
 
@@ -42,31 +42,6 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     return decorated_function
 
-
-def log_execution_time(log_file_path: str):
-    """
-    Decorator to log the execution time of a function in nanoseconds.
-
-    :param log_file_path: Path to the log file where execution times will be logged.
-    """
-    logger = FileLogger(file_path=log_file_path)
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = time.perf_counter_ns()  # Start timing in nanoseconds
-            result = func(*args, **kwargs)  # Call the original function
-            end_time = time.perf_counter_ns()  # End timing in nanoseconds
-            execution_time_ns = end_time - start_time  # Calculate execution time in nanoseconds
-
-            # Log the execution time
-            logger.log(f"Execution time of {func.__name__}: {execution_time_ns} ns")
-
-            return result
-
-        return wrapper
-
-    return decorator
 
 def validate_request(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""

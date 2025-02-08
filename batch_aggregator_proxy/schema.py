@@ -14,9 +14,9 @@ class ProxyConfig(BaseModel):
 
     @classmethod
     def from_env(cls):
-        return cls(PROXY_HOST=os.getenv("PROXY_HOST"),
-                   PROXY_PORT=int(os.getenv("PROXY_PORT")),
+        return cls(PROXY_HOST=os.getenv("ZSEQUENCER_PROXY_HOST"),
+                   PROXY_PORT=int(os.getenv("ZSEQUENCER_PROXY_PORT")),
                    NODE_HOST=os.getenv("ZSEQUENCER_HOST"),
                    NODE_PORT=int(os.getenv("ZSEQUENCER_PORT")),
-                   FLUSH_THRESHOLD_VOLUME=int(os.getenv("PROXY_FLUSH_THRESHOLD_VOLUME", "2000")),
-                   WORKERS_COUNT=int(os.getenv("PROXY_WORKERS_COUNT", "10")))
+                   FLUSH_THRESHOLD_VOLUME=int(os.getenv("ZSEQUENCER_PROXY_FLUSH_THRESHOLD_VOLUME", "2000")),
+                   WORKERS_COUNT=int(os.getenv("ZSEQUENCER_PROXY_WORKERS_COUNT", "10")))

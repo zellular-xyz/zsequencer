@@ -1,5 +1,4 @@
 import uvicorn
-import os
 from batch_aggregator_proxy import ProxyConfig
 
 

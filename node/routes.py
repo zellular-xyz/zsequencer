@@ -16,34 +16,21 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
-@node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.log_execution_time(log_file_path="/tmp/zellular-simulation-logs/put_batch_executions.log")
+@node_blueprint.route("/bulk-batches", methods=["PUT"])
 @utils.validate_request
 @utils.not_sequencer
-def put_batch(app_name: str) -> Response:
+def put_batches() -> Response:
     """Put a new batch into the database."""
-    if not app_name:
-        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-    if app_name not in list(zconfig.APPS):
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    data = request.data.decode('latin-1')
-    zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
-    zdb.init_batches(app_name, [data])
-    return success_response(data={}, message="The batch is received successfully.")
+    valid_apps = set(zconfig.APPS)
+    batches_mapping = request.get_json()
 
-
-@node_blueprint.route("/<string:app_name>/bulk-batches", methods=["PUT"])
-@utils.validate_request
-@utils.not_sequencer
-def put_batches(app_name: str) -> Response:
-    """Put a new batch into the database."""
-    if not app_name:
-        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
-    if app_name not in list(zconfig.APPS):
+    if any([(app not in valid_apps) for app in batches_mapping.keys()]):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    batches = [str(item) for item in list(request.get_json())]
-    zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
-    zdb.init_batches(app_name, batches)
+
+    for app_name, batches in batches_mapping.items():
+        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
+        zdb.init_batches(app_name, [str(item) for item in list(batches)])
+
     return success_response(data={}, message="The batch is received successfully.")
 
 
@@ -171,7 +158,8 @@ def get_batches(app_name: str, state: str) -> Response:
         return success_response(data=None)
 
     for i, batch in enumerate(batches_sequence):
-        assert batch["index"] == after + i + 1, f'error in getting batches: {batch["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches_sequence]}\n{zdb.apps[app_name]["operational_batches_sequence"]}'
+        assert batch[
+                   "index"] == after + i + 1, f'error in getting batches: {batch["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches_sequence]}\n{zdb.apps[app_name]["operational_batches_sequence"]}'
 
     first_chaining_hash: str = batches_sequence[0]["chaining_hash"]
 
