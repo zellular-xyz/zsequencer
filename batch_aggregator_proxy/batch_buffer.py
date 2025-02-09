@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 
 import httpx
-
+from urllib.parse import urljoin
 from batch_aggregator_proxy.schema import ProxyConfig
 
 
@@ -37,7 +37,7 @@ class BatchBuffer:
         if not batches_mapping:
             return
 
-        url = f"{self.node_base_url}/bulk-batches"
+        url = urljoin(self.node_base_url, "node/bulk-batches")
 
         async with httpx.AsyncClient() as client:
             try:
