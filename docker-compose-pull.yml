@@ -15,3 +15,10 @@ services:
       - ZSEQUENCER_SNAPSHOT_PATH=/db
     env_file:
       - .env
+
+  batch_aggregator_proxy:
+    build:
+      context: ./batch_aggregator_proxy  # Path to the service directory
+      dockerfile: Dockerfile  # Dockerfile name (optional if named `Dockerfile`)
+    ports:
+      - "8000:8000"  # Map container port 8000 to host port 8000

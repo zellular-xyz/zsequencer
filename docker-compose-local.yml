@@ -19,3 +19,13 @@ services:
       - ZSEQUENCER_NODES_FILE=/app/nodes.json
     env_file:
       - .env
+
+  batch_aggregator_proxy:
+    build:
+      context: ./batch_aggregator_proxy  # Path to the service directory
+      dockerfile: Dockerfile  # Dockerfile name (optional if named `Dockerfile`)
+    ports:
+      - "8000:8000"  # Map container port 8000 to host port 8000
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1

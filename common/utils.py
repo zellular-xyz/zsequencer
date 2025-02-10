@@ -9,9 +9,11 @@ from typing import Any
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from web3 import Account
-from config import zconfig
 from flask import request
+from web3 import Account
+
+
+from config import zconfig
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
@@ -40,20 +42,26 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
 
     return decorated_function
 
+
 def validate_request(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
+
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        version = request.headers.get("Version","")
+        version = request.headers.get("Version", "")
         if (not version or version != zconfig.VERSION) and \
-            request.endpoint.startswith("sequencer"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
+                request.endpoint.startswith("sequencer"):
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
+                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
         if (version and version != zconfig.VERSION) and \
-            request.endpoint.startswith("node"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION, errors.ErrorMessages.INVALID_NODE_VERSION)
-        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch", "node.get_batches"]:
+                request.endpoint.startswith("node"):
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
+                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
+        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch",
+                                                           "node.get_batches"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
         return func(*args, **kwargs)
+
     return decorated_function
 
 
@@ -124,8 +132,8 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
 
     new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
     if (
-        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
-        or proof["new_sequencer_id"] != new_sequencer_id
+            proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
+            or proof["new_sequencer_id"] != new_sequencer_id
     ):
         return False
 
@@ -134,9 +142,9 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
         return False
 
     if not is_eth_sig_verified(
-        signature=proof["signature"],
-        node_id=proof["node_id"],
-        message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
+            signature=proof["signature"],
+            node_id=proof["node_id"],
+            message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
     ):
         return False
 
@@ -144,7 +152,7 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
 
 
 def get_switch_parameter_from_proofs(
-    proofs: list[dict[str, Any]],
+        proofs: list[dict[str, Any]],
 ) -> tuple[str | None, str | None]:
     """Get the switch parameters from proofs."""
     sequencer_counts: Counter = Counter()

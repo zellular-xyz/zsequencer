@@ -4,13 +4,12 @@ Module for handling BLS signatures and related operations.
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Dict, Set, Optional
 
-import aiohttp
+import requests
 from eigensdk.crypto.bls import attestation
 
 from config import zconfig
-
 from . import utils
 from .logger import zlogger
 
@@ -65,91 +64,104 @@ async def gather_signatures(
     return completed_results, stake_percent
 
 
-async def gather_and_aggregate_signatures(
-        data: dict[str, Any], node_ids: set[str]
-) -> dict[str, Any] | None:
+def gather_and_aggregate_signatures(
+        data: Dict[str, Any],
+        node_ids: Set[str]
+) -> Optional[Dict[str, Any]]:
     """
-    Gather and aggregate signatures from nodes.
-    Lock NODES and TAG and other zconfig
+    Gather and aggregate signatures from nodes synchronously.
+    Lock NODES and TAG and other zconfig.
     """
     tag = zconfig.NETWORK_STATUS_TAG
     network_state = zconfig.get_network_state(tag)
-    node_info, network_nodes_info, total_stake = (zconfig.NODE,
-                                                  network_state.nodes,
-                                                  network_state.total_stake)
+    node_info, network_nodes_info, total_stake = (
+        zconfig.NODE,
+        network_state.nodes,
+        network_state.total_stake,
+    )
 
+    # Calculate total stake
     stake = sum([network_nodes_info[node_id]['stake'] for node_id in node_ids]) + node_info['stake']
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
 
+    # Ensure all node_ids are valid
     if not node_ids.issubset(set(network_nodes_info.keys())):
         return None
 
+    # Generate the message hash
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
-    sign_tasks: dict[asyncio.Task, str] = {
-        asyncio.create_task(
-            request_signature(
+
+    # Synchronously request signatures from each node
+    signatures: Dict[str, Dict[str, Any]] = {}
+    for node_id in node_ids:
+        try:
+            signature_data = request_signature(
                 node_id=node_id,
                 url=f'{network_nodes_info[node_id]["socket"]}/node/sign_sync_point',
                 data=data,
                 message=message,
                 timeout=120,
             )
-        ): node_id
-        for node_id in node_ids
-    }
-    try:
-        signatures, stake_percent = await asyncio.wait_for(
-            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT
-        )
-    except asyncio.TimeoutError:
-        zlogger.exception(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
-        return None
+            if signature_data:
+                signatures[node_id] = signature_data
+        except Exception as e:
+            zlogger.exception(f"Failed to request signature from node {node_id}: {e}")
+
+    # Calculate the stake percentage of the collected signatures
+    collected_stake = sum([network_nodes_info[node_id]['stake'] for node_id in signatures.keys()])
+    stake_percent = 100 * (collected_stake + node_info['stake']) / total_stake
 
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None
 
+    # Add the local node's signature
     data["signature"] = bls_sign(message)
     signatures[node_info['id']] = data
 
+    # Identify nonsigners
     nonsigners = list(set(network_nodes_info.keys()) - set(signatures.keys()))
-    aggregated_signature: str = gen_aggregated_signature(
-        list(signatures.values())
-    )
+
+    # Generate the aggregated signature
+    aggregated_signature: str = gen_aggregated_signature(list(signatures.values()))
+
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return {
         "message": message,
         "signature": aggregated_signature,
         "nonsigners": nonsigners,
-        'tag': tag
+        'tag': tag,
     }
 
 
-async def request_signature(
-        node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120
-) -> dict[str, Any] | None:
+def request_signature(
+        node_id: str, url: str, data: Dict[str, Any], message: str, timeout: int = 120
+) -> Dict[str, Any] | None:
     """Request a signature from a node."""
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, json=data, timeout=timeout, headers=zconfig.HEADERS) as response:
-                response_json = await response.json()
-                if response_json.get("status") != "success":
-                    return None
+    try:
+        response = requests.post(url, json=data, timeout=timeout, headers=zconfig.HEADERS)
+        response_json = response.json()
 
-                signature: attestation.Signature = attestation.new_zero_signature()
-                signature.setStr(response_json["data"]["signature"].encode("utf-8"))
-                if not signature.verify(
-                        pub_key=zconfig.NODES[node_id]["public_key_g2"],
-                        msg_bytes=message.encode("utf-8"),
-                ):
-                    return None
-                return response_json["data"]
+        if response_json.get("status") != "success":
+            return None
 
-        except asyncio.TimeoutError:
-            zlogger.warning(f"Requesting signature from {node_id} timeout.")
-        except Exception as e:
-            zlogger.exception(f"An unexpected error occurred requesting signature from {node_id}:")
-        return None
+        signature: attestation.Signature = attestation.new_zero_signature()
+        signature.setStr(response_json["data"]["signature"].encode("utf-8"))
+
+        if not signature.verify(
+                pub_key=zconfig.NODES[node_id]["public_key_g2"],
+                msg_bytes=message.encode("utf-8"),
+        ):
+            return None
+
+        return response_json["data"]
+
+    except requests.Timeout:
+        zlogger.warning(f"Requesting signature from {node_id} timeout.")
+    except Exception as e:
+        zlogger.exception(f"An unexpected error occurred requesting signature from {node_id}:")
+
+    return None
 
 
 def gen_aggregated_signature(signatures: list[dict[str, Any] | None]) -> str:
