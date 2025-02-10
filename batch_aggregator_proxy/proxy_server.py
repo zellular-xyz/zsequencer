@@ -1,8 +1,9 @@
 import logging
 
 import httpx
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from batch_aggregator_proxy.batch_buffer import BatchBuffer
 from batch_aggregator_proxy.schema import ProxyConfig
@@ -16,15 +17,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 buffer_manager = BatchBuffer(config, logger)
 
 
+class BatchRequest(BaseModel):
+    batch: str
+
+
 @app.post("/{app_name}/put_batch")
-async def put_batch(app_name: str, batch: str = Form(...)):
+async def put_batch(app_name: str, request: BatchRequest):
     """Handles batch processing with an app_name."""
-    if not app_name or not batch:
+    if not app_name or not request.batch:
         raise HTTPException(status_code=400, detail="Both app_name and batch are required")
 
     # Log and process the batch asynchronously
-    await buffer_manager.add_batch(app_name=app_name, batch=batch)
-    logger.info(f"Received batch for app: {app_name}, data length: {len(batch)}.")
+    await buffer_manager.add_batch(app_name=app_name, batch=request.batch)
+    logger.info(f"Received batch for app: {app_name}, data length: {len(request.batch)}.")
 
     return {"message": "The batch is received successfully"}
 

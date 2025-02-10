@@ -32,10 +32,14 @@ class BatchBuffer:
 
         batches_mapping = defaultdict(list)
         batches_count = 0
+
         while not self.buffer_queue.empty() and batches_count <= self.flush_volume:
-            app_name, batch = await self.buffer_queue.get()
-            batches_mapping[app_name].append(batch)
-            batches_count += 1
+            try:
+                app_name, batch = self.buffer_queue.get_nowait()  # Use get_nowait to avoid task switching
+                batches_mapping[app_name].append(batch)
+                batches_count += 1
+            except asyncio.QueueEmpty:
+                break
 
         url = urljoin(self.node_base_url, "node/bulk-batches")
 
