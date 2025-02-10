@@ -3,8 +3,6 @@ services:
     container_name: zsequencer-node
     image: zellular/zsequencer:latest
     network_mode: host
-    ports:
-      - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
     volumes:
       - "${ZSEQUENCER_BLS_KEY_FILE}:/app/bls_key.json"
       - "${ZSEQUENCER_ECDSA_KEY_FILE}:/app/ecdsa_key.json"
@@ -17,8 +15,9 @@ services:
       - .env
 
   batch_aggregator_proxy:
-    build:
-      context: ./batch_aggregator_proxy  # Path to the service directory
-      dockerfile: Dockerfile  # Dockerfile name (optional if named `Dockerfile`)
+    container_name: zsequencer-proxy
+    image: zellular/zproxy:latest
     ports:
-      - "8000:8000"  # Map container port 8000 to host port 8000
+      - "${ZSEQUENCER_PROXY_PORT}:${ZSEQUENCER_PROXY_PORT}"
+    env_file:
+      - .env
