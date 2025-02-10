@@ -53,25 +53,22 @@ def run_node_tasks() -> None:
 
 def run_sequencer_tasks() -> None:
     """Run sequencer tasks in an asynchronous event loop."""
-    # loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-    # asyncio.set_event_loop(loop)
-    # loop.run_until_complete(run_sequencer_tasks_async())
-
-    run_sequencer_tasks_async()
+    loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_sequencer_tasks_async())
 
 
-def run_sequencer_tasks_async() -> None:
+async def run_sequencer_tasks_async() -> None:
     """Asynchronously run sequencer tasks."""
     while True:
-        # await asyncio.sleep(zconfig.SYNC_INTERVAL)
-        time.sleep(zconfig.SYNC_INTERVAL)
+        await asyncio.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
         if zdb.pause_node.is_set():
             continue
 
-        sequencer_tasks.sync()
+        await sequencer_tasks.sync()
 
 
 def run_flask_app(app: Flask) -> None:
@@ -84,6 +81,7 @@ def run_flask_app(app: Flask) -> None:
         port=zconfig.PORT,
         debug=False,
         threaded=True,
+        use_reloader=False,
     )
 
 

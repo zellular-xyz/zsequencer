@@ -3,7 +3,7 @@ from batch_aggregator_proxy import ProxyConfig
 
 
 def main():
-    config = ProxyConfig.from_env()
+    config = ProxyConfig()
 
     uvicorn.run("batch_aggregator_proxy.proxy_server:app",
                 host=config.PROXY_HOST,
