@@ -9,7 +9,7 @@ from batch_aggregator_proxy.batch_buffer import BatchBuffer
 from batch_aggregator_proxy.schema import ProxyConfig
 
 app = FastAPI()
-config = ProxyConfig()
+config = ProxyConfig.from_env()
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
