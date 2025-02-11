@@ -19,19 +19,34 @@ node_blueprint = Blueprint("node", __name__)
 @node_blueprint.route("/bulk-batches", methods=["PUT"])
 @utils.validate_request
 @utils.not_sequencer
-def put_batches() -> Response:
+def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
     valid_apps = set(zconfig.APPS)
     batches_mapping = request.get_json()
 
-    if any([(app not in valid_apps) for app in batches_mapping.keys()]):
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-
     for app_name, batches in batches_mapping.items():
+        if app_name not in valid_apps:
+            zlogger.warning(f"{app_name} is not a valid app.")
+            continue
+
         zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
         zdb.init_batches(app_name, [str(item) for item in list(batches)])
 
     return success_response(data={}, message="The batch is received successfully.")
+
+
+@node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
+@utils.validate_request
+@utils.not_sequencer
+def put_batches(app_name: str) -> Response:
+    """Put a new batch into the database."""
+    if not app_name:
+        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
+    if app_name not in list(zconfig.APPS):
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
+    data = request.data.decode('latin-1')
+    zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
+    zdb.init_batches(app_name, [data])
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])

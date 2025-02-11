@@ -24,6 +24,8 @@ class BatchRequest(BaseModel):
 @app.post("/{app_name}/put_batch")
 async def put_batch(app_name: str, request: BatchRequest):
     """Handles batch processing with an app_name."""
+
+    # FIXME: batch aggregator should reject accepting batches with invalid app_name
     if not app_name or not request.batch:
         raise HTTPException(status_code=400, detail="Both app_name and batch are required")
 
