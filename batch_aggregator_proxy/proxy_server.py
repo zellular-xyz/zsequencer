@@ -2,7 +2,7 @@ import logging
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from batch_aggregator_proxy.batch_buffer import BatchBuffer
@@ -47,23 +47,21 @@ async def forward_request(full_path: str, request: Request):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.request(
-                method=method,
-                url=target_url,
-                headers=headers,
-                params=query_params,
-                content=body
+                method, target_url, headers=headers, content=body
             )
-
-            # Try to return JSON response if possible
-            try:
-                json_data = response.json()
-            except ValueError:
-                json_data = {"data": response.text}  # Return raw text if JSON parsing fails
-
-            return JSONResponse(
-                content={"status_code": response.status_code, "response": json_data},
-                status_code=response.status_code
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers)
             )
-
+        except httpx.HTTPStatusError as e:
+            return Response(
+                content=e.response.content,
+                status_code=e.response.status_code,
+                headers=dict(e.response.headers)
+            )
         except httpx.RequestError as e:
-            return JSONResponse(content={"error": "Request failed", "details": str(e)}, status_code=500)
+            return Response(
+                content=str(e),
+                status_code=500  # Internal server error in case of connection issues
+            )
