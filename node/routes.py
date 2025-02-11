@@ -47,7 +47,7 @@ def put_batches(app_name: str) -> Response:
     data = request.data.decode('latin-1')
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
-
+    return success_response(data={}, message="The batch is received successfully.")
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.validate_request
