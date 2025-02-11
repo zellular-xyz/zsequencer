@@ -1,17 +1,15 @@
 import logging
+from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
-from contextlib import asynccontextmanager
-from pydantic import BaseModel
 
-from batch_buffer import BatchBuffer
-from schema import ProxyConfig
+from proxy.batch_buffer import BatchBuffer
+from proxy.schema import ProxyConfig
 
 config = ProxyConfig.from_env()
-
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -26,7 +24,9 @@ async def lifespan(app: FastAPI):
     yield
     await buffer_manager.shutdown()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 @app.put("/node/{app_name}/batches")
 async def put_batch(app_name: str, request: Request):
