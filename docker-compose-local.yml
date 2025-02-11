@@ -17,9 +17,9 @@ services:
     env_file:
       - .env
 
-  batch_aggregator_proxy:
+  zsequencer_proxy:
     container_name: zsequencer-proxy
-    image: zellular/zproxy:latest
+    image: zellular/zsequencer-proxy:latest
     ports:
       - "${ZSEQUENCER_PROXY_PORT}:${ZSEQUENCER_PROXY_PORT}"
     env_file:

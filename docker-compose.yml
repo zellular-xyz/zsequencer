@@ -6,8 +6,8 @@ services:
       dockerfile: Dockerfile
     image: zellular/zsequencer:latest
 
-  batch_aggregator_proxy:
+  proxy:
     build:
       context: .
       dockerfile: proxy.Dockerfile
-    image: zellular/zproxy:latest
+    image: zellular/zsequencer-proxy:latest
