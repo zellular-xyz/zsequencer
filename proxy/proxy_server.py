@@ -1,15 +1,17 @@
 import logging
 
 import httpx
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 
-from batch_aggregator_proxy.batch_buffer import BatchBuffer
-from batch_aggregator_proxy.schema import ProxyConfig
+from batch_buffer import BatchBuffer
+from schema import ProxyConfig
 
-app = FastAPI()
 config = ProxyConfig.from_env()
+
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -21,7 +23,16 @@ class BatchRequest(BaseModel):
     batch: str
 
 
-@app.post("/{app_name}/put_batch")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handles startup and shutdown events."""
+    await buffer_manager.start()
+    yield
+    await buffer_manager.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/node/{app_name}/batches")
 async def put_batch(app_name: str, request: BatchRequest):
     """Handles batch processing with an app_name."""
 
@@ -67,3 +78,9 @@ async def forward_request(full_path: str, request: Request):
                 content=str(e),
                 status_code=500  # Internal server error in case of connection issues
             )
+
+
+if __name__ == "__main__":
+    uvicorn.run(app,
+                host=config.PROXY_HOST,
+                port=config.PROXY_PORT)

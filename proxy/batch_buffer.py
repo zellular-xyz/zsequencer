@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from batch_aggregator_proxy.schema import ProxyConfig
+from schema import ProxyConfig
 
 
 class BatchBuffer:
@@ -17,7 +17,7 @@ class BatchBuffer:
         self.flush_interval = config.FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
         self.buffer_queue = asyncio.Queue()
         self._stop_event = asyncio.Event()
-        self._flush_task = asyncio.create_task(self._periodic_flush())
+        self._flush_task = None
 
     async def _periodic_flush(self):
         """Periodically flushes the buffer based on the timeout interval."""
@@ -38,7 +38,7 @@ class BatchBuffer:
             batches_mapping[app_name].append(batch)
             batches_count += 1
 
-        url = urljoin(self.node_base_url, "node/bulk-batches")
+        url = urljoin(self.node_base_url, "node/batches")
 
         async with httpx.AsyncClient() as client:
             try:
@@ -59,8 +59,14 @@ class BatchBuffer:
                 f"Buffer size {self.buffer_queue.qsize()} reached threshold {self.flush_volume}, flushing.")
             await self.flush()
 
+    async def start(self):
+        """Explicitly start the background task for periodic flushing."""
+        if self._flush_task is None:
+            self._flush_task = asyncio.create_task(self._periodic_flush())
+
     async def shutdown(self):
         """Gracefully stops the periodic flush task."""
         self._stop_event.set()
-        await self._flush_task
-        await self.flush()  # Flush remaining items before exiting
+        if self._flush_task:
+            await self._flush_task
+        await self.flush()

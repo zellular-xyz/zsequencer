@@ -16,7 +16,7 @@ from . import tasks
 node_blueprint = Blueprint("node", __name__)
 
 
-@node_blueprint.route("/bulk-batches", methods=["PUT"])
+@node_blueprint.route("/batches", methods=["PUT"])
 @utils.validate_request
 @utils.not_sequencer
 def put_bulk_batches() -> Response:

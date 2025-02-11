@@ -49,6 +49,7 @@ class Config:
         self.SEND_BATCH_INTERVAL = node_config.SEND_BATCH_INTERVAL
         self.REMOVE_CHUNK_BORDER = node_config.REMOVE_CHUNK_BORDER
         self.SNAPSHOT_CHUNK = node_config.SNAPSHOT_CHUNK
+        self.HOST = node_config.HOST
         self.PORT = node_config.PORT
         self.NODE_SOURCE = node_config.NODE_SOURCE
         self.OPERATOR_STATE_RETRIEVER = node_config.OPERATOR_STATE_RETRIEVER
