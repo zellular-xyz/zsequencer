@@ -67,6 +67,7 @@ class Config:
         self.BLS_KEY_PASSWORD = node_config.BLS_KEY_PASSWORD
         self.ECDSA_KEY_PASSWORD = node_config.ECDSA_KEY_PASSWORD
         self.REGISTER_OPERATOR = node_config.REGISTER_OPERATOR
+        self.REGISTER_SOCKET = node_config.REGISTER_SOCKET
 
         # Init node encryption and networks configurations
         self._init_node()
@@ -145,7 +146,7 @@ class Config:
             operator_to_avs_registration_sig_expiry=int(time.time()) + 60,
             bls_key_pair=bls_key_pair,
             quorum_numbers=[0],
-            socket=os.getenv("ZSEQUENCER_REGISTER_SOCKET"),
+            socket=self.REGISTER_SOCKET,
         )
 
     def init_sequencer(self) -> None:

@@ -82,6 +82,7 @@ class NodeConfig(BaseModel):
             RPC_NODE=os.getenv("ZSEQUENCER_RPC_NODE", ''),
             REGISTRY_COORDINATOR=os.getenv("ZSEQUENCER_REGISTRY_COORDINATOR", ''),
             OPERATOR_STATE_RETRIEVER=os.getenv("ZSEQUENCER_OPERATOR_STATE_RETRIEVER", ''),
+            HOST=int(os.getenv("ZSEQUENCER_HOST", "localhost")),
             PORT=int(os.getenv("ZSEQUENCER_PORT", "6000")),
             SNAPSHOT_CHUNK=int(os.getenv("ZSEQUENCER_SNAPSHOT_CHUNK", "1000")),
             REMOVE_CHUNK_BORDER=int(os.getenv("ZSEQUENCER_REMOVE_CHUNK_BORDER", "2")),
@@ -97,4 +98,6 @@ class NodeConfig(BaseModel):
             ECDSA_KEY_STORE_PATH=os.getenv("ZSEQUENCER_ECDSA_KEY_FILE", ""),
             BLS_KEY_PASSWORD=os.getenv("ZSEQUENCER_BLS_KEY_PASSWORD", ""),
             ECDSA_KEY_PASSWORD=os.getenv("ZSEQUENCER_ECDSA_KEY_PASSWORD", ""),
-            REGISTER_OPERATOR=os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true')
+            REGISTER_OPERATOR=os.getenv("ZSEQUENCER_REGISTER_OPERATOR") == 'true',
+            REGISTER_SOCKET=os.getenv("ZSEQUENCER_REGISTER_SOCKET")
+        )

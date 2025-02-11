@@ -19,4 +19,4 @@ ENV PYTHONDONTWRITEBYTECODE 1
 EXPOSE $ZSEQUENCER_PROXY_PORT
 
 # Command to run the FastAPI application
-CMD ["sh", "-c", "uvicorn batch_aggregator_proxy.proxy_server:app --host 0.0.0.0 --port ${ZSEQUENCER_PROXY_PORT}"]
+CMD ["sh", "-c", "uvicorn batch_aggregator_proxy.proxy_server:app --host ${ZSEQUENCER_PROXY_HOST} --port ${ZSEQUENCER_PROXY_PORT} --workers=${ZSEQUENCER_PROXY_WORKERS_COUNT}"]
