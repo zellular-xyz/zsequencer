@@ -4,6 +4,8 @@ import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from urllib.parse import urljoin
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -11,33 +13,26 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 
-class ProxyConfig(BaseModel):
-    PROXY_HOST: str
-    PROXY_PORT: int
-    NODE_HOST: str
-    NODE_PORT: int
-    FLUSH_THRESHOLD_VOLUME: int
-    FLUSH_THRESHOLD_TIMEOUT: float
-    WORKERS_COUNT: int
+class ProxyConfig(BaseSettings):
+    PROXY_HOST: str = Field(default="0.0.0.0")
+    PROXY_PORT: int = Field(default=7000)
+    HOST: str = Field(default="localhost")
+    PORT: int = Field(default=6000)
+    PROXY_FLUSH_THRESHOLD_VOLUME: int = Field(default=2000)
+    PROXY_FLUSH_THRESHOLD_TIMEOUT: float = Field(default=0.1)
+    PROXY_WORKERS_COUNT: int = Field(default=4)
 
-    @classmethod
-    def from_env(cls):
-        return cls(PROXY_HOST=os.getenv("ZSEQUENCER_PROXY_HOST", "0.0.0.0"),
-                   PROXY_PORT=int(os.getenv("ZSEQUENCER_PROXY_PORT", "6001")),
-                   NODE_HOST=os.getenv("ZSEQUENCER_HOST", "localhost"),
-                   NODE_PORT=int(os.getenv("ZSEQUENCER_PORT", "6002")),
-                   FLUSH_THRESHOLD_VOLUME=int(os.getenv("ZSEQUENCER_PROXY_FLUSH_THRESHOLD_VOLUME", "2000")),
-                   FLUSH_THRESHOLD_TIMEOUT=float(os.getenv("ZSEQUENCER_PROXY_FLUSH_THRESHOLD_TIMEOUT", "0.1")),
-                   WORKERS_COUNT=int(os.getenv("ZSEQUENCER_PROXY_WORKERS_COUNT", "4")))
+    class Config:
+        env_prefix = "ZSEQUENCER_"
 
 
 class BatchBuffer:
     def __init__(self, config: ProxyConfig, logger: logging.Logger):
         """Initialize the buffer manager with the provided configuration."""
         self.logger = logger
-        self.node_base_url = f"http://{config.NODE_HOST}:{config.NODE_PORT}"
-        self.flush_volume = config.FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
-        self.flush_interval = config.FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
+        self.node_base_url = f"http://{config.HOST}:{config.PORT}"
+        self.flush_volume = config.PROXY_FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
+        self.flush_interval = config.PROXY_FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
         self.buffer_queue = asyncio.Queue()
         self._stop_event = asyncio.Event()
         self._flush_task = None
@@ -95,7 +90,7 @@ class BatchBuffer:
         await self.flush()
 
 
-config = ProxyConfig.from_env()
+config = ProxyConfig()
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
