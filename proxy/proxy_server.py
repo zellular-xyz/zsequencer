@@ -29,52 +29,52 @@ class ProxyConfig(BaseSettings):
 class BatchBuffer:
     def __init__(self, config: ProxyConfig, logger: logging.Logger):
         """Initialize the buffer manager with the provided configuration."""
-        self.logger = logger
-        self.node_base_url = f"http://{config.HOST}:{config.PORT}"
-        self.flush_volume = config.PROXY_FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
-        self.flush_interval = config.PROXY_FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
-        self.buffer_queue = asyncio.Queue()
+        self._logger = logger
+        self._node_base_url = f"http://{config.HOST}:{config.PORT}"
+        self._flush_volume = config.PROXY_FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
+        self._flush_interval = config.PROXY_FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
+        self._buffer_queue = asyncio.Queue()
         self._stop_event = asyncio.Event()
         self._flush_task = None
 
     async def _periodic_flush(self):
         """Periodically flushes the buffer based on the timeout interval."""
         while not self._stop_event.is_set():
-            await asyncio.sleep(self.flush_interval)
+            await asyncio.sleep(self._flush_interval)
             await self.flush()
 
     async def flush(self):
         """Flush the buffer if it has items."""
-        if self.buffer_queue.empty():
+        if self._buffer_queue.empty():
             return
 
         batches_mapping = defaultdict(list)
         batches_count = 0
 
-        while not self.buffer_queue.empty() and batches_count <= self.flush_volume:
-            app_name, batch = self.buffer_queue.get_nowait()  # Use get_nowait to avoid task switching
+        while not self._buffer_queue.empty() and batches_count <= self._flush_volume:
+            app_name, batch = self._buffer_queue.get_nowait()  # Use get_nowait to avoid task switching
             batches_mapping[app_name].append(batch)
             batches_count += 1
 
-        url = urljoin(self.node_base_url, "node/batches")
+        url = urljoin(self._node_base_url, "node/batches")
 
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.put(url, json=batches_mapping, headers={"Content-Type": "application/json"})
                 response.raise_for_status()
             except httpx.RequestError as e:
-                self.logger.error(f"Error sending batches: {e}")
+                self._logger.error(f"Error sending batches: {e}")
                 for app_name, batches in batches_mapping.items():
                     for batch in batches:
-                        await self.buffer_queue.put((app_name, batch))
+                        await self._buffer_queue.put((app_name, batch))
 
     async def add_batch(self, app_name: str, batch: str):
         """Adds a batch to the buffer for a specific app_name and flushes if the volume exceeds the threshold."""
-        await self.buffer_queue.put((app_name, batch))
+        await self._buffer_queue.put((app_name, batch))
 
-        if self.buffer_queue.qsize() >= self.flush_volume:
-            self.logger.info(
-                f"Buffer size {self.buffer_queue.qsize()} reached threshold {self.flush_volume}, flushing.")
+        if self._buffer_queue.qsize() >= self._flush_volume:
+            self._logger.info(
+                f"Buffer size {self._buffer_queue.qsize()} reached threshold {self._flush_volume}, flushing.")
             await self.flush()
 
     async def start(self):
@@ -127,7 +127,7 @@ async def put_batch(app_name: str, request: Request):
 @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def forward_request(full_path: str, request: Request):
     """Forwards requests asynchronously to NODE_HOST:NODE_PORT and returns a JSON response."""
-    target_url = f"{buffer_manager.node_base_url}/{full_path}"
+    target_url = f"{buffer_manager._node_base_url}/{full_path}"
 
     headers = dict(request.headers)
     query_params = request.query_params
