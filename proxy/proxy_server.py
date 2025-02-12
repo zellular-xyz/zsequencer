@@ -6,8 +6,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 
-from proxy.batch_buffer import BatchBuffer
-from proxy.schema import ProxyConfig
+from batch_buffer import BatchBuffer
+from schema import ProxyConfig
 
 config = ProxyConfig.from_env()
 
@@ -77,6 +77,7 @@ async def forward_request(full_path: str, request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app,
+    uvicorn.run("proxy_server:app",
                 host=config.PROXY_HOST,
-                port=config.PROXY_PORT)
+                port=config.PROXY_PORT,
+                workers=config.WORKERS_COUNT)

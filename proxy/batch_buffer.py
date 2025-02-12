@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from proxy.schema import ProxyConfig
+from schema import ProxyConfig
 
 
 class BatchBuffer:
