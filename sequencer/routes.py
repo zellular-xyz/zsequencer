@@ -64,10 +64,10 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         app_name=req_data["app_name"],
         after=req_data["sequenced_index"],
     )
-    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
         app_name=req_data["app_name"], state="finalized"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch(
+    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
         app_name=req_data["app_name"], state="locked"
     )
     if batches_sequence:

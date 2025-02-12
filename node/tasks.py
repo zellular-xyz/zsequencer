@@ -37,7 +37,7 @@ def send_batches() -> None:
             response = send_app_batches(app_name).get("data", {})
             sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
             if not sequencer_last_finalized_hash or \
-                    zdb.get_batch_or_empty(app_name, sequencer_last_finalized_hash):
+                    zdb.get_batch_by_hash_or_empty(app_name, sequencer_last_finalized_hash):
                 zconfig.IS_SYNCING = False
                 break
 
@@ -48,10 +48,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         app_name=app_name
     )
 
-    last_synced_batch: dict[str, Any] = zdb.get_last_operational_batch(
+    last_synced_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
         app_name=app_name, state="sequenced"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch(
+    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
         app_name=app_name, state="locked"
     )
 
@@ -186,7 +186,7 @@ def check_censorship(
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """confirm and sign the sync point"""
-    batch: dict[str, Any] = zdb.get_batch_or_empty(sync_point["app_name"], sync_point["hash"])
+    batch: dict[str, Any] = zdb.get_batch_by_hash_or_empty(sync_point["app_name"], sync_point["hash"])
     batch_state = zdb.get_batch_state_by_index_or_none(sync_point["app_name"], batch.get("index", 0))
     if any(
         batch.get(key) != sync_point[key]
@@ -404,7 +404,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
 
 def find_all_nodes_last_finalized_batch(app_name: str) -> dict[str, Any]:
     """Find the last finalized batch from all nodes."""
-    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
         app_name=app_name, state="finalized"
     )
 
