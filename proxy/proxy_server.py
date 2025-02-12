@@ -5,15 +5,18 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 
-from batch_buffer import BatchBuffer
-from proxy_config import ProxyConfig
+from .batch_buffer import BatchBuffer
+from .configs import ProxyConfig, NodeConfig
 
-config = ProxyConfig()
+proxy_config = ProxyConfig()
+node_config = NodeConfig()
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-buffer_manager = BatchBuffer(config, logger)
+buffer_manager = BatchBuffer(proxy_config=proxy_config,
+                             node_config=node_config,
+                             logger=logger)
 
 
 @asynccontextmanager

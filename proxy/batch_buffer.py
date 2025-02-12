@@ -5,16 +5,18 @@ from urllib.parse import urljoin
 
 import httpx
 
+from .configs import ProxyConfig, NodeConfig
+
 
 class BatchBuffer:
-    def __init__(self, config, logger: logging.Logger):
+    def __init__(self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger):
         """Initialize the buffer manager with the provided configuration."""
         self._logger = logger
-        self._node_base_url = f"http://{config.HOST}:{config.PORT}"
-        self._flush_volume = config.PROXY_FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
-        self._flush_interval = config.PROXY_FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
-        self._buffer_queue = deque()  # Replacing asyncio.Queue with deque
-        self._stop_event = False  # Replacing asyncio.Event with a bool
+        self._node_base_url = f"http://{node_config.host}:{node_config.port}"
+        self._flush_volume = proxy_config.flush_threshold_volume
+        self._flush_interval = proxy_config.flush_threshold_timeout
+        self._buffer_queue = deque()
+        self._stop_event = False
         self._flush_task = None
 
     async def _periodic_flush(self):
@@ -32,7 +34,7 @@ class BatchBuffer:
         batches_count = 0
 
         while self._buffer_queue and batches_count <= self._flush_volume:
-            app_name, batch = self._buffer_queue.popleft()  # Using deque.popleft() instead of queue.get_nowait()
+            app_name, batch = self._buffer_queue.popleft()
             batches_mapping[app_name].append(batch)
             batches_count += 1
 
@@ -46,11 +48,11 @@ class BatchBuffer:
                 self._logger.error(f"Error sending batches: {e}")
                 for app_name, batches in batches_mapping.items():
                     for batch in batches:
-                        self._buffer_queue.append((app_name, batch))  # Using deque.append() instead of await put()
+                        self._buffer_queue.append((app_name, batch))
 
     async def add_batch(self, app_name: str, batch: str):
         """Adds a batch to the buffer for a specific app_name and flushes if the volume exceeds the threshold."""
-        self._buffer_queue.append((app_name, batch))  # Using deque.append() instead of await put()
+        self._buffer_queue.append((app_name, batch))
 
         if len(self._buffer_queue) >= self._flush_volume:
             self._logger.info(
@@ -64,7 +66,7 @@ class BatchBuffer:
 
     async def shutdown(self):
         """Gracefully stops the periodic flush task."""
-        self._stop_event = True  # Using a simple boolean flag
+        self._stop_event = True
         if self._flush_task:
             await self._flush_task
         await self.flush()

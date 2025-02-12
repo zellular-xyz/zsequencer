@@ -8,6 +8,6 @@ services:
 
   proxy:
     build:
-      context: .
-      dockerfile: proxy.Dockerfile
+      context: proxy
+      dockerfile: Dockerfile
     image: zellular/zsequencer-proxy:latest

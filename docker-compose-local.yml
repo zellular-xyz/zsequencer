@@ -21,6 +21,6 @@ services:
     container_name: zsequencer-proxy
     image: zellular/zsequencer-proxy:latest
     ports:
-      - "${ZSEQUENCER_PROXY_PORT}:${ZSEQUENCER_PROXY_PORT}"
+      - "80:${ZSEQUENCER_PROXY_PORT}"
     env_file:
       - .env
