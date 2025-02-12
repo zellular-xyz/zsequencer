@@ -1,16 +1,14 @@
 import asyncio
 import logging
-import os
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from urllib.parse import urljoin
-from pydantic_settings import BaseSettings
-from pydantic import Field
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class ProxyConfig(BaseSettings):
@@ -27,32 +25,32 @@ class ProxyConfig(BaseSettings):
 
 
 class BatchBuffer:
-    def __init__(self, config: ProxyConfig, logger: logging.Logger):
+    def __init__(self, config, logger: logging.Logger):
         """Initialize the buffer manager with the provided configuration."""
         self._logger = logger
         self._node_base_url = f"http://{config.HOST}:{config.PORT}"
         self._flush_volume = config.PROXY_FLUSH_THRESHOLD_VOLUME  # Max buffer size before flush
         self._flush_interval = config.PROXY_FLUSH_THRESHOLD_TIMEOUT  # Flush time threshold
-        self._buffer_queue = asyncio.Queue()
-        self._stop_event = asyncio.Event()
+        self._buffer_queue = deque()  # Replacing asyncio.Queue with deque
+        self._stop_event = False  # Replacing asyncio.Event with a bool
         self._flush_task = None
 
     async def _periodic_flush(self):
         """Periodically flushes the buffer based on the timeout interval."""
-        while not self._stop_event.is_set():
+        while not self._stop_event:
             await asyncio.sleep(self._flush_interval)
             await self.flush()
 
     async def flush(self):
         """Flush the buffer if it has items."""
-        if self._buffer_queue.empty():
+        if not self._buffer_queue:
             return
 
         batches_mapping = defaultdict(list)
         batches_count = 0
 
-        while not self._buffer_queue.empty() and batches_count <= self._flush_volume:
-            app_name, batch = self._buffer_queue.get_nowait()  # Use get_nowait to avoid task switching
+        while self._buffer_queue and batches_count <= self._flush_volume:
+            app_name, batch = self._buffer_queue.popleft()  # Using deque.popleft() instead of queue.get_nowait()
             batches_mapping[app_name].append(batch)
             batches_count += 1
 
@@ -66,15 +64,15 @@ class BatchBuffer:
                 self._logger.error(f"Error sending batches: {e}")
                 for app_name, batches in batches_mapping.items():
                     for batch in batches:
-                        await self._buffer_queue.put((app_name, batch))
+                        self._buffer_queue.append((app_name, batch))  # Using deque.append() instead of await put()
 
     async def add_batch(self, app_name: str, batch: str):
         """Adds a batch to the buffer for a specific app_name and flushes if the volume exceeds the threshold."""
-        await self._buffer_queue.put((app_name, batch))
+        self._buffer_queue.append((app_name, batch))  # Using deque.append() instead of await put()
 
-        if self._buffer_queue.qsize() >= self._flush_volume:
+        if len(self._buffer_queue) >= self._flush_volume:
             self._logger.info(
-                f"Buffer size {self._buffer_queue.qsize()} reached threshold {self._flush_volume}, flushing.")
+                f"Buffer size {len(self._buffer_queue)} reached threshold {self._flush_volume}, flushing.")
             await self.flush()
 
     async def start(self):
@@ -84,7 +82,7 @@ class BatchBuffer:
 
     async def shutdown(self):
         """Gracefully stops the periodic flush task."""
-        self._stop_event.set()
+        self._stop_event = True  # Using a simple boolean flag
         if self._flush_task:
             await self._flush_task
         await self.flush()
