@@ -20,4 +20,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 EXPOSE 80
 
 # Command to run the FastAPI application
-CMD ["uvicorn", "proxy_server:app", "--host", "0.0.0.0", "--port", "80", "--workers", "$ZSEQUENCER_PROXY_WORKERS_COUNT"]
+CMD ["sh", "-c", "uvicorn proxy_server:app --host 0.0.0.0 --port 80 --workers=$ZSEQUENCER_PROXY_WORKERS_COUNT"]
