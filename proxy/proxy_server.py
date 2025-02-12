@@ -5,8 +5,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 
-from .batch_buffer import BatchBuffer
-from .configs import ProxyConfig, NodeConfig
+from batch_buffer import BatchBuffer
+from configs import ProxyConfig, NodeConfig
 
 proxy_config = ProxyConfig()
 node_config = NodeConfig()

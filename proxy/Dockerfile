@@ -1,7 +1,6 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11
 
-
 # Set the working directory inside the container
 WORKDIR /app
 
@@ -16,8 +15,11 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Set a default value for ZSEQUENCER_PROXY_WORKERS_COUNT
+ENV ZSEQUENCER_PROXY_WORKERS_COUNT=1
+
 # Expose the port
 EXPOSE 80
 
 # Command to run the FastAPI application
-CMD ["sh", "-c", "uvicorn proxy_server:app --host 0.0.0.0 --port 80 --workers=$ZSEQUENCER_PROXY_WORKERS_COUNT"]
+CMD ["sh", "-c", "uvicorn --app-dir . proxy_server:app --host 0.0.0.0 --port 80 --workers=${ZSEQUENCER_PROXY_WORKERS_COUNT}"]
