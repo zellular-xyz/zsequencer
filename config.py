@@ -21,13 +21,14 @@ from web3 import Account
 
 import utils
 from common.logger import zlogger
-from schema import NetworkState, NodeSource, NodeConfig
+from schema import NetworkState, NodeSource
+from settings import NodeConfig, ProxyConfig
 
 
 class Config:
     _instance = None
 
-    def __init__(self, node_config: NodeConfig):
+    def __init__(self, node_config: NodeConfig, proxy_config: ProxyConfig):
         self.node_config = node_config
         self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
         self.NODE = {}
@@ -38,45 +39,49 @@ class Config:
         self.IS_SYNCING = None
 
         # Load fields from config
-        self.THRESHOLD_PERCENT = node_config.THRESHOLD_PERCENT
-        self.INIT_SEQUENCER_ID = node_config.INIT_SEQUENCER_ID
+        self.THRESHOLD_PERCENT = node_config.threshold_percent
+        self.INIT_SEQUENCER_ID = node_config.init_sequencer_id
         self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
-        self.API_BATCHES_LIMIT = node_config.API_BATCHES_LIMIT
-        self.FETCH_APPS_AND_NODES_INTERVAL = node_config.FETCH_APPS_AND_NODES_INTERVAL
-        self.AGGREGATION_TIMEOUT = node_config.AGGREGATION_TIMEOUT
-        self.FINALIZATION_TIME_BORDER = node_config.FINALIZATION_TIME_BORDER
-        self.SYNC_INTERVAL = node_config.SYNC_INTERVAL
-        self.SEND_BATCH_INTERVAL = node_config.SEND_BATCH_INTERVAL
-        self.REMOVE_CHUNK_BORDER = node_config.REMOVE_CHUNK_BORDER
-        self.SNAPSHOT_CHUNK = node_config.SNAPSHOT_CHUNK
-        self.HOST = node_config.HOST
-        self.PORT = node_config.PORT
-        self.NODE_SOURCE = node_config.NODE_SOURCE
-        self.OPERATOR_STATE_RETRIEVER = node_config.OPERATOR_STATE_RETRIEVER
-        self.REGISTRY_COORDINATOR = node_config.REGISTRY_COORDINATOR
-        self.RPC_NODE = node_config.RPC_NODE
-        self.SUBGRAPH_URL = node_config.SUBGRAPH_URL
-        self.SNAPSHOT_PATH = node_config.SNAPSHOT_PATH
-        self.APPS_FILE = node_config.APPS_FILE
-        self.HISTORICAL_NODES_REGISTRY = node_config.HISTORICAL_NODES_REGISTRY
-        self.NODES_FILE = node_config.NODES_FILE
-        self.NODES_INFO_SYNC_BORDER = node_config.NODES_INFO_SYNC_BORDER
-        self.HEADERS = node_config.HEADERS
-        self.VERSION = node_config.VERSION
-        self.BLS_KEY_STORE_PATH = node_config.BLS_KEY_STORE_PATH
-        self.ECDSA_KEY_STORE_PATH = node_config.ECDSA_KEY_STORE_PATH
-        self.BLS_KEY_PASSWORD = node_config.BLS_KEY_PASSWORD
-        self.ECDSA_KEY_PASSWORD = node_config.ECDSA_KEY_PASSWORD
-        self.REGISTER_OPERATOR = node_config.REGISTER_OPERATOR
-        self.REGISTER_SOCKET = node_config.REGISTER_SOCKET
+        self.API_BATCHES_LIMIT = node_config.api_batches_limit
+        self.FETCH_APPS_AND_NODES_INTERVAL = node_config.fetch_apps_and_nodes_interval
+        self.AGGREGATION_TIMEOUT = node_config.aggregation_timeout
+        self.FINALIZATION_TIME_BORDER = node_config.finalization_time_border
+        self.SYNC_INTERVAL = node_config.sync_interval
+        self.SEND_BATCH_INTERVAL = node_config.send_batch_interval
+        self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
+        self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
+        self.HOST = node_config.host
+        self.PORT = node_config.port
+        self.NODE_SOURCE = node_config.node_source
+        self.OPERATOR_STATE_RETRIEVER = node_config.operator_state_retriever
+        self.REGISTRY_COORDINATOR = node_config.registry_coordinator
+        self.RPC_NODE = node_config.rpc_node
+        self.SUBGRAPH_URL = node_config.subgraph_url
+        self.SNAPSHOT_PATH = node_config.snapshot_path
+        self.APPS_FILE = node_config.apps_file
+        self.HISTORICAL_NODES_REGISTRY = node_config.historical_nodes_registry
+        self.NODES_FILE = node_config.nodes_file
+        self.NODES_INFO_SYNC_BORDER = node_config.nodes_info_sync_border
+        self.HEADERS = node_config.headers
+        self.VERSION = node_config.version
+        self.BLS_KEY_STORE_PATH = node_config.bls_key_file
+        self.ECDSA_KEY_STORE_PATH = node_config.ecdsa_key_file
+        self.BLS_KEY_PASSWORD = node_config.bls_key_password
+        self.ECDSA_KEY_PASSWORD = node_config.ecdsa_key_password
+        self.REGISTER_OPERATOR = node_config.register_operator
+        self.REGISTER_SOCKET = node_config.register_socket
+
+        # Set proxy conf
+        self.PROXY_HOST = proxy_config.host
+        self.PROXY_PORT = proxy_config.port
 
         # Init node encryption and networks configurations
         self._init_node()
 
     @staticmethod
-    def get_instance(node_config: NodeConfig):
+    def get_instance(node_config: NodeConfig, proxy_config: ProxyConfig):
         if not Config._instance:
-            Config._instance = Config(node_config=node_config)
+            Config._instance = Config(node_config=node_config, proxy_config=proxy_config)
         return Config._instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -209,7 +214,7 @@ class Config:
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
-        if self.PORT != urlparse(self.NODE['socket']).port:
+        if urlparse(self.NODE['socket']).port not in {self.PORT, self.PROXY_PORT}:
             zlogger.warning(
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
@@ -273,4 +278,4 @@ class Config:
         return decorator
 
 
-zconfig = Config.get_instance(NodeConfig.from_env())
+zconfig = Config.get_instance(node_config=NodeConfig(), proxy_config=ProxyConfig())
