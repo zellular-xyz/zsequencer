@@ -48,7 +48,7 @@ class Config:
         self.AGGREGATION_TIMEOUT = node_config.aggregation_timeout
         self.FINALIZATION_TIME_BORDER = node_config.finalization_time_border
         self.SYNC_INTERVAL = node_config.sync_interval
-        self.SEND_BATCH_INTERVAL = node_config.send_txs_interval
+        self.SEND_BATCH_INTERVAL = node_config.send_batch_interval
         self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.HOST = node_config.host
