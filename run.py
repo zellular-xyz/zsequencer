@@ -77,7 +77,7 @@ def run_flask_app(app: Flask) -> None:
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
     app.run(
-        host="0.0.0.0",
+        host=zconfig.HOST,
         port=zconfig.PORT,
         debug=False,
         threaded=True,

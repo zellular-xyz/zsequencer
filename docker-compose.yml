@@ -1,6 +1,13 @@
 services:
+
   node:
     build:
       context: .
       dockerfile: Dockerfile
     image: zellular/zsequencer:latest
+
+  proxy:
+    build:
+      context: proxy
+      dockerfile: Dockerfile
+    image: zellular/zsequencer-proxy:latest
