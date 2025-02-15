@@ -15,8 +15,7 @@ from typing import Literal
 import itertools
 import portion  # type: ignore[import-untyped]
 from typing import TypedDict
-from collections.abc import Iterable
-
+from collections.abc import Iterable, Callable
 
 State = Literal["initialized", "sequenced", "locked", "finalized"]
 OperationalState = Literal["sequenced", "locked", "finalized"]
@@ -312,7 +311,9 @@ class InMemoryDB:
 
         self._append_unique_batches_after_index(
             self._filter_operational_batches_sequence(
-                app_name, self._get_batch_index_interval(app_name, state)
+                app_name,
+                self._get_batch_index_interval(app_name, state)
+                & portion.open(after, portion.inf),
             ),
             after,
             batches_sequence,
@@ -463,9 +464,7 @@ class InMemoryDB:
         for batch in self._filter_operational_batches_sequence(
             app_name,
             self._get_batch_index_interval(app_name, "finalized").complement()
-            & portion.closed(
-                lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
-            ),
+            & portion.closed(self._GLOBAL_FIRST_BATCH_INDEX, signature_data["index"]),
         ):
             batch["state"] = "locked"
 
@@ -501,9 +500,7 @@ class InMemoryDB:
         snapshot_indexes: list[int] = []
         for batch in self._filter_operational_batches_sequence(
             app_name,
-            portion.closed(
-                lower=self._GLOBAL_FIRST_BATCH_INDEX, upper=signature_data["index"]
-            ),
+            portion.closed(self._GLOBAL_FIRST_BATCH_INDEX, signature_data["index"]),
         ):
             batch["state"] = "finalized"
             if batch["index"] % zconfig.SNAPSHOT_CHUNK == 0:
@@ -768,22 +765,52 @@ class InMemoryDB:
         self,
         app_name: str,
         index_interval: portion.Interval,
-        limit: int | None = None,
     ) -> list[Batch]:
-        feasible_index_interval = index_interval.intersection(
-            self._get_batch_index_interval(app_name)
-        )
-        relative_index_interval = feasible_index_interval.apply(
+        if index_interval.empty:
+            return []
+
+        relative_index_calculator = self._generate_relative_index_calculator(app_name)
+        relative_index_interval = index_interval.apply(
             lambda x: x.replace(
-                lower=self._calculate_relative_index(app_name, x.lower),
-                upper=self._calculate_relative_index(app_name, x.upper),
+                lower=(
+                    x.lower
+                    if x.lower == -portion.inf
+                    else relative_index_calculator(x.lower)
+                ),
+                upper=(
+                    x.upper
+                    if x.upper == portion.inf
+                    else relative_index_calculator(x.upper)
+                ),
             )
         )
-        return [
-            self.apps[app_name]["operational_batches_sequence"][i]
-            for i in itertools.islice(
-                portion.iterate(relative_index_interval, step=1), limit
+
+        feasible_relative_index_interval = relative_index_interval & portion.closed(
+            0, portion.inf
+        )
+
+        if not feasible_relative_index_interval.atomic:
+            raise ValueError(
+                f"The {feasible_relative_index_interval=} from "
+                f"{relative_index_interval=} and {index_interval=} is not atomic."
             )
+
+        closed_lower_relative_index = None
+        if feasible_relative_index_interval.lower != 0:
+            if relative_index_interval.left == portion.CLOSED:
+                closed_lower_relative_index = feasible_relative_index_interval.lower
+            else:
+                closed_lower_relative_index = feasible_relative_index_interval.lower + 1
+
+        open_upper_relative_index = None
+        if feasible_relative_index_interval.upper != portion.inf:
+            if feasible_relative_index_interval.right == portion.CLOSED:
+                open_upper_relative_index = feasible_relative_index_interval.upper + 1
+            else:
+                open_upper_relative_index = feasible_relative_index_interval.upper
+
+        return self.apps[app_name]["operational_batches_sequence"][
+            closed_lower_relative_index:open_upper_relative_index
         ]
 
     def _get_operational_batch_by_hash(self, app_name: str, batch_hash: str) -> Batch:
@@ -804,9 +831,15 @@ class InMemoryDB:
         )
 
     def _calculate_relative_index(self, app_name: str, index: int) -> int:
-        return index - self._get_first_batch_index(
+        return self._generate_relative_index_calculator(app_name)(index)
+
+    def _generate_relative_index_calculator(
+        self, app_name: str
+    ) -> Callable[[int], int]:
+        first_batch_index = self._get_first_batch_index(
             app_name, default=self._GLOBAL_FIRST_BATCH_INDEX
         )
+        return lambda index: index - first_batch_index
 
     def _get_batch_index_interval(
         self,
