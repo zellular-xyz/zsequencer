@@ -1,10 +1,5 @@
-import os
-from typing import Dict, Any, Optional
-
-from pydantic import Field, field_validator, AfterValidator
+from pydantic import Field
 from pydantic_settings import BaseSettings
-
-from schema import NodeSource, get_node_source
 
 
 class ProxyConfig(BaseSettings):
@@ -15,38 +10,11 @@ class ProxyConfig(BaseSettings):
         env_prefix = "ZSEQUENCER_PROXY_"
 
 
-def validate_headers(headers: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure the headers dictionary contains the correct Content-Type and Version."""
-    if "Content-Type" not in headers:
-        headers["Content-Type"] = "application/json"
-    if "Version" not in headers:
-        headers["Version"] = os.getenv("ZSEQUENCER_VERSION", "v0.0.13")
-    return headers
-
-
-def validate_node_source(node_source: Optional['NodeSource']) -> 'NodeSource':
-    """Ensure the node_source is properly initialized."""
-    if node_source is None:
-        # Fallback to a default NodeSource if the environment variable is not set
-        return get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE"))
-    return node_source
-
-
 class NodeConfig(BaseSettings):
     version: str = Field(default="v0.0.13")
-    headers: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "Content-Type": "application/json",
-            "Version": os.getenv("ZSEQUENCER_VERSION", "v0.0.13")
-        },
-        after_validator=AfterValidator(validate_headers))
-
     nodes_info_sync_border: int = Field(default=5)
 
-    node_source: NodeSource = Field(
-        default_factory=lambda: get_node_source(os.getenv("ZSEQUENCER_NODES_SOURCE")),
-        after_validator=AfterValidator(validate_node_source)
-    )
+    node_source: str = Field(default="file")
 
     nodes_file: str = Field(default="")
     historical_nodes_registry: str = Field(default="")

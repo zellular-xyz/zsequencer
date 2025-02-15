@@ -22,6 +22,7 @@ from web3 import Account
 import utils
 from common.logger import zlogger
 from schema import NetworkState, NodeSource
+from schema import get_node_source
 from settings import NodeConfig, ProxyConfig
 
 
@@ -52,7 +53,7 @@ class Config:
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.HOST = node_config.host
         self.PORT = node_config.port
-        self.NODE_SOURCE = node_config.node_source
+        self.NODE_SOURCE = get_node_source(node_config.node_source)
         self.OPERATOR_STATE_RETRIEVER = node_config.operator_state_retriever
         self.REGISTRY_COORDINATOR = node_config.registry_coordinator
         self.RPC_NODE = node_config.rpc_node
@@ -62,7 +63,6 @@ class Config:
         self.HISTORICAL_NODES_REGISTRY = node_config.historical_nodes_registry
         self.NODES_FILE = node_config.nodes_file
         self.NODES_INFO_SYNC_BORDER = node_config.nodes_info_sync_border
-        self.HEADERS = node_config.headers
         self.VERSION = node_config.version
         self.BLS_KEY_STORE_PATH = node_config.bls_key_file
         self.ECDSA_KEY_STORE_PATH = node_config.ecdsa_key_file
@@ -75,6 +75,7 @@ class Config:
         self.PROXY_HOST = proxy_config.host
         self.PROXY_PORT = proxy_config.port
 
+        self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
 
