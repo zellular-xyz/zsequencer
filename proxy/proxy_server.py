@@ -1,9 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import Response
 
 from batch_buffer import BatchBuffer
 from configs import ProxyConfig, NodeConfig
@@ -43,36 +41,3 @@ async def put_batch(app_name: str, request: Request):
     logger.info(f"Received batch for app: {app_name}, data length: {len(batch)}.")
 
     return {"message": "The batch is received successfully"}
-
-
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def forward_request(full_path: str, request: Request):
-    """Forwards requests asynchronously to NODE_HOST:NODE_PORT and returns a JSON response."""
-    target_url = f"{buffer_manager._node_base_url}/{full_path}"
-
-    headers = dict(request.headers)
-    query_params = request.query_params
-    method = request.method
-    body = await request.body()
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.request(
-                method, target_url, headers=headers, content=body
-            )
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=dict(response.headers)
-            )
-        except httpx.HTTPStatusError as e:
-            return Response(
-                content=e.response.content,
-                status_code=e.response.status_code,
-                headers=dict(e.response.headers)
-            )
-        except httpx.RequestError as e:
-            return Response(
-                content=str(e),
-                status_code=500  # Internal server error in case of connection issues
-            )
