@@ -2,14 +2,6 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
-class ProxyConfig(BaseSettings):
-    host: str = Field(default="localhost")
-    port: int = Field(default=6002)
-
-    class Config:
-        env_prefix = "ZSEQUENCER_PROXY_"
-
-
 class NodeConfig(BaseSettings):
     version: str = Field(default="v0.0.13")
     nodes_info_sync_border: int = Field(default=5)

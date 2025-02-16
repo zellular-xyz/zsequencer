@@ -23,13 +23,13 @@ import utils
 from common.logger import zlogger
 from schema import NetworkState, NodeSource
 from schema import get_node_source
-from settings import NodeConfig, ProxyConfig
+from settings import NodeConfig
 
 
 class Config:
     _instance = None
 
-    def __init__(self, node_config: NodeConfig, proxy_config: ProxyConfig):
+    def __init__(self, node_config: NodeConfig):
         self.node_config = node_config
         self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
         self.NODE = {}
@@ -71,18 +71,14 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
 
-        # Set proxy conf
-        self.PROXY_HOST = proxy_config.host
-        self.PROXY_PORT = proxy_config.port
-
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
 
     @staticmethod
-    def get_instance(node_config: NodeConfig, proxy_config: ProxyConfig):
+    def get_instance(node_config: NodeConfig):
         if not Config._instance:
-            Config._instance = Config(node_config=node_config, proxy_config=proxy_config)
+            Config._instance = Config(node_config=node_config)
         return Config._instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -215,7 +211,7 @@ class Config:
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
-        if urlparse(self.NODE['socket']).port not in {self.PORT, self.PROXY_PORT}:
+        if urlparse(self.NODE['socket']).port != self.PORT:
             zlogger.warning(
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
@@ -279,4 +275,4 @@ class Config:
         return decorator
 
 
-zconfig = Config.get_instance(node_config=NodeConfig(), proxy_config=ProxyConfig())
+zconfig = Config.get_instance(node_config=NodeConfig())
