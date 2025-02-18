@@ -14,6 +14,8 @@ services:
       - ZSEQUENCER_SNAPSHOT_PATH=/db
       - ZSEQUENCER_APPS_FILE=/app/app.json
       - ZSEQUENCER_NODES_FILE=/app/nodes.json
+    ports:
+      - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
     env_file:
       - .env
 

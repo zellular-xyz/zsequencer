@@ -11,6 +11,8 @@ services:
       - ZSEQUENCER_BLS_KEY_FILE=/app/bls_key.json
       - ZSEQUENCER_ECDSA_KEY_FILE=/app/ecdsa_key.json
       - ZSEQUENCER_SNAPSHOT_PATH=/db
+    ports:
+      - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"
     env_file:
       - .env
 
