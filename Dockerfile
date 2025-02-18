@@ -40,5 +40,6 @@ COPY schema.py /app/zsequencer/schema.py
 COPY config.py /app/zsequencer/config.py
 COPY run.py /app/zsequencer/run.py
 
+
 # Command to run the application
 CMD ["python3", "zsequencer/run.py"]
