@@ -6,7 +6,7 @@ class NodeConfig(BaseSettings):
     version: str = Field(default="v0.0.13")
     nodes_info_sync_border: int = Field(default=5)
 
-    node_source: str = Field(default="file")
+    nodes_source: str = Field(default="file")
 
     nodes_file: str = Field(default="")
     historical_nodes_registry: str = Field(default="")

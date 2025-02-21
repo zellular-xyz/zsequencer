@@ -53,7 +53,7 @@ class Config:
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.HOST = node_config.host
         self.PORT = node_config.port
-        self.NODE_SOURCE = get_node_source(node_config.node_source)
+        self.NODE_SOURCE = get_node_source(node_config.nodes_source)
         self.OPERATOR_STATE_RETRIEVER = node_config.operator_state_retriever
         self.REGISTRY_COORDINATOR = node_config.registry_coordinator
         self.RPC_NODE = node_config.rpc_node
@@ -92,6 +92,9 @@ class Config:
         elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             nodes_data = utils.get_eigen_network_info(sub_graph_socket=self.SUBGRAPH_URL,
                                                       block_number=tag)
+
+            print('\n nodes_data ', nodes_data, ' \n')
+
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
                 nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag)
