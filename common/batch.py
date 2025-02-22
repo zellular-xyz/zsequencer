@@ -18,7 +18,7 @@ class Batch(TypedDict, total=False):
 
 
 class BatchRecord(TypedDict, total=False):
-    payload: Batch
+    batch: Batch
     index: int
     state: State
 
@@ -47,7 +47,7 @@ def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
             key: value
             for key, value in {
                 **batch_record,
-                **batch_record.get("payload", {}),
+                **batch_record.get("batch", {}),
             }.items()
             if key in StatefulBatch.__annotations__
         },
@@ -58,7 +58,7 @@ def stateful_batch_to_batch_record(stateful_batch: StatefulBatch) -> BatchRecord
     return cast(
         BatchRecord,
         {
-            "payload": {
+            "batch": {
                 key: value
                 for key, value in stateful_batch.items()
                 if key in Batch.__annotations__

@@ -296,7 +296,7 @@ class InMemoryDB:
         """Get a batch by its hash."""
         if batch_hash in self.apps[app_name]["initialized_batch_map"]:
             return {
-                "payload": self.apps[app_name]["initialized_batch_map"][batch_hash],
+                "batch": self.apps[app_name]["initialized_batch_map"][batch_hash],
                 "index": BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
                 "state": "initialized",
             }
@@ -316,7 +316,7 @@ class InMemoryDB:
                     "operational_batch_sequence"
                 ].generate_index_interval("sequenced", exclude_next_states=True),
             )
-            .payloads()
+            .batches()
             if batch["timestamp"] < border
         ]
 
@@ -355,7 +355,7 @@ class InMemoryDB:
         last_sequenced_batch = (
             self.apps[app_name]["operational_batch_sequence"]
             .get_last_or_empty()
-            .get("payload", {})
+            .get("batch", {})
         )
         chaining_hash = last_sequenced_batch.get("chaining_hash", "")
 
@@ -396,7 +396,7 @@ class InMemoryDB:
         chaining_hash = (
             self.apps[app_name]["operational_batch_sequence"]
             .get_last_or_empty()
-            .get("payload", {})
+            .get("batch", {})
             .get("chaining_hash", "")
         )
         now = int(time.time())
@@ -439,7 +439,7 @@ class InMemoryDB:
 
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"]
-        ).get("payload", {})
+        ).get("batch", {})
         target_batch["lock_signature"] = signature_data["signature"]
         target_batch["locked_nonsigners"] = signature_data["nonsigners"]
         target_batch["locked_tag"] = signature_data["tag"]
@@ -483,7 +483,7 @@ class InMemoryDB:
 
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"]
-        ).get("payload", {})
+        ).get("batch", {})
         target_batch["finalization_signature"] = signature_data["signature"]
         target_batch["finalized_nonsigners"] = signature_data["nonsigners"]
         target_batch["finalized_tag"] = signature_data["tag"]
@@ -592,7 +592,7 @@ class InMemoryDB:
                 .generate_index_interval("finalized")
                 .complement()
             )
-            .payloads(),
+            .batches(),
         )
         now = int(time.time())
         for batch in resetting_batches:
@@ -610,19 +610,17 @@ class InMemoryDB:
             app_name,
             signature_data={
                 "index": all_nodes_last_finalized_batch_record["index"],
-                "chaining_hash": all_nodes_last_finalized_batch_record["payload"][
+                "chaining_hash": all_nodes_last_finalized_batch_record["batch"][
                     "chaining_hash"
                 ],
-                "hash": all_nodes_last_finalized_batch_record["payload"]["hash"],
-                "signature": all_nodes_last_finalized_batch_record["payload"][
+                "hash": all_nodes_last_finalized_batch_record["batch"]["hash"],
+                "signature": all_nodes_last_finalized_batch_record["batch"][
                     "finalization_signature"
                 ],
-                "nonsigners": all_nodes_last_finalized_batch_record["payload"][
+                "nonsigners": all_nodes_last_finalized_batch_record["batch"][
                     "finalized_nonsigners"
                 ],
-                "tag": all_nodes_last_finalized_batch_record["payload"][
-                    "finalized_tag"
-                ],
+                "tag": all_nodes_last_finalized_batch_record["batch"]["finalized_tag"],
             },
         )
 
@@ -645,7 +643,7 @@ class InMemoryDB:
         all_nodes_last_finalized_batch_record: BatchRecord,
     ) -> None:
         """Resequence batches after a switch in the sequencer."""
-        chaining_hash = all_nodes_last_finalized_batch_record.get("payload", {}).get(
+        chaining_hash = all_nodes_last_finalized_batch_record.get("batch", {}).get(
             "chaining_hash", ""
         )
         resequencing_batches = itertools.chain(
@@ -659,7 +657,7 @@ class InMemoryDB:
                 .generate_index_interval("finalized")
                 .complement()
             )
-            .payloads(),
+            .batches(),
             self.apps[app_name]["initialized_batch_map"].values(),
         )
         resequenced_batches_list: list[Batch] = []
@@ -697,7 +695,7 @@ class InMemoryDB:
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
             .slice(portion.open(all_nodes_last_finalized_batch_index, portion.inf))
-            .payloads()
+            .batches()
         ):
             reinitialized_batch: Batch = {
                 "app_name": batch["app_name"],
@@ -734,7 +732,7 @@ class InMemoryDB:
 
         for batch in source_batch_sequence.slice(
             portion.open(after, portion.inf)
-        ).payloads():
+        ).batches():
             if len(target_batch_sequence) >= zconfig.API_BATCHES_LIMIT:
                 break
 
@@ -766,7 +764,7 @@ class InMemoryDB:
     @classmethod
     def _generate_batch_hash_index_map(cls, batches: BatchSequence) -> dict[str, int]:
         return {
-            batch_record["payload"]["hash"]: batch_record["index"]
+            batch_record["batch"]["hash"]: batch_record["index"]
             for batch_record in batches.records()
         }
 

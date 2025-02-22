@@ -19,30 +19,30 @@ class BatchSequence:
     def __init__(
         self,
         index_offset: int | None = None,
-        payloads: Iterable[Batch] | None = None,
+        batches: Iterable[Batch] | None = None,
         each_state_last_index: Mapping[OperationalState, int] | None = None,
     ) -> None:
         index_offset = (
             index_offset if index_offset is not None else self.GLOBAL_INDEX_OFFSET
         )
-        payloads = payloads or []
+        batches = batches or []
         each_state_last_index = each_state_last_index or {}
 
         if "sequenced" in each_state_last_index.keys():
             raise ValueError(
-                "All the payloads are considered sequenced, so there is no need to "
-                "store the last batch index for the sequenced payloads."
+                "All the batches are considered sequenced, so there is no need to "
+                "store the last index for the sequenced batches."
             )
 
         self._index_offset = index_offset
-        self._payloads = list(payloads)
+        self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
         return BatchSequence(
             index_offset=mapping["index_offset"],
-            payloads=mapping["payloads"],
+            batches=mapping["batches"],
             each_state_last_index=mapping["each_state_last_index"],
         )
 
@@ -55,29 +55,29 @@ class BatchSequence:
         return self._index_offset - 1
 
     def __bool__(self) -> bool:
-        return bool(self._payloads)
+        return bool(self._batches)
 
     def __len__(self) -> int:
-        return len(self._payloads)
+        return len(self._batches)
 
     def __add__(self, other: Iterable[Batch]) -> BatchSequence:
         return BatchSequence(
             index_offset=self._index_offset,
-            payloads=self._payloads + list(other),
+            batches=self._batches + list(other),
             each_state_last_index=self._each_state_last_index,
         )
 
     def records(self) -> Iterator[BatchRecord]:
         index_calculator = self._generate_relative_index_to_index_calculator()
-        for relative_index, payload in enumerate(self._payloads):
+        for relative_index, batch in enumerate(self._batches):
             index = index_calculator(relative_index)
-            yield BatchRecord(payload=payload, index=index, state=self.get_state(index))
+            yield BatchRecord(batch=batch, index=index, state=self.get_state(index))
 
     def indices(self) -> Iterable[int]:
         return portion.iterate(self.generate_index_interval(), step=1)
 
-    def payloads(self) -> Iterable[Batch]:
-        return self._payloads
+    def batches(self) -> Iterable[Batch]:
+        return self._batches
 
     def has_any(self, state: OperationalState = "sequenced") -> bool:
         return (
@@ -125,15 +125,15 @@ class BatchSequence:
         default: int = BEFORE_GLOBAL_INDEX_OFFSET,
     ) -> int:
         if state == "sequenced":
-            if not self._payloads:
+            if not self._batches:
                 return default
             else:
-                return self._index_offset + len(self._payloads) - 1
+                return self._index_offset + len(self._batches) - 1
         else:
             return self._each_state_last_index.get(state, default)
 
-    def append(self, payload: Batch) -> int:
-        self._payloads.append(payload)
+    def append(self, batch: Batch) -> int:
+        self._batches.append(batch)
         return self.get_last_index_or_default()
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
@@ -164,7 +164,7 @@ class BatchSequence:
     def to_mapping(self) -> Mapping[str, Any]:
         return {
             "index_offset": self._index_offset,
-            "payloads": self._payloads,
+            "batches": self._batches,
             "each_state_last_index": {
                 state: last_index
                 for state, last_index in self._each_state_last_index.items()
@@ -215,23 +215,23 @@ class BatchSequence:
             else:
                 open_upper_relative_index = feasible_relative_index_interval.upper
 
-        payloads = self._payloads[closed_lower_relative_index:open_upper_relative_index]
+        batches = self._batches[closed_lower_relative_index:open_upper_relative_index]
         first_index = self._index_offset + (
             closed_lower_relative_index
-            if closed_lower_relative_index is not None and payloads
+            if closed_lower_relative_index is not None and batches
             else 0
         )
-        last_index = first_index + len(payloads) - 1
+        last_index = first_index + len(batches) - 1
 
         return BatchSequence(
             index_offset=first_index,
-            payloads=payloads,
+            batches=batches,
             each_state_last_index=(
                 {
                     state: min(last_index, state_last_index)
                     for state, state_last_index in self._each_state_last_index.items()
                 }
-                if payloads
+                if batches
                 else None
             ),
         )
@@ -244,7 +244,7 @@ class BatchSequence:
             return {}
 
         return BatchRecord(
-            payload=self.get_payload_or_empty(first_index),
+            batch=self.get_batch_or_empty(first_index),
             index=first_index,
             state=state,
         )
@@ -257,25 +257,25 @@ class BatchSequence:
             return {}
 
         return BatchRecord(
-            payload=self.get_payload_or_empty(last_index),
+            batch=self.get_batch_or_empty(last_index),
             index=last_index,
             state=state,
         )
 
     def get_or_empty(self, index: int) -> BatchRecord:
-        payload = self.get_payload_or_empty(index)
+        batch = self.get_batch_or_empty(index)
 
-        if not payload:
+        if not batch:
             return {}
 
         return BatchRecord(
-            payload=payload,
+            batch=batch,
             index=index,
             state=self.get_state(index),
         )
 
-    def get_payload_or_empty(self, index: int) -> Batch:
-        batch = self._get_payload_by_relative_index_or_empty(
+    def get_batch_or_empty(self, index: int) -> Batch:
+        batch = self._get_batch_by_relative_index_or_empty(
             self._index_to_relative_index(index)
         )
         if not batch:
@@ -302,11 +302,11 @@ class BatchSequence:
 
         return None
 
-    def _get_payload_by_relative_index_or_empty(self, relative_index: int) -> Batch:
-        if relative_index < 0 or relative_index >= len(self._payloads):
+    def _get_batch_by_relative_index_or_empty(self, relative_index: int) -> Batch:
+        if relative_index < 0 or relative_index >= len(self._batches):
             return {}
 
-        return self._payloads[relative_index]
+        return self._batches[relative_index]
 
     def _generate_index_to_relative_index_calculator(self) -> Callable[[int], int]:
         index_offset = self._index_offset

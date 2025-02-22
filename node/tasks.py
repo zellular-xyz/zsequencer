@@ -65,11 +65,11 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             "node_id": zconfig.NODE["id"],
             "signature": concat_sig,
             "sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "sequenced_hash": last_sequenced_batch_record.get("payload", {}).get("hash", ""),
-            "sequenced_chaining_hash": last_sequenced_batch_record.get("payload", {}).get("chaining_hash", ""),
+            "sequenced_hash": last_sequenced_batch_record.get("batch", {}).get("hash", ""),
+            "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get("chaining_hash", ""),
             "locked_index": last_locked_batch_record.get("index", 0),
-            "locked_hash": last_locked_batch_record.get("payload", {}).get("hash", ""),
-            "locked_chaining_hash": last_locked_batch_record.get("payload", {}).get("chaining_hash", ""),
+            "locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
+            "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get("chaining_hash", ""),
             "timestamp": int(time.time()),
         }
     )
@@ -188,7 +188,7 @@ def check_censorship(
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """confirm and sign the sync point"""
     batch_record = zdb.get_batch_record_by_hash_or_empty(sync_point["app_name"], sync_point["hash"])
-    batch = batch_record.get("payload", {})
+    batch = batch_record.get("batch", {})
     if any(
         batch.get(key) != sync_point[key]
         for key in ["app_name", "hash", "chaining_hash"]

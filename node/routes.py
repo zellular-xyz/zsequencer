@@ -139,11 +139,11 @@ def get_state() -> Response:
 
         data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "last_sequenced_hash": last_sequenced_batch_record.get("payload", {}).get("hash", ""),
+            "last_sequenced_hash": last_sequenced_batch_record.get("batch", {}).get("hash", ""),
             "last_locked_index": last_locked_batch_record.get("index", 0),
-            "last_locked_hash": last_locked_batch_record.get("payload", {}).get("hash", ""),
+            "last_locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
             "last_finalized_index": last_finalized_batch_record.get("index", 0),
-            "last_finalized_hash": last_finalized_batch_record.get("payload", {}).get("hash", ""),
+            "last_finalized_hash": last_finalized_batch_record.get("batch", {}).get("hash", ""),
         }
     return success_response(data=data)
 
@@ -179,20 +179,20 @@ def get_batches(app_name: str, state: str) -> Response:
         assert batch_record["index"] == after + i + 1, \
             f'error in getting batches: {batch_record["index"]} != {after + i + 1}, {i}, {[batch_record["index"] for batch_record in batch_sequence.records()]}\n{zdb.apps[app_name]["operational_batch_sequence"]}'
 
-    first_chaining_hash: str = batch_sequence.get_first_or_empty()["payload"]["chaining_hash"]
+    first_chaining_hash: str = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
 
     finalized = {}
     for batch_record in reversed(batch_sequence.records()):
         if "finalization_signature" in batch_record:
             for k in ("finalization_signature", "hash", "chaining_hash"):
-                finalized[k] = batch_record["payload"][k]
-            finalized["nonsigners"] = batch_record["payload"]["finalized_nonsigners"]
+                finalized[k] = batch_record["batch"][k]
+            finalized["nonsigners"] = batch_record["batch"]["finalized_nonsigners"]
             finalized["index"] = batch_record["index"]
             break
 
     return success_response(
         data={
-            "batches": [batch["body"] for batch in batch_sequence.payloads()],
+            "batches": [batch["body"] for batch in batch_sequence.batches()],
             "first_chaining_hash": first_chaining_hash,
             "finalized": finalized,
         }
