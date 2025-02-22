@@ -60,24 +60,24 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     with zdb.sequencer_put_batches_lock:
         zdb.sequencer_init_batches(app_name=req_data["app_name"], initializing_batches=req_data["batches"])
 
-    batches_sequence = zdb.get_global_operational_batches_sequence(
+    batch_sequence = zdb.get_global_operational_batch_sequence(
         app_name=req_data["app_name"],
         after=req_data["sequenced_index"],
     )
-    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=req_data["app_name"], state="finalized"
     )
-    last_locked_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(
+    last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=req_data["app_name"], state="locked"
     )
-    if batches_sequence:
-        if batches_sequence[-1]["index"] < last_finalized_batch.get("index", 0):
-            last_finalized_batch: dict[str, Any] = next(
-                (d for d in reversed(batches_sequence) if "finalization_signature" in d), {}
+    if batch_sequence:
+        if batch_sequence.get_last_or_empty()["index"] < last_finalized_batch_record.get("index", 0):
+            last_finalized_batch_record = next(
+                (d for d in reversed(batch_sequence) if "finalization_signature" in d["payload"]), {}
             )
-        if batches_sequence[-1]["index"] < last_locked_batch.get("index", 0):
-            last_locked_batch: dict[str, Any] = next(
-                (d for d in reversed(batches_sequence) if "lock_signature" in d), {}
+        if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get("index", 0):
+            last_locked_batch_record = next(
+                (d for d in reversed(batch_sequence.records()) if "lock_signature" in d["payload"]), {}
             )
 
     zdb.upsert_node_state(
@@ -97,10 +97,12 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     # if zconfig.NODE["id"] == "1":
     #     txs = {}
 
+    last_finalized_batch = last_finalized_batch_record.get("payload", {})
+    last_locked_batch = last_locked_batch_record.get("payload", {})
     return {
-        "batches": batches_sequence,
+        "batches": batch_sequence.payloads(),
         "finalized": {
-            "index": last_finalized_batch.get("index", 0),
+            "index": last_finalized_batch_record.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
             "hash": last_finalized_batch.get("hash", ""),
             "signature": last_finalized_batch.get("finalization_signature", ""),
@@ -108,7 +110,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             "tag": last_finalized_batch.get("finalized_tag", 0),
         },
         "locked": {
-            "index": last_locked_batch.get("index", 0),
+            "index": last_locked_batch_record.get("index", 0),
             "chaining_hash": last_locked_batch.get("chaining_hash", ""),
             "hash": last_locked_batch.get("hash", ""),
             "signature": last_locked_batch.get("lock_signature", ""),

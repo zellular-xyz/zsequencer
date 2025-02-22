@@ -10,6 +10,7 @@ from common.db import zdb
 from common.errors import ErrorCodes
 from common.logger import zlogger
 from common.response_utils import error_response, success_response
+from common.batch import batch_record_to_stateful_batch
 from config import zconfig
 from . import tasks
 
@@ -132,17 +133,17 @@ def get_state() -> Response:
     }
 
     for app_name in list(zconfig.APPS.keys()):
-        last_sequenced_batch = zdb.get_last_operational_batch_or_empty(app_name, "sequenced")
-        last_locked_batch = zdb.get_last_operational_batch_or_empty(app_name, "locked")
-        last_finalized_batch = zdb.get_last_operational_batch_or_empty(app_name, "finalized")
+        last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "sequenced")
+        last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "locked")
+        last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
 
         data['apps'][app_name] = {
-            "last_sequenced_index": last_sequenced_batch.get("index", 0),
-            "last_sequenced_hash": last_sequenced_batch.get("hash", ""),
-            "last_locked_index": last_locked_batch.get("index", 0),
-            "last_locked_hash": last_locked_batch.get("hash", ""),
-            "last_finalized_index": last_finalized_batch.get("index", 0),
-            "last_finalized_hash": last_finalized_batch.get("hash", ""),
+            "last_sequenced_index": last_sequenced_batch_record.get("index", 0),
+            "last_sequenced_hash": last_sequenced_batch_record.get("payload", {}).get("hash", ""),
+            "last_locked_index": last_locked_batch_record.get("index", 0),
+            "last_locked_hash": last_locked_batch_record.get("payload", {}).get("hash", ""),
+            "last_finalized_index": last_finalized_batch_record.get("index", 0),
+            "last_finalized_hash": last_finalized_batch_record.get("payload", {}).get("hash", ""),
         }
     return success_response(data=data)
 
@@ -150,11 +151,13 @@ def get_state() -> Response:
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
 @utils.validate_request
 def get_last_finalized_batch(app_name: str) -> Response:
-    """Get the last finalized batch for a given app."""
+    """Get the last finalized batch record for a given app."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch_or_empty(app_name, "finalized")
-    return success_response(data=last_finalized_batch)
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
+    return success_response(
+        data=batch_record_to_stateful_batch(last_finalized_batch_record)
+    )
 
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
@@ -168,27 +171,28 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches_sequence = zdb.get_global_operational_batches_sequence(app_name, state, after)
-    if not batches_sequence:
+    batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
+    if not batch_sequence:
         return success_response(data=None)
 
-    for i, batch in enumerate(batches_sequence):
-        assert batch[
-                   "index"] == after + i + 1, f'error in getting batches: {batch["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches_sequence]}\n{zdb.apps[app_name]["operational_batches_sequence"]}'
+    for i, batch_record in enumerate(batch_sequence.records()):
+        assert batch_record["index"] == after + i + 1, \
+            f'error in getting batches: {batch_record["index"]} != {after + i + 1}, {i}, {[batch_record["index"] for batch_record in batch_sequence.records()]}\n{zdb.apps[app_name]["operational_batch_sequence"]}'
 
-    first_chaining_hash: str = batches_sequence[0]["chaining_hash"]
+    first_chaining_hash: str = batch_sequence.get_first_or_empty()["payload"]["chaining_hash"]
 
     finalized = {}
-    for batch in reversed(batches_sequence):
-        if "finalization_signature" in batch:
-            for k in ("finalization_signature", "index", "hash", "chaining_hash"):
-                finalized[k] = batch[k]
-            finalized["nonsigners"] = batch["finalized_nonsigners"]
+    for batch_record in reversed(batch_sequence.records()):
+        if "finalization_signature" in batch_record:
+            for k in ("finalization_signature", "hash", "chaining_hash"):
+                finalized[k] = batch_record["payload"][k]
+            finalized["nonsigners"] = batch_record["payload"]["finalized_nonsigners"]
+            finalized["index"] = batch_record["index"]
             break
 
     return success_response(
         data={
-            "batches": [batch["body"] for batch in batches_sequence],
+            "batches": [batch["body"] for batch in batch_sequence.payloads()],
             "first_chaining_hash": first_chaining_hash,
             "finalized": finalized,
         }
