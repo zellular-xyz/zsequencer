@@ -179,16 +179,22 @@ def get_batches(app_name: str, state: str) -> Response:
         assert batch_record["index"] == after + i + 1, \
             f'error in getting batches: {batch_record["index"]} != {after + i + 1}, {i}, {[batch_record["index"] for batch_record in batch_sequence.records()]}\n{zdb.apps[app_name]["operational_batch_sequence"]}'
 
-    first_chaining_hash: str = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
+    first_chaining_hash = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
 
-    finalized = {}
-    for batch_record in reversed(batch_sequence.records()):
-        if "finalization_signature" in batch_record:
-            for k in ("finalization_signature", "hash", "chaining_hash"):
-                finalized[k] = batch_record["batch"][k]
-            finalized["nonsigners"] = batch_record["batch"]["finalized_nonsigners"]
-            finalized["index"] = batch_record["index"]
-            break
+    finalized = next(
+        (
+            {
+                "finalization_signature": batch_record["batch"]["finalization_signature"],
+                "hash": batch_record["batch"]["hash"],
+                "chaining_hash": batch_record["batch"]["chaining_hash"],
+                "nonsigners": batch_record["batch"]["finalized_nonsigners"],
+                "index": batch_record["index"],
+            }
+            for batch_record in batch_sequence.records(reverse=True)
+            if "finalization_signature" in batch_record["batch"]
+        ),
+        {}
+    )
 
     return success_response(
         data={

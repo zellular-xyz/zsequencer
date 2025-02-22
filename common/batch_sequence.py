@@ -67,17 +67,15 @@ class BatchSequence:
             each_state_last_index=self._each_state_last_index,
         )
 
-    def records(self) -> Iterator[BatchRecord]:
-        index_calculator = self._generate_relative_index_to_index_calculator()
-        for relative_index, batch in enumerate(self._batches):
-            index = index_calculator(relative_index)
+    def records(self, reverse: bool = False) -> Iterable[BatchRecord]:
+        for batch, index in zip(self.batches(reverse), self.indices(reverse)):
             yield BatchRecord(batch=batch, index=index, state=self._get_state(index))
 
-    def indices(self) -> Iterable[int]:
-        return portion.iterate(self.generate_index_interval(), step=1)
+    def indices(self, reverse: bool = False) -> Iterable[int]:
+        return portion.iterate(self.generate_index_interval(), step=1, reverse=reverse)
 
-    def batches(self) -> Iterable[Batch]:
-        return self._batches
+    def batches(self, reverse: bool = False) -> Iterable[Batch]:
+        return self._batches if not reverse else reversed(self._batches)
 
     def has_any(self, state: OperationalState = "sequenced") -> bool:
         return (

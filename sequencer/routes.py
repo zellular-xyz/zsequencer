@@ -73,11 +73,11 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     if batch_sequence:
         if batch_sequence.get_last_or_empty()["index"] < last_finalized_batch_record.get("index", 0):
             last_finalized_batch_record = next(
-                (d for d in reversed(batch_sequence) if "finalization_signature" in d["batch"]), {}
+                (d for d in batch_sequence.records(reverse=True) if "finalization_signature" in d["batch"]), {}
             )
         if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get("index", 0):
             last_locked_batch_record = next(
-                (d for d in reversed(batch_sequence.records()) if "lock_signature" in d["batch"]), {}
+                (d for d in batch_sequence.records(reverse=True) if "lock_signature" in d["batch"]), {}
             )
 
     zdb.upsert_node_state(
