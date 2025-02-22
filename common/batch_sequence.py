@@ -71,7 +71,7 @@ class BatchSequence:
         index_calculator = self._generate_relative_index_to_index_calculator()
         for relative_index, batch in enumerate(self._batches):
             index = index_calculator(relative_index)
-            yield BatchRecord(batch=batch, index=index, state=self.get_state(index))
+            yield BatchRecord(batch=batch, index=index, state=self._get_state(index))
 
     def indices(self) -> Iterable[int]:
         return portion.iterate(self.generate_index_interval(), step=1)
@@ -244,7 +244,7 @@ class BatchSequence:
             return {}
 
         return BatchRecord(
-            batch=self.get_batch_or_empty(first_index),
+            batch=self._get_batch_or_empty(first_index),
             index=first_index,
             state=state,
         )
@@ -257,13 +257,13 @@ class BatchSequence:
             return {}
 
         return BatchRecord(
-            batch=self.get_batch_or_empty(last_index),
+            batch=self._get_batch_or_empty(last_index),
             index=last_index,
             state=state,
         )
 
     def get_or_empty(self, index: int) -> BatchRecord:
-        batch = self.get_batch_or_empty(index)
+        batch = self._get_batch_or_empty(index)
 
         if not batch:
             return {}
@@ -271,10 +271,10 @@ class BatchSequence:
         return BatchRecord(
             batch=batch,
             index=index,
-            state=self.get_state(index),
+            state=self._get_state(index),
         )
 
-    def get_batch_or_empty(self, index: int) -> Batch:
+    def _get_batch_or_empty(self, index: int) -> Batch:
         batch = self._get_batch_by_relative_index_or_empty(
             self._index_to_relative_index(index)
         )
@@ -282,17 +282,9 @@ class BatchSequence:
             return {}
         return batch
 
-    def get_state(self, index: int) -> OperationalState:
-        state = self.get_state_or_none(index)
-
-        if state is None:
-            raise RuntimeError(f"There is no batch with {index=}.")
-
-        return state
-
-    def get_state_or_none(self, index: int) -> OperationalState | None:
+    def _get_state(self, index: int) -> OperationalState:
         if index < self.GLOBAL_INDEX_OFFSET:
-            return None
+            raise RuntimeError(f"The {index=} is invalid.")
 
         for state in reversed(OPERATIONAL_STATES):
             if index <= self.get_last_index_or_default(
@@ -300,7 +292,7 @@ class BatchSequence:
             ):
                 return state
 
-        return None
+        raise RuntimeError(f"There is no batch with {index=}.")
 
     def _get_batch_by_relative_index_or_empty(self, relative_index: int) -> Batch:
         if relative_index < 0 or relative_index >= len(self._batches):
