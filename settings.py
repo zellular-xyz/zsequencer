@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.14")
+    version: str = Field(default="v0.0.15")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
