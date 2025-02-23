@@ -93,8 +93,6 @@ class Config:
             nodes_data = utils.get_eigen_network_info(sub_graph_socket=self.SUBGRAPH_URL,
                                                       block_number=tag)
 
-            print('\n nodes_data ', nodes_data, ' \n')
-
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
                 nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag)
