@@ -4,13 +4,13 @@ Module for handling BLS signatures and related operations.
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, Dict, Set, Optional
 
 import aiohttp
+import requests
 from eigensdk.crypto.bls import attestation
 
 from config import zconfig
-
 from . import utils
 from .logger import zlogger
 
@@ -123,6 +123,7 @@ async def gather_and_aggregate_signatures(
         "nonsigners": nonsigners,
         'tag': tag
     }
+
 
 
 async def request_signature(

@@ -7,14 +7,32 @@ from flask import Blueprint, Response, request
 
 from common import utils
 from common.db import zdb
-from common.logger import zlogger
 from common.errors import ErrorCodes
+from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
-
 from . import tasks
 
 node_blueprint = Blueprint("node", __name__)
+
+
+@node_blueprint.route("/batches", methods=["PUT"])
+@utils.validate_request
+@utils.not_sequencer
+def put_bulk_batches() -> Response:
+    """Put a new batch into the database."""
+    valid_apps = set(zconfig.APPS)
+    batches_mapping = request.get_json()
+
+    for app_name, batches in batches_mapping.items():
+        if app_name not in valid_apps:
+            zlogger.warning(f"{app_name} is not a valid app.")
+            continue
+
+        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
+        zdb.init_batches(app_name, [str(item) for item in list(batches)])
+
+    return success_response(data={}, message="The batch is received successfully.")
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
@@ -30,7 +48,6 @@ def put_batches(app_name: str) -> Response:
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The batch is received successfully.")
-
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.validate_request
@@ -73,12 +90,12 @@ def post_dispute() -> Response:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
         return success_response(data=data)
-    
+
     for app_name, missed_batches in req_data["apps_missed_batches"].items():
         batches = [batch["body"] for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
-    
+
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_request
@@ -115,9 +132,9 @@ def get_state() -> Response:
     }
 
     for app_name in list(zconfig.APPS.keys()):
-        last_sequenced_batch = zdb.get_last_batch(app_name, "sequenced")
-        last_locked_batch = zdb.get_last_batch(app_name, "locked")
-        last_finalized_batch = zdb.get_last_batch(app_name, "finalized")
+        last_sequenced_batch = zdb.get_last_operational_batch(app_name, "sequenced")
+        last_locked_batch = zdb.get_last_operational_batch(app_name, "locked")
+        last_finalized_batch = zdb.get_last_operational_batch(app_name, "finalized")
 
         data['apps'][app_name] = {
             "last_sequenced_index": last_sequenced_batch.get("index", 0),
@@ -136,7 +153,7 @@ def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch for a given app."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    last_finalized_batch: dict[str, Any] = zdb.get_last_batch(app_name, "finalized")
+    last_finalized_batch: dict[str, Any] = zdb.get_last_operational_batch(app_name, "finalized")
     return success_response(data=last_finalized_batch)
 
 
@@ -151,28 +168,28 @@ def get_batches(app_name: str, state: str) -> Response:
     if after < 0:
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid after param.")
 
-    batches: dict[str, dict] = zdb.get_batches(app_name, { state }, after)
-    if len(batches) == 0:
+    batches_sequence = zdb.get_global_operational_batches_sequence(app_name, state, after)
+    if not batches_sequence:
         return success_response(data=None)
 
-    batches: list[dict] = list(batches.values())
-    batches.sort(key = lambda batch: batch["index"])
+    for i, batch in enumerate(batches_sequence):
+        assert batch[
+                   "index"] == after + i + 1, f'error in getting batches: {batch["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches_sequence]}\n{zdb.apps[app_name]["operational_batches_sequence"]}'
 
-    for i in range(len(batches)):
-        assert batches[i]["index"] == after + i + 1, f'error in getting batches: {batches[i]["index"]} != {after + i + 1}, {i}, {[batch["index"] for batch in batches]}\n{zdb.apps[app_name]["batches"]}'
+    first_chaining_hash: str = batches_sequence[0]["chaining_hash"]
 
-    first_chaining_hash: str = batches[0]["chaining_hash"]
-
-    finalized: dict = {}
-    for batch in reversed(batches):
+    finalized = {}
+    for batch in reversed(batches_sequence):
         if "finalization_signature" in batch:
             for k in ("finalization_signature", "index", "hash", "chaining_hash"):
                 finalized[k] = batch[k]
             finalized["nonsigners"] = batch["finalized_nonsigners"]
             break
-    res: dict[str, dict] = {
-        "batches": [batch["body"] for batch in batches],
-        "first_chaining_hash": first_chaining_hash,
-        "finalized": finalized,
-    }
-    return success_response(data=res)
+
+    return success_response(
+        data={
+            "batches": [batch["body"] for batch in batches_sequence],
+            "first_chaining_hash": first_chaining_hash,
+            "finalized": finalized,
+        }
+    )

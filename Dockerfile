@@ -38,7 +38,9 @@ COPY common /app/zsequencer/common
 COPY utils /app/zsequencer/utils
 COPY schema.py /app/zsequencer/schema.py
 COPY config.py /app/zsequencer/config.py
+COPY settings.py /app/zsequencer/settings.py
 COPY run.py /app/zsequencer/run.py
+
 
 # Command to run the application
 CMD ["python3", "zsequencer/run.py"]
