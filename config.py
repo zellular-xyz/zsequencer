@@ -131,7 +131,10 @@ class Config:
         self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
-        self.NODE.update(nodes_data[self.ADDRESS])
+        if self.ADDRESS in nodes_data:
+            # This will be false when node is not registered yet
+            self.NODE.update(nodes_data[self.ADDRESS])
+
         self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
 
         return nodes_data
