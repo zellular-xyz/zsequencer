@@ -23,13 +23,13 @@ import utils
 from common.logger import zlogger
 from schema import NetworkState, NodeSource
 from schema import get_node_source
-from settings import NodeConfig, ProxyConfig
+from settings import NodeConfig
 
 
 class Config:
     _instance = None
 
-    def __init__(self, node_config: NodeConfig, proxy_config: ProxyConfig):
+    def __init__(self, node_config: NodeConfig):
         self.node_config = node_config
         self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
         self.NODE = {}
@@ -48,12 +48,12 @@ class Config:
         self.AGGREGATION_TIMEOUT = node_config.aggregation_timeout
         self.FINALIZATION_TIME_BORDER = node_config.finalization_time_border
         self.SYNC_INTERVAL = node_config.sync_interval
-        self.SEND_BATCH_INTERVAL = node_config.send_txs_interval
+        self.SEND_BATCH_INTERVAL = node_config.send_batch_interval
         self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.HOST = node_config.host
         self.PORT = node_config.port
-        self.NODE_SOURCE = get_node_source(node_config.node_source)
+        self.NODE_SOURCE = get_node_source(node_config.nodes_source)
         self.OPERATOR_STATE_RETRIEVER = node_config.operator_state_retriever
         self.REGISTRY_COORDINATOR = node_config.registry_coordinator
         self.RPC_NODE = node_config.rpc_node
@@ -71,18 +71,14 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
 
-        # Set proxy conf
-        self.PROXY_HOST = proxy_config.host
-        self.PROXY_PORT = proxy_config.port
-
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
 
     @staticmethod
-    def get_instance(node_config: NodeConfig, proxy_config: ProxyConfig):
+    def get_instance(node_config: NodeConfig):
         if not Config._instance:
-            Config._instance = Config(node_config=node_config, proxy_config=proxy_config)
+            Config._instance = Config(node_config=node_config)
         return Config._instance
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -96,6 +92,7 @@ class Config:
         elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             nodes_data = utils.get_eigen_network_info(sub_graph_socket=self.SUBGRAPH_URL,
                                                       block_number=tag)
+
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
                 nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag)
@@ -134,7 +131,10 @@ class Config:
         self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
-        self.NODE.update(nodes_data[self.ADDRESS])
+        if self.ADDRESS in nodes_data:
+            # This will be false when node is not registered yet
+            self.NODE.update(nodes_data[self.ADDRESS])
+
         self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
 
         return nodes_data
@@ -215,7 +215,7 @@ class Config:
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
-        if urlparse(self.NODE['socket']).port not in {self.PORT, self.PROXY_PORT}:
+        if urlparse(self.NODE['socket']).port != self.PORT:
             zlogger.warning(
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
             sys.exit()
@@ -279,4 +279,4 @@ class Config:
         return decorator
 
 
-zconfig = Config.get_instance(node_config=NodeConfig(), proxy_config=ProxyConfig())
+zconfig = Config.get_instance(node_config=NodeConfig())
