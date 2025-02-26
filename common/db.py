@@ -472,8 +472,13 @@ class InMemoryDB:
         for index in (
             self.apps[app_name]["operational_batch_sequence"]
             .slice(
-                portion.closed(
-                    BatchSequence.GLOBAL_INDEX_OFFSET, signature_data["index"]
+                portion.openclosed(
+                    self.apps[app_name][
+                        "operational_batch_sequence"
+                    ].get_last_index_or_default(
+                        "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+                    ),
+                    signature_data["index"],
                 )
             )
             .indices()
