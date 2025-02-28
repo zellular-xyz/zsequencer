@@ -1,15 +1,14 @@
 from __future__ import annotations
 from typing import Any
-from collections.abc import Iterable, Mapping, Iterator, Callable
-import portion  # type: ignore[import-untyped]
+from collections.abc import Iterable, Mapping
 from common.state import (
     OperationalState,
-    next_state_or_none,
     OPERATIONAL_STATES,
     is_state_before_or_equal,
 )
 from common.batch import Batch, BatchRecord
 from common.logger import zlogger
+from common.extended_int import ExtendedInt
 
 
 class BatchSequence:
@@ -72,7 +71,14 @@ class BatchSequence:
             yield BatchRecord(batch=batch, index=index, state=self._get_state(index))
 
     def indices(self, reverse: bool = False) -> Iterable[int]:
-        return portion.iterate(self.generate_index_interval(), step=1, reverse=reverse)
+        index_range = range(
+            self._index_offset,
+            self.get_last_index_or_default(default=self.BEFORE_GLOBAL_INDEX_OFFSET) + 1,
+        )
+        if not reverse:
+            return index_range
+        else:
+            return reversed(index_range)
 
     def batches(self, reverse: bool = False) -> Iterable[Batch]:
         return self._batches if not reverse else reversed(self._batches)
@@ -85,41 +91,18 @@ class BatchSequence:
             != self.BEFORE_GLOBAL_INDEX_OFFSET
         )
 
-    def generate_index_interval(
-        self,
-        state: OperationalState = "sequenced",
-        exclude_next_states: bool = False,
-    ) -> portion.Interval:
-        result = portion.closed(
-            self.get_first_index_or_default(state=state, default=self.index_offset),
-            self.get_last_index_or_default(
-                state=state, default=self.before_index_offset
-            ),
-        )
-
-        if (
-            state is not None
-            and exclude_next_states
-            and (next_state := next_state_or_none(state))
-        ):
-            result -= self.generate_index_interval(
-                next_state, exclude_next_states=False
-            )
-
-        return result
-
     def get_first_index_or_default(
         self,
         state: OperationalState = "sequenced",
+        *,
         default: int = BEFORE_GLOBAL_INDEX_OFFSET,
     ) -> int:
-        if not self.has_any(state):
-            return default
-        return self._index_offset
+        return self._index_offset if self.has_any(state) else default
 
     def get_last_index_or_default(
         self,
         state: OperationalState = "sequenced",
+        *,
         default: int = BEFORE_GLOBAL_INDEX_OFFSET,
     ) -> int:
         if state == "sequenced":
@@ -169,69 +152,100 @@ class BatchSequence:
             },
         }
 
-    def slice(self, index_interval: portion.Interval) -> BatchSequence:
-        if index_interval.empty:
-            return BatchSequence(index_offset=self._index_offset)
+    def filter(
+        self,
+        target_state: OperationalState = "sequenced",
+        *,
+        exclude_state: OperationalState | None = None,
+        start_exclusive: int | None = None,
+        end_inclusive: int | None = None,
+    ) -> BatchSequence:
+        if exclude_state is not None and is_state_before_or_equal(
+            exclude_state, target_state
+        ):
+            return self._create_empty()
 
-        relative_index_calculator = self._generate_index_to_relative_index_calculator()
-        relative_index_interval = index_interval.apply(
-            lambda x: x.replace(
-                lower=(
-                    x.lower
-                    if x.lower == -portion.inf
-                    else relative_index_calculator(x.lower)
-                ),
-                upper=(
-                    x.upper
-                    if x.upper == portion.inf
-                    else relative_index_calculator(x.upper)
-                ),
-            )
+        inf_supported_start_exclusive = ExtendedInt.from_optional_int(
+            start_exclusive, none_as="-inf"
+        )
+        inf_supported_end_inclusive = ExtendedInt.from_optional_int(
+            end_inclusive, none_as="inf"
         )
 
-        feasible_relative_index_interval = relative_index_interval & portion.closed(
-            0, portion.inf
+        if inf_supported_start_exclusive >= inf_supported_end_inclusive:
+            return self._create_empty()
+
+        target_state_last_index = ExtendedInt.from_optional_int(
+            (
+                None
+                if target_state == "sequenced"
+                else self.get_last_index_or_default(
+                    target_state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                )
+            ),
+            none_as="inf",
+        )
+        if target_state_last_index == self.BEFORE_GLOBAL_INDEX_OFFSET:
+            return self._create_empty()
+
+        excluding_state_last_index = ExtendedInt.from_optional_int(
+            (
+                None
+                if exclude_state is None
+                else self.get_last_index_or_default(
+                    exclude_state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                )
+            ),
+            none_as="-inf",
+        )
+        if excluding_state_last_index == self.BEFORE_GLOBAL_INDEX_OFFSET:
+            excluding_state_last_index = ExtendedInt("-inf")
+
+        final_start_inclusive = (
+            max(
+                inf_supported_start_exclusive,
+                excluding_state_last_index,
+                ExtendedInt(self.before_index_offset),
+            )
+            + 1
         )
 
-        if not feasible_relative_index_interval.atomic:
-            raise ValueError(
-                f"The {feasible_relative_index_interval=} from "
-                f"{relative_index_interval=} and {index_interval=} is not atomic."
+        final_end_exclusive = (
+            min(
+                inf_supported_end_inclusive,
+                target_state_last_index,
             )
+            + 1
+        )
 
-        closed_lower_relative_index = None
-        if not feasible_relative_index_interval.contains(0):
-            if relative_index_interval.left == portion.CLOSED:
-                closed_lower_relative_index = feasible_relative_index_interval.lower
-            else:
-                closed_lower_relative_index = feasible_relative_index_interval.lower + 1
+        if final_start_inclusive >= final_end_exclusive:
+            return self._create_empty()
 
-        open_upper_relative_index = None
-        if feasible_relative_index_interval.upper != portion.inf:
-            if feasible_relative_index_interval.right == portion.CLOSED:
-                open_upper_relative_index = feasible_relative_index_interval.upper + 1
-            else:
-                open_upper_relative_index = feasible_relative_index_interval.upper
+        relative_final_start_inclusive = (
+            final_start_inclusive - self._index_offset
+        ).to_optional_int()
+        relative_final_end_exclusive = (
+            final_end_exclusive - self._index_offset
+        ).to_optional_int()
 
-        batches = self._batches[closed_lower_relative_index:open_upper_relative_index]
+        batches = self._batches[
+            relative_final_start_inclusive:relative_final_end_exclusive
+        ]
         first_index = self._index_offset + (
-            closed_lower_relative_index
-            if closed_lower_relative_index is not None and batches
-            else 0
+            0
+            if relative_final_start_inclusive is None
+            else relative_final_start_inclusive
         )
         last_index = first_index + len(batches) - 1
 
         return BatchSequence(
             index_offset=first_index,
             batches=batches,
-            each_state_last_index=(
-                {
-                    state: min(last_index, state_last_index)
-                    for state, state_last_index in self._each_state_last_index.items()
-                }
-                if batches
-                else None
-            ),
+            each_state_last_index={
+                state: min(last_index, state_last_index)
+                for state, state_last_index in self._each_state_last_index.items()
+                if batches and state_last_index >= first_index
+            },
         )
 
     def get_first_or_empty(self, state: OperationalState = "sequenced") -> BatchRecord:
@@ -273,12 +287,7 @@ class BatchSequence:
         )
 
     def _get_batch_or_empty(self, index: int) -> Batch:
-        batch = self._get_batch_by_relative_index_or_empty(
-            self._index_to_relative_index(index)
-        )
-        if not batch:
-            return {}
-        return batch
+        return self._get_batch_by_relative_index_or_empty(index - self._index_offset)
 
     def _get_state(self, index: int) -> OperationalState:
         if index < self.GLOBAL_INDEX_OFFSET:
@@ -298,13 +307,5 @@ class BatchSequence:
 
         return self._batches[relative_index]
 
-    def _generate_index_to_relative_index_calculator(self) -> Callable[[int], int]:
-        index_offset = self._index_offset
-        return lambda index: index - index_offset
-
-    def _generate_relative_index_to_index_calculator(self) -> Callable[[int], int]:
-        index_offset = self._index_offset
-        return lambda relative_index: relative_index + index_offset
-
-    def _index_to_relative_index(self, index: int) -> int:
-        return index - self._index_offset
+    def _create_empty(self) -> BatchSequence:
+        return BatchSequence(index_offset=self._index_offset)

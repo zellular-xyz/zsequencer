@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal, cast
+from typing import Literal
 from collections.abc import Sequence
 
 
@@ -12,12 +12,3 @@ STATES: Sequence[State] = ("initialized", *OPERATIONAL_STATES)
 
 def is_state_before_or_equal(base_state: State, comparison_state: State) -> bool:
     return STATES.index(base_state) <= STATES.index(comparison_state)
-
-
-def next_state_or_none(state: State) -> OperationalState | None:
-    state_index = STATES.index(state)
-    return (
-        None
-        if state_index + 1 >= len(STATES)
-        else cast(OperationalState, STATES[state_index])
-    )
