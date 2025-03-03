@@ -12,7 +12,6 @@ from eth_account.messages import SignableMessage, encode_defunct
 from flask import request
 from web3 import Account
 
-
 from config import zconfig
 from . import errors, response_utils
 
@@ -97,18 +96,16 @@ def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
 
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
-    """Get the ID of the next sequencer."""
-    sorted_nodes: list[dict[str, Any]] = sorted(
-        zconfig.NODES.values(), key=lambda x: x["id"]
-    )
-    index: int | None = next(
-        (i for i, item in enumerate(sorted_nodes) if item["id"] == old_sequencer_id),
-        None,
-    )
-    if index is None or index == len(sorted_nodes) - 1:
-        return sorted_nodes[0]["id"]
+    """Get the ID of the next sequencer in a circular sorted list."""
+    sorted_nodes = sorted(zconfig.NODES.values(), key=lambda x: x["id"])
 
-    return sorted_nodes[index + 1]["id"]
+    ids = [node["id"] for node in sorted_nodes]
+
+    try:
+        index = ids.index(old_sequencer_id)
+        return ids[(index + 1) % len(ids)]  # Circular indexing
+    except ValueError:
+        return ids[0]  # Default to first if old_sequencer_id is not found
 
 
 def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
