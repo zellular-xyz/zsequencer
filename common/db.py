@@ -12,7 +12,6 @@ from utils import get_file_content
 from common import utils
 from common.logger import zlogger
 import itertools
-import portion  # type: ignore[import-untyped]
 from typing import TypedDict
 from collections.abc import Iterable
 from common.state import OperationalState
@@ -205,9 +204,7 @@ class InMemoryDB:
         ) as file:
             json.dump(
                 self.apps[app_name]["operational_batch_sequence"]
-                .slice(
-                    portion.openclosed(border_index, end_index),
-                )
+                .filter(start_exclusive=border_index, end_inclusive=end_index)
                 .to_mapping(),
                 file,
             )
@@ -215,7 +212,7 @@ class InMemoryDB:
     def _prune_old_finalized_batches(self, app_name: str, border_index: int) -> None:
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].slice(portion.open(border_index, portion.inf))
+        ].filter(start_exclusive=border_index)
         self.apps[app_name]["operational_batch_hash_index_map"] = (
             self._generate_batch_hash_index_map(
                 self.apps[app_name]["operational_batch_sequence"]
@@ -277,11 +274,9 @@ class InMemoryDB:
                 )
 
         self._append_unique_batches_after_index(
-            self.apps[app_name]["operational_batch_sequence"].slice(
-                self.apps[app_name][
-                    "operational_batch_sequence"
-                ].generate_index_interval(state)
-                & portion.open(after, portion.inf),
+            self.apps[app_name]["operational_batch_sequence"].filter(
+                target_state=state,
+                start_exclusive=after,
             ),
             after,
             batch_sequence,
@@ -311,11 +306,7 @@ class InMemoryDB:
         return [
             batch
             for batch in self.apps[app_name]["operational_batch_sequence"]
-            .slice(
-                self.apps[app_name][
-                    "operational_batch_sequence"
-                ].generate_index_interval("sequenced", exclude_next_states=True),
-            )
+            .filter(exclude_state="locked")
             .batches()
             if batch["timestamp"] < border
         ]
@@ -471,16 +462,7 @@ class InMemoryDB:
         snapshot_indexes: list[int] = []
         for index in (
             self.apps[app_name]["operational_batch_sequence"]
-            .slice(
-                portion.openclosed(
-                    self.apps[app_name][
-                        "operational_batch_sequence"
-                    ].get_last_index_or_default(
-                        "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
-                    ),
-                    signature_data["index"],
-                )
-            )
+            .filter(exclude_state="finalized", end_inclusive=signature_data["index"])
             .indices()
         ):
             if index % zconfig.SNAPSHOT_CHUNK == 0:
@@ -592,10 +574,8 @@ class InMemoryDB:
         resetting_batches = itertools.chain(
             self.apps[app_name]["initialized_batch_map"].values(),
             self.apps[app_name]["operational_batch_sequence"]
-            .slice(
-                self.apps[app_name]["operational_batch_sequence"]
-                .generate_index_interval("finalized")
-                .complement()
+            .filter(
+                exclude_state="finalized",
             )
             .batches(),
         )
@@ -653,14 +633,12 @@ class InMemoryDB:
         )
         resequencing_batches = itertools.chain(
             self.apps[app_name]["operational_batch_sequence"]
-            .slice(
+            .filter(
                 # TODO: I guess we should resequence all batches until the index of
                 # the last finalized batch across all nodes instead of all locally
                 # non-finalized batches, as the fully finalized batch across all nodes
                 # may differ from the local last finalized batch.
-                self.apps[app_name]["operational_batch_sequence"]
-                .generate_index_interval("finalized")
-                .complement()
+                exclude_state="finalized"
             )
             .batches(),
             self.apps[app_name]["initialized_batch_map"].values(),
@@ -680,10 +658,8 @@ class InMemoryDB:
 
         self.apps[app_name]["initialized_batch_map"] = {}
         self.apps[app_name]["operational_batch_sequence"] = (
-            self.apps[app_name]["operational_batch_sequence"].slice(
-                self.apps[app_name][
-                    "operational_batch_sequence"
-                ].generate_index_interval("finalized")
+            self.apps[app_name]["operational_batch_sequence"].filter(
+                target_state="finalized"
             )
             + resequenced_batches_list
         )
@@ -699,7 +675,7 @@ class InMemoryDB:
         """Reinitialize batches after a switch in the sequencer."""
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
-            .slice(portion.open(all_nodes_last_finalized_batch_index, portion.inf))
+            .filter(start_exclusive=all_nodes_last_finalized_batch_index)
             .batches()
         ):
             reinitialized_batch: Batch = {
@@ -716,11 +692,7 @@ class InMemoryDB:
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].slice(
-            portion.closed(
-                BatchSequence.GLOBAL_INDEX_OFFSET, all_nodes_last_finalized_batch_index
-            ),
-        )
+        ].filter(end_inclusive=all_nodes_last_finalized_batch_index)
 
     def _append_unique_batches_after_index(
         self,
@@ -735,9 +707,7 @@ class InMemoryDB:
         if not source_batch_sequence:
             return
 
-        for batch in source_batch_sequence.slice(
-            portion.open(after, portion.inf)
-        ).batches():
+        for batch in source_batch_sequence.filter(start_exclusive=after).batches():
             if len(target_batch_sequence) >= zconfig.API_BATCHES_LIMIT:
                 break
 
