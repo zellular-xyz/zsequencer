@@ -222,6 +222,7 @@ class Config:
 
         self.init_sequencer()
         if self.SEQUENCER["id"] == self.NODE["id"]:
+            zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
             self.IS_SYNCING = False
 
         self.APPS = utils.get_file_content(self.APPS_FILE)

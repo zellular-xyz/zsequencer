@@ -102,7 +102,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
                 zconfig.NETWORK_STATUS_TAG = seq_tag
 
     except Exception:
-        zlogger.exception("An unexpected error occurred:")
+        zlogger.error("An unexpected error occurred, while sending batches to sequencer")
         zdb.add_missed_batches(app_name, initialized_batches.values())
         zdb.is_sequencer_down = True
 
@@ -235,7 +235,8 @@ def is_sync_point_signature_verified(
                                                nonsigners)
 
     if not _validate_nonsigners_stake(nonsigners_stake, network_state.total_stake):
-        zlogger.exception(f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
+        zlogger.error(
+            f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}")
         return False
 
     data: str = json.dumps(
@@ -313,7 +314,7 @@ async def send_dispute_requests() -> None:
         zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
     except Exception as error:
-        zlogger.exception(f"An unexpected error occurred: {error}")
+        zlogger.error(f"An unexpected error occurred: {error}")
         return None
 
     if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
@@ -369,7 +370,7 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
         try:
             requests.post(url=url, data=data, headers=zconfig.HEADERS)
         except Exception as error:
-            zlogger.exception(f"Error sending switch request to {node['id']}: {error}")
+            zlogger.error(f"Error occurred while sending switch request to {node['id']}")
 
 
 def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
@@ -390,9 +391,13 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
 
         for app_name in list(zconfig.APPS.keys()):
             all_nodes_last_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
-            zdb.reinitialize(
-                app_name, new_sequencer_id, all_nodes_last_finalized_batch_record
-            )
+            if not all_nodes_last_finalized_batch_record:
+                zlogger.error(f'Could not find all nodes last finalized batch for app: {app_name}')
+            else:
+                zdb.reinitialize(
+                    app_name, new_sequencer_id, all_nodes_last_finalized_batch_record
+                )
+
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             time.sleep(10)
 
@@ -422,6 +427,9 @@ def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
             if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
                 last_finalized_batch_record = batch_record
         except Exception:
-            zlogger.exception("An unexpected error occurred:")
+            zlogger.error(
+                f"An unexpected error occurred while querying node {node['id']} "
+                f"for the last finalized batch at {url}"
+            )
 
     return last_finalized_batch_record

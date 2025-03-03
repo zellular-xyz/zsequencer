@@ -161,10 +161,9 @@ class InMemoryDB:
         except (FileNotFoundError, EOFError):
             pass
         except (OSError, IOError, json.JSONDecodeError) as error:
-            zlogger.exception(
+            zlogger.error(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
-                error,
             )
         return BatchSequence()
 
@@ -188,11 +187,10 @@ class InMemoryDB:
             )
             self._prune_old_finalized_batches(app_name, remove_border_index)
         except Exception as error:
-            zlogger.exception(
+            zlogger.error(
                 "An error occurred while saving snapshot for %s at index %d: %s",
                 app_name,
                 snapshot_index,
-                error,
             )
 
     def _save_finalized_batches_chunk_to_file(
@@ -610,6 +608,7 @@ class InMemoryDB:
         )
 
         if zconfig.NODE["id"] == new_sequencer_id:
+            zlogger.info("This node is acting as the SEQUENCER. ID: %s", zconfig.NODE["id"])
             self._resequence_batches(
                 app_name,
                 all_nodes_last_finalized_batch_record,
