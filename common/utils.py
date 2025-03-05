@@ -42,6 +42,19 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 
+def is_simulation(func: Callable[..., Any]) -> Decorator:
+    """Decorator to restrict access to non-sequencer functions."""
+
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        is_sequencer = zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
+        if (not zconfig.IS_SIMULATION) and is_sequencer:
+            return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+
 def validate_request(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
 

@@ -119,7 +119,7 @@ def post_switch_sequencer() -> Response:
 
 
 @node_blueprint.route("/state", methods=["GET"])
-@utils.validate_request
+@utils.is_simulation
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {

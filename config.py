@@ -70,7 +70,7 @@ class Config:
         self.ECDSA_KEY_PASSWORD = node_config.ecdsa_key_password
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
-
+        self.IS_SIMULATION = node_config.is_simulation
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()

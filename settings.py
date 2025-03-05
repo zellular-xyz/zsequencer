@@ -41,5 +41,7 @@ class NodeConfig(BaseSettings):
     register_operator: bool = Field(default=False)
     register_socket: str = Field(default="")
 
+    is_simulation: bool = Field(default=False)
+
     class Config:
         env_prefix = "ZSEQUENCER_"
