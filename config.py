@@ -70,10 +70,13 @@ class Config:
         self.ECDSA_KEY_PASSWORD = node_config.ecdsa_key_password
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
-        self.IS_SIMULATION = node_config.is_simulation
+        self._MODE = node_config.mode
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
+
+    def get_mode(self):
+        return self._MODE
 
     @staticmethod
     def get_instance(node_config: NodeConfig):

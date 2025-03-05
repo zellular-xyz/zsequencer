@@ -6,12 +6,13 @@ from typing import Any
 from flask import Blueprint, Response, request
 
 from common import utils
+from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
 from common.errors import ErrorCodes
 from common.logger import zlogger
 from common.response_utils import error_response, success_response
-from common.batch import batch_record_to_stateful_batch
 from config import zconfig
+from settings import MODE_PROD
 from . import tasks
 
 node_blueprint = Blueprint("node", __name__)
@@ -49,6 +50,7 @@ def put_batches(app_name: str) -> Response:
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The batch is received successfully.")
+
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.validate_request
@@ -119,7 +121,7 @@ def post_switch_sequencer() -> Response:
 
 
 @node_blueprint.route("/state", methods=["GET"])
-@utils.conditional_decorator(condition=lambda: (not zconfig.IS_SIMULATION), decorator=utils.not_sequencer)
+@utils.conditional_decorator(condition=lambda: (zconfig.get_mode() == MODE_PROD), decorator=utils.not_sequencer)
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
