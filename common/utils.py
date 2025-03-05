@@ -2,10 +2,9 @@
 
 import time
 from collections import Counter
-from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Any
+from typing import Callable, TypeVar, Any
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
@@ -16,6 +15,30 @@ from config import zconfig
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
+F = TypeVar('F', bound=Callable[..., Any])
+
+
+def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:
+    """
+    A decorator that applies another decorator only if a condition is True.
+
+    Args:
+        condition: A boolean or a callable that returns a boolean.
+        decorator: The decorator to apply if the condition is True.
+
+    Returns:
+        A decorator that conditionally applies the provided decorator.
+    """
+
+    def decorator_factory(func: F) -> F:
+        # Evaluate the condition
+        should_decorate = condition() if callable(condition) else condition
+
+        if should_decorate:
+            return decorator(func)
+        return func
+
+    return decorator_factory
 
 
 def sequencer_only(func: Callable[..., Any]) -> Decorator:
@@ -36,19 +59,6 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
-            return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
-        return func(*args, **kwargs)
-
-    return decorated_function
-
-
-def is_simulation(func: Callable[..., Any]) -> Decorator:
-    """Decorator to restrict access to non-sequencer functions."""
-
-    @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        is_sequencer = zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
-        if (not zconfig.IS_SIMULATION) and is_sequencer:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
         return func(*args, **kwargs)
 

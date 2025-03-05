@@ -119,7 +119,7 @@ def post_switch_sequencer() -> Response:
 
 
 @node_blueprint.route("/state", methods=["GET"])
-@utils.is_simulation
+@utils.conditional_decorator(condition=lambda: (not zconfig.IS_SIMULATION), decorator=utils.not_sequencer)
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
