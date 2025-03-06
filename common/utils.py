@@ -94,13 +94,12 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
     return decorated_function
 
 
-def validate_request(func: Callable[..., Any]) -> Decorator:
+def check_syncing(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch",
-                                                           "node.get_batches"]:
+        if zconfig.IS_SYNCING:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
         return func(*args, **kwargs)
 

@@ -19,7 +19,7 @@ node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
-@utils.validate_request
+@utils.check_syncing
 @utils.validate_version
 @utils.not_sequencer
 def put_bulk_batches() -> Response:
@@ -39,7 +39,7 @@ def put_bulk_batches() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.validate_request
+@utils.check_syncing
 @utils.validate_version
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
@@ -55,7 +55,7 @@ def put_batches(app_name: str) -> Response:
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
-@utils.validate_request
+@utils.check_syncing
 @utils.validate_version
 @utils.not_sequencer
 def post_sign_sync_point() -> Response:
@@ -73,7 +73,7 @@ def post_sign_sync_point() -> Response:
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
-@utils.validate_request
+@utils.check_syncing
 @utils.validate_version
 @utils.not_sequencer
 def post_dispute() -> Response:
@@ -105,7 +105,7 @@ def post_dispute() -> Response:
 
 
 @node_blueprint.route("/switch", methods=["POST"])
-@utils.validate_request
+@utils.check_syncing
 @utils.validate_version
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
@@ -156,7 +156,6 @@ def get_state() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
-@utils.validate_request
 @utils.validate_version
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch record for a given app."""
@@ -169,7 +168,6 @@ def get_last_finalized_batch(app_name: str) -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
-@utils.validate_request
 @utils.validate_version
 def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
