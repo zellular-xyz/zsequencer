@@ -4,11 +4,11 @@ import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Callable, TypeVar, Any
+from typing import Callable, TypeVar, Any, List
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import request
+from flask import request, Response
 from web3 import Account
 
 from config import zconfig
@@ -65,12 +65,18 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 
-def validate_request(func: Callable[..., Any]) -> Decorator:
-    """Decorator to validate the request."""
+def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to validate the 'Version' header against the expected version.
+
+    Checks if the request's 'Version' header matches zconfig.VERSION for endpoints
+    starting with 'sequencer' or 'node'. Returns an error response if validation fails.
+    """
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    def decorated_function(*args: Any, **kwargs: Any) -> Response:
+        # Get version from headers (default to empty string if missing)
         version = request.headers.get("Version", "")
+
         if (not version or version != zconfig.VERSION) and \
                 request.endpoint.startswith("sequencer"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
@@ -79,12 +85,58 @@ def validate_request(func: Callable[..., Any]) -> Decorator:
                 request.endpoint.startswith("node"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
                                                  errors.ErrorMessages.INVALID_NODE_VERSION)
-        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch",
-                                                           "node.get_batches"]:
+
+        # Proceed to the original function
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+
+def not_syncing(func: Callable[..., Any]) -> Decorator:
+    """Decorator to validate the request."""
+
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        if zconfig.IS_SYNCING:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
         return func(*args, **kwargs)
 
     return decorated_function
+
+
+def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
+    """Decorator to validate required keys in the request JSON body."""
+
+    def decorator(func: Callable[..., Response]) -> Callable[..., Response]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Response:
+            try:
+                req_data = request.get_json()
+                if not isinstance(req_data, dict):
+                    return response_utils.error_response(
+                        errors.ErrorCodes.INVALID_REQUEST,
+                        "Request body must be a JSON object"
+                    )
+            except Exception:
+                return response_utils.error_response(
+                    errors.ErrorCodes.INVALID_REQUEST,
+                    "Failed to parse JSON request body"
+                )
+
+            if all(key in req_data for key in required_keys):
+                return func(*args, **kwargs)  # Proceed if all keys are present
+
+            # Build error message for missing keys
+            missing_keys = [key for key in required_keys if key not in req_data]
+            message = "Required keys are missing: " + ", ".join(missing_keys)
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_REQUEST,
+                message
+            )
+
+        return wrapper
+
+    return decorator
 
 
 def eth_sign(message: str) -> str:

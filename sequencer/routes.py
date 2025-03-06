@@ -15,28 +15,25 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 
 
 @sequencer_blueprint.route("/batches", methods=["PUT"])
-@utils.validate_request
+@utils.not_syncing
+@utils.validate_version
+@utils.validate_body_keys(required_keys=[
+    "app_name",
+    "batches",
+    "node_id",
+    "signature",
+    "sequenced_index",
+    "sequenced_hash",
+    "sequenced_chaining_hash",
+    "locked_index",
+    "locked_hash",
+    "locked_chaining_hash",
+    "timestamp",
+])
 @utils.sequencer_only
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-
-    required_keys: list[str] = [
-        "app_name",
-        "batches",
-        "node_id",
-        "signature",
-        "sequenced_index",
-        "sequenced_hash",
-        "sequenced_chaining_hash",
-        "locked_index",
-        "locked_hash",
-        "locked_chaining_hash",
-        "timestamp",
-    ]
-    error_message: str = utils.validate_keys(req_data, required_keys)
-    if error_message:
-        return error_response(ErrorCodes.INVALID_REQUEST, error_message)
 
     concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified: bool = utils.is_eth_sig_verified(
