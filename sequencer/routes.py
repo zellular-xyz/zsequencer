@@ -16,6 +16,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 
 @sequencer_blueprint.route("/batches", methods=["PUT"])
 @utils.validate_request
+@utils.validate_version
 @utils.sequencer_only
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""

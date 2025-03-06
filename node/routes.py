@@ -20,6 +20,7 @@ node_blueprint = Blueprint("node", __name__)
 
 @node_blueprint.route("/batches", methods=["PUT"])
 @utils.validate_request
+@utils.validate_version
 @utils.not_sequencer
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
@@ -39,6 +40,7 @@ def put_bulk_batches() -> Response:
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
 @utils.validate_request
+@utils.validate_version
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
@@ -54,6 +56,7 @@ def put_batches(app_name: str) -> Response:
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.validate_request
+@utils.validate_version
 @utils.not_sequencer
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
@@ -71,6 +74,7 @@ def post_sign_sync_point() -> Response:
 
 @node_blueprint.route("/dispute", methods=["POST"])
 @utils.validate_request
+@utils.validate_version
 @utils.not_sequencer
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
@@ -102,6 +106,7 @@ def post_dispute() -> Response:
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_request
+@utils.validate_version
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
@@ -152,6 +157,7 @@ def get_state() -> Response:
 
 @node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
 @utils.validate_request
+@utils.validate_version
 def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch record for a given app."""
     if app_name not in list(zconfig.APPS):
@@ -164,6 +170,7 @@ def get_last_finalized_batch(app_name: str) -> Response:
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
 @utils.validate_request
+@utils.validate_version
 def get_batches(app_name: str, state: str) -> Response:
     """Get batches for a given app and states."""
     if app_name not in list(zconfig.APPS):

@@ -8,7 +8,7 @@ from typing import Callable, TypeVar, Any
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import request
+from flask import request, Response
 from web3 import Account
 
 from config import zconfig
@@ -65,20 +65,40 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 
+def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to validate the 'Version' header against the expected version.
+
+    Checks if the request's 'Version' header matches zconfig.VERSION for endpoints
+    starting with 'sequencer' or 'node'. Returns an error response if validation fails.
+    """
+
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Response:
+        # Define endpoints requiring version validation
+        VALIDATION_PREFIXES = ("sequencer", "node")
+
+        # Get version from headers (default to empty string if missing)
+        version = request.headers.get("Version", "")
+
+        # Check if validation is required and version is invalid
+        if (request.endpoint and any(request.endpoint.startswith(prefix) for prefix in VALIDATION_PREFIXES) and
+                (not version or version != zconfig.VERSION)):
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_NODE_VERSION,
+                errors.ErrorMessages.INVALID_NODE_VERSION
+            )
+
+        # Proceed to the original function
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+
 def validate_request(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        version = request.headers.get("Version", "")
-        if (not version or version != zconfig.VERSION) and \
-                request.endpoint.startswith("sequencer"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
-                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
-        if (version and version != zconfig.VERSION) and \
-                request.endpoint.startswith("node"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
-                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
         if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch",
                                                            "node.get_batches"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
