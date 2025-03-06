@@ -74,19 +74,17 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
 
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Response:
-        # Define endpoints requiring version validation
-        VALIDATION_PREFIXES = ("sequencer", "node")
-
         # Get version from headers (default to empty string if missing)
         version = request.headers.get("Version", "")
 
-        # Check if validation is required and version is invalid
-        if (request.endpoint and any(request.endpoint.startswith(prefix) for prefix in VALIDATION_PREFIXES) and
-                (not version or version != zconfig.VERSION)):
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_NODE_VERSION,
-                errors.ErrorMessages.INVALID_NODE_VERSION
-            )
+        if (not version or version != zconfig.VERSION) and \
+                request.endpoint.startswith("sequencer"):
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
+                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
+        if (version and version != zconfig.VERSION) and \
+                request.endpoint.startswith("node"):
+            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
+                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
 
         # Proceed to the original function
         return func(*args, **kwargs)
