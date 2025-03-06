@@ -1,5 +1,11 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
+from typing import Literal
+
+MODE_DEV = "dev"
+MODE_PROD = "prod"
+MODE_TEST = "test"
+SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
 class NodeConfig(BaseSettings):
@@ -40,6 +46,8 @@ class NodeConfig(BaseSettings):
 
     register_operator: bool = Field(default=False)
     register_socket: str = Field(default="")
+
+    mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
     class Config:
         env_prefix = "ZSEQUENCER_"
