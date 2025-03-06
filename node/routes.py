@@ -19,7 +19,7 @@ node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
-@utils.check_syncing
+@utils.not_syncing
 @utils.validate_version
 @utils.not_sequencer
 def put_bulk_batches() -> Response:
@@ -39,7 +39,7 @@ def put_bulk_batches() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.check_syncing
+@utils.not_syncing
 @utils.validate_version
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
@@ -55,7 +55,7 @@ def put_batches(app_name: str) -> Response:
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
-@utils.check_syncing
+@utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 @utils.not_sequencer
@@ -68,7 +68,7 @@ def post_sign_sync_point() -> Response:
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
-@utils.check_syncing
+@utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 @utils.not_sequencer
@@ -96,7 +96,7 @@ def post_dispute() -> Response:
 
 
 @node_blueprint.route("/switch", methods=["POST"])
-@utils.check_syncing
+@utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:

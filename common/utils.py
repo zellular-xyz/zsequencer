@@ -94,7 +94,7 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
     return decorated_function
 
 
-def check_syncing(func: Callable[..., Any]) -> Decorator:
+def not_syncing(func: Callable[..., Any]) -> Decorator:
     """Decorator to validate the request."""
 
     @wraps(func)
