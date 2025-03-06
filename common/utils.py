@@ -4,7 +4,7 @@ import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Callable, TypeVar, Any
+from typing import Callable, TypeVar, Any, List
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
@@ -104,6 +104,41 @@ def check_syncing(func: Callable[..., Any]) -> Decorator:
         return func(*args, **kwargs)
 
     return decorated_function
+
+
+def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
+    """Decorator to validate required keys in the request JSON body."""
+
+    def decorator(func: Callable[..., Response]) -> Callable[..., Response]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Response:
+            try:
+                req_data = request.get_json()
+                if not isinstance(req_data, dict):
+                    return response_utils.error_response(
+                        errors.ErrorCodes.INVALID_REQUEST,
+                        "Request body must be a JSON object"
+                    )
+            except Exception:
+                return response_utils.error_response(
+                    errors.ErrorCodes.INVALID_REQUEST,
+                    "Failed to parse JSON request body"
+                )
+
+            if all(key in req_data for key in required_keys):
+                return func(*args, **kwargs)  # Proceed if all keys are present
+
+            # Build error message for missing keys
+            missing_keys = [key for key in required_keys if key not in req_data]
+            message = "Required keys are missing: " + ", ".join(missing_keys)
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_REQUEST,
+                message
+            )
+
+        return wrapper
+
+    return decorator
 
 
 def eth_sign(message: str) -> str:
