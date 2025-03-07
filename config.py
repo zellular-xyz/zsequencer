@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import requests
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from eigensdk.crypto.bls import attestation
+from readerwriterlock import rwlock
 from tenacity import retry, stop_after_attempt, wait_fixed
 from web3 import Account
 
@@ -37,7 +38,10 @@ class Config:
         self.APPS = {}
         self.NETWORK_STATUS_TAG = None
         self.ADDRESS = None
-        self.IS_SYNCING = None
+
+        # Syncing flags
+        self.APPS_SYNCING_FLAGS = {}
+        self.APPS_SYNCING_FLAG_LOCKS = {}
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -224,11 +228,13 @@ class Config:
             sys.exit()
 
         self.init_sequencer()
-        if self.SEQUENCER["id"] == self.NODE["id"]:
+        is_sequencer = self.SEQUENCER["id"] == self.NODE["id"]
+        if is_sequencer:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
-            self.IS_SYNCING = False
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
+        self.APPS_SYNCING_FLAGS, self.APPS_SYNCING_FLAG_LOCKS = {app_name: False for app_name in self.APPS}, \
+            {app_name: rwlock.RWLockFair() for app_name in self.APPS}
 
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)

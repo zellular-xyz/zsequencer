@@ -92,16 +92,35 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
     return decorated_function
 
 
-def not_syncing(func: Callable[..., Any]) -> Decorator:
-    """Decorator to validate the request."""
+def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to ensure the app is not syncing before processing the request."""
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.IS_SYNCING:
-            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
+    def wrapper(*args: Any, **kwargs: Any) -> Response:
+        app_name = request.view_args.get("app_name") if request.view_args else None
+
+        if not app_name:
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_REQUEST,
+                "app_name is required in route"
+            )
+
+        if app_name not in zconfig.APPS:
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_REQUEST,
+                f"Invalid app name: {app_name}"
+            )
+
+        with zconfig.APPS_SYNCING_FLAG_LOCKS[app_name].gen_rlock():
+            if zconfig.APPS_SYNCING_FLAGS.get(app_name, False):
+                return response_utils.error_response(
+                    errors.ErrorCodes.IS_SYNCING,
+                    f"Cannot process request for {app_name}: {errors.ErrorMessages.IS_SYNCING}"
+                )
+
         return func(*args, **kwargs)
 
-    return decorated_function
+    return wrapper
 
 
 def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
