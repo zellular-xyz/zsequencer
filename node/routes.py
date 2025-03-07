@@ -31,7 +31,7 @@ def put_bulk_batches() -> Response:
         for app_name, batches in batches_mapping.items()
         if app_name in valid_apps
     }
-    if any([zconfig.APPS_SYNCING_FLAGS[app_name] for app_name in filtered_batches_mapping]):
+    if any([zconfig._APPS_SYNCING_FLAGS[app_name] for app_name in filtered_batches_mapping]):
         return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
     for app_name, batches in filtered_batches_mapping.items():
@@ -58,7 +58,6 @@ def put_batches(app_name: str) -> Response:
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
-# @utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 @utils.not_sequencer
@@ -72,7 +71,6 @@ def post_sign_sync_point() -> Response:
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
-# @utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 @utils.not_sequencer
@@ -100,7 +98,6 @@ def post_dispute() -> Response:
 
 
 @node_blueprint.route("/switch", methods=["POST"])
-# @utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:

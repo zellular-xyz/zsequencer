@@ -40,8 +40,8 @@ class Config:
         self.ADDRESS = None
 
         # Syncing flags
-        self.APPS_SYNCING_FLAGS = {}
-        self.APPS_SYNCING_FLAG_LOCKS = {}
+        self._APPS_SYNCING_FLAGS = {}
+        self._APPS_SYNCING_FLAG_LOCKS = {}
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -78,6 +78,33 @@ class Config:
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
+
+    def check_syncing_apps(self):
+        for app in self._APPS_SYNCING_FLAGS:
+            if self.get_app_syncing_flag(app):
+                return True
+        return False
+
+    def get_app_syncing_flag(self, app_name):
+        if app_name not in self._APPS_SYNCING_FLAGS:
+            raise ValueError(f'Invalid app_name: {app_name}')
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_rlock():
+            return zconfig._APPS_SYNCING_FLAGS[app_name]
+
+    def set_app_syncing_flag(self, app_name):
+        if app_name not in self._APPS_SYNCING_FLAGS:
+            raise ValueError(f'Invalid app_name: {app_name}')
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_wlock():
+            zconfig._APPS_SYNCING_FLAGS[app_name] = True
+
+    def unset_app_syncing_flag(self, app_name):
+        if app_name not in self._APPS_SYNCING_FLAGS:
+            raise ValueError(f'Invalid app_name: {app_name}')
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_wlock():
+            zconfig._APPS_SYNCING_FLAGS[app_name] = False
 
     def get_mode(self):
         return self._MODE
@@ -233,7 +260,7 @@ class Config:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
-        self.APPS_SYNCING_FLAGS, self.APPS_SYNCING_FLAG_LOCKS = {app_name: False for app_name in self.APPS}, \
+        self._APPS_SYNCING_FLAGS, self._APPS_SYNCING_FLAG_LOCKS = {app_name: False for app_name in self.APPS}, \
             {app_name: rwlock.RWLockFair() for app_name in self.APPS}
 
         for app_name in self.APPS:

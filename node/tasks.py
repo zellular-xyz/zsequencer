@@ -34,9 +34,7 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
-        lock = zconfig.APPS_SYNCING_FLAG_LOCKS[app_name]
-        with lock.gen_wlock():
-            zconfig.APPS_SYNCING_FLAGS[app_name] = True
+        zconfig.set_app_syncing_flag(app_name)
         try:
             while True:
                 response = send_app_batches(app_name).get("data", {})
@@ -45,8 +43,7 @@ def send_batches() -> None:
                         zdb.get_batch_record_by_hash_or_empty(app_name, sequencer_last_finalized_hash):
                     break
         finally:
-            with lock.gen_wlock():
-                zconfig.APPS_SYNCING_FLAGS[app_name] = False
+            zconfig.unset_app_syncing_flag(app_name)
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
@@ -284,15 +281,7 @@ async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
     loop = asyncio.get_event_loop()
 
-    def check_syncing():
-        for app in zconfig.APPS_SYNCING_FLAGS:
-            lock = zconfig.APPS_SYNCING_FLAG_LOCKS[app]
-            with lock.gen_rlock():
-                if zconfig.APPS_SYNCING_FLAGS[app]:
-                    return True
-        return False
-
-    if await loop.run_in_executor(None, check_syncing) \
+    if await loop.run_in_executor(None, zconfig.check_syncing_apps) \
             or (not zdb.has_missed_batches() and not zdb.is_sequencer_down) \
             or zdb.pause_node.is_set():
         return

@@ -116,12 +116,11 @@ def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
                 f"Invalid app name: {app_name}"
             )
 
-        with zconfig.APPS_SYNCING_FLAG_LOCKS[app_name].gen_rlock():
-            if zconfig.APPS_SYNCING_FLAGS.get(app_name, False):
-                return response_utils.error_response(
-                    errors.ErrorCodes.IS_SYNCING,
-                    f"Cannot process request for {app_name}: {errors.ErrorMessages.IS_SYNCING}"
-                )
+        if zconfig.get_app_syncing_flag(app_name):
+            return response_utils.error_response(
+                errors.ErrorCodes.IS_SYNCING,
+                f"Cannot process request for {app_name}: {errors.ErrorMessages.IS_SYNCING}"
+            )
 
         return func(*args, **kwargs)
 
