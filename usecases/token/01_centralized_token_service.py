@@ -1,47 +1,53 @@
-from flask import Flask, request, jsonify, session
-from flask_session import Session
+from fastapi import FastAPI, Request, HTTPException
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Dict, Any
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "supersecretkey"
-app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
+app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="supersecretkey")  # Use a strong secret key
 
+# Simulated user database
 users = {"user1": "pass1"}
 balances = {"user1": 100}
 
+# Define request models
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
-@app.route("/login", methods=["POST"])
-def login():
-    data = request.json
-    if users.get(data["username"]) != data["password"]:
-        return jsonify({"error": "Invalid credentials"}), 401
-    session["username"] = data["username"]
-    return jsonify({"message": "Login successful"})
+class TransferRequest(BaseModel):
+    receiver: str
+    amount: int
 
+@app.post("/login")
+async def login(request: Request, data: LoginRequest):
+    """Authenticate user and store session."""
+    if users.get(data.username) != data.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-@app.route("/transfer", methods=["POST"])
-def transfer():
-    if "username" not in session:
-        return jsonify({"error": "Unauthorized"}), 401
+    request.session["username"] = data.username  # Store username in session
+    return JSONResponse({"message": "Login successful"})
 
-    data = request.json
-    sender, receiver, amount = (
-        session["username"], data["receiver"], data["amount"]
-    )
+@app.post("/transfer")
+async def transfer(request: Request, data: TransferRequest):
+    """Transfer funds between users."""
+    username = request.session.get("username")
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
-    if balances.get(sender, 0) < amount:
-        return jsonify({"error": "Insufficient balance"}), 400
+    if balances.get(username, 0) < data.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    balances[sender] -= amount
-    balances[receiver] = balances.get(receiver, 0) + amount
-    return jsonify({"message": "Transfer successful"})
+    balances[username] -= data.amount
+    balances[data.receiver] = balances.get(data.receiver, 0) + data.amount
+    return JSONResponse({"message": "Transfer successful"})
 
-
-@app.route("/balance", methods=["GET"])
-def balance():
-    username = request.args.get("username")
-    return jsonify({"username": username, "balance": balances.get(username, 0)})
-
+@app.get("/balance")
+async def balance(username: str) -> Dict[str, Any]:
+    """Retrieve user balance."""
+    return {"username": username, "balance": balances.get(username, 0)}
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    import uvicorn
+    uvicorn.run(app, port=5001)

@@ -1,44 +1,50 @@
-from flask import Flask, request, jsonify
+from typing import Dict, Any
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from starlette.responses import JSONResponse
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "supersecretkey"
+app = FastAPI()
 
-# List addresses with initial balances
-balances = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
+# Simulated Balances
+balances: Dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
 
-def verify_signature(sender, message, signature):
-    message_hash = encode_defunct(text=message)
-    recovered_address = Account.recover_message(message_hash, signature=signature)
-    return recovered_address.lower() == sender.lower()
+def verify_signature(sender: str, message: str, signature: str) -> bool:
+    """Verifies if the provided signature is valid for the given sender address."""
+    try:
+        message_hash = encode_defunct(text=message)
+        recovered_address = Account.recover_message(message_hash, signature=signature)
+        return recovered_address.lower() == sender.lower()
+    except Exception:
+        return False  # Any error in signature recovery means invalid signature
 
+class TransferRequest(BaseModel):
+    sender: str
+    receiver: str
+    amount: int
+    signature: str
 
-@app.route("/transfer", methods=["POST"])
-def transfer():
-    data = request.json
-    sender, receiver, amount, signature = (
-        data["sender"], data["receiver"], data["amount"], data["signature"]
-    )
+@app.post("/transfer")
+async def transfer(data: TransferRequest) -> JSONResponse:
+    """Handles token transfers using signature-based authentication."""
+    message = f"Transfer {data.amount} to {data.receiver}"
 
-    message = f"Transfer {amount} to {receiver}"
-    if not verify_signature(sender, message, signature):
-        return jsonify({"error": "Invalid signature"}), 401
+    if not verify_signature(data.sender, message, data.signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
-    if balances.get(sender, 0) < amount:
-        return jsonify({"error": "Insufficient balance"}), 400
+    if balances.get(data.sender, 0) < data.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    balances[sender] -= amount
-    balances[receiver] = balances.get(receiver, 0) + amount
-    return jsonify({"message": "Transfer successful"})
+    balances[data.sender] -= data.amount
+    balances[data.receiver] = balances.get(data.receiver, 0) + data.amount
+    return JSONResponse({"message": "Transfer successful"})
 
-
-@app.route("/balance", methods=["GET"])
-def balance():
-    address = request.args.get("address")
-    return jsonify({"address": address, "balance": balances.get(address, 0)})
-
+@app.get("/balance")
+async def balance(address: str) -> Dict[str, Any]:
+    """Retrieves the balance of a given address."""
+    return {"address": address, "balance": balances.get(address, 0)}
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
-
+    import uvicorn
+    uvicorn.run(app, port=5001)

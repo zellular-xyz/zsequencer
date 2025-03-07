@@ -2,8 +2,8 @@ import json
 from blspy import G1Element, G2Element, PopSchemeMPL
 
 SIGNATURE_AGGREGATOR_RESULT = {
-    'message': b'Address: 0x2B3e5649A2Bfc3667b1db1A0ae7E1f9368d676A9, Balance: 0',
-    'aggregated_signature': 'b15aa39f782ce387a59efeb8c141f9ed66f1831b01788ceaf9b96620d4bc37fcaad94c47c7f346c7c5a2ef0f3ef85150031ffd443c470ef4de2bcfac5c50086f347c71c9c626ece3dcf1a0b056105200becc01ae885bccabf9f52c59e2201c84',
+    'message': b'Address: 0x2B3e5649A2Bfc3667b1db1A0ae7E1f9368d676A9, Balance: 10',
+    'aggregated_signature': '8a91b929d8d8d67324ed34e15a181f0143e81ca70c4677fb720bf855f2a82bdac020ceea9d873655354b4aa5ccfc113510691a476df4ed2bcfbace9ce12689785613a0f0d2913eb5bf12e57a3da6872e93ede923e8b13a464203b8ee1d71aa9b',
     'non_signing_nodes': ['Node3']
 }
 
