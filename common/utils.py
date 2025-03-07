@@ -99,10 +99,15 @@ def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
     def wrapper(*args: Any, **kwargs: Any) -> Response:
         app_name = request.view_args.get("app_name") if request.view_args else None
 
+        # If not in route, try request body
+        if not app_name:
+            req_data = request.get_json(silent=True) or {}
+            app_name = req_data.get("app_name")
+
         if not app_name:
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_REQUEST,
-                "app_name is required in route"
+                "app_name is required"
             )
 
         if app_name not in zconfig.APPS:
