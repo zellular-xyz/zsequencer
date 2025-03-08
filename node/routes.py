@@ -31,8 +31,9 @@ def put_bulk_batches() -> Response:
         for app_name, batches in batches_mapping.items()
         if app_name in valid_apps
     }
-    if any([zconfig._APPS_SYNCING_FLAGS[app_name] for app_name in filtered_batches_mapping]):
-        return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
+    for app_name in filtered_batches_mapping:
+        if zconfig.get_app_syncing_flag(app_name):
+            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
     for app_name, batches in filtered_batches_mapping.items():
         if app_name not in valid_apps:
