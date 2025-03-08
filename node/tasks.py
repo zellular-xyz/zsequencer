@@ -35,13 +35,22 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
+        finish_condition = send_app_batches_iteration(app_name)
+        if finish_condition:
+            continue
         with zconfig.app_syncing_context(app_name):
             while True:
-                response = send_app_batches(app_name).get("data", {})
-                sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
-                if not sequencer_last_finalized_hash or \
-                        zdb.get_batch_record_by_hash_or_empty(app_name, sequencer_last_finalized_hash):
+                finish_condition = send_app_batches_iteration(app_name)
+                if finish_condition:
                     break
+
+
+def send_app_batches_iteration(app_name):
+    response = send_app_batches(app_name).get("data", {})
+    sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
+    finish_condition = not sequencer_last_finalized_hash or zdb.get_batch_record_by_hash_or_empty(app_name,
+                                                                                                  sequencer_last_finalized_hash)
+    return finish_condition
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
