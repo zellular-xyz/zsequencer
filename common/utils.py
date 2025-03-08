@@ -10,12 +10,22 @@ import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from flask import request, Response
 from web3 import Account
-
+from contextlib import contextmanager
 from config import zconfig
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 F = TypeVar('F', bound=Callable[..., Any])
+
+
+@contextmanager
+def app_syncing_context(app_name: str):
+    """Manage app syncing state."""
+    zconfig.set_app_syncing_flag(app_name)
+    try:
+        yield
+    finally:
+        zconfig.unset_app_syncing_flag(app_name)
 
 
 def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:

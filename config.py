@@ -260,8 +260,8 @@ class Config:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
-        self._APPS_SYNCING_FLAGS, self._APPS_SYNCING_FLAG_LOCKS = {app_name: False for app_name in self.APPS}, \
-            {app_name: rwlock.RWLockFair() for app_name in self.APPS}
+        self._APPS_SYNCING_FLAGS = {app_name: False for app_name in self.APPS}
+        self._APPS_SYNCING_FLAG_LOCKS = {app_name: rwlock.RWLockFair() for app_name in self.APPS}
 
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)

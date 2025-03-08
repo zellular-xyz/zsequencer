@@ -8,16 +8,18 @@ import json
 import threading
 import time
 from typing import Any
+from typing import List
 
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
-from typing import List
+
 from common import bls, utils
-from common.db import zdb
-from common.logger import zlogger
-from common.errors import ErrorCodes
 from common.batch import BatchRecord, stateful_batch_to_batch_record
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.logger import zlogger
+from common.utils import app_syncing_context
 from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
@@ -34,16 +36,13 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
-        zconfig.set_app_syncing_flag(app_name)
-        try:
+        with app_syncing_context(app_name):
             while True:
                 response = send_app_batches(app_name).get("data", {})
                 sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
                 if not sequencer_last_finalized_hash or \
                         zdb.get_batch_record_by_hash_or_empty(app_name, sequencer_last_finalized_hash):
                     break
-        finally:
-            zconfig.unset_app_syncing_flag(app_name)
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
