@@ -18,16 +18,6 @@ Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 F = TypeVar('F', bound=Callable[..., Any])
 
 
-@contextmanager
-def app_syncing_context(app_name: str):
-    """Manage app syncing state."""
-    zconfig.set_app_syncing_flag(app_name)
-    try:
-        yield
-    finally:
-        zconfig.unset_app_syncing_flag(app_name)
-
-
 def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:
     """
     A decorator that applies another decorator only if a condition is True.

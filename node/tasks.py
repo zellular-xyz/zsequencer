@@ -19,7 +19,6 @@ from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes
 from common.logger import zlogger
-from common.utils import app_syncing_context
 from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
@@ -36,7 +35,7 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     for app_name in list(zconfig.APPS.keys()):
-        with app_syncing_context(app_name):
+        with zconfig.app_syncing_context(app_name):
             while True:
                 response = send_app_batches(app_name).get("data", {})
                 sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")

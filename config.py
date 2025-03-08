@@ -19,7 +19,7 @@ from eigensdk.crypto.bls import attestation
 from readerwriterlock import rwlock
 from tenacity import retry, stop_after_attempt, wait_fixed
 from web3 import Account
-
+from contextlib import contextmanager
 import utils
 from common.logger import zlogger
 from schema import NetworkState, NodeSource
@@ -78,6 +78,15 @@ class Config:
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
+
+    @contextmanager
+    def app_syncing_context(self, app_name: str):
+        """Manage app syncing state."""
+        self.set_app_syncing_flag(app_name)
+        try:
+            yield
+        finally:
+            self.unset_app_syncing_flag(app_name)
 
     def check_syncing_apps(self):
         for app in self._APPS_SYNCING_FLAGS:
