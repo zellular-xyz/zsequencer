@@ -10,7 +10,8 @@ SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 class SequencerSabotageSimulation(BaseSettings):
     out_of_reach: bool = Field(default=True)
-    out_of_reach_seconds: int = Field(default=30)
+    in_reach_seconds: int = Field(default=20)
+    out_of_reach_seconds: int = Field(default=20)
 
     class Config:
         env_prefix = "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_"
