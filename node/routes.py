@@ -31,15 +31,12 @@ def put_bulk_batches() -> Response:
         for app_name, batches in batches_mapping.items()
         if app_name in valid_apps
     }
+
     for app_name in filtered_batches_mapping:
         if zconfig.get_app_syncing_flag(app_name):
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
     for app_name, batches in filtered_batches_mapping.items():
-        if app_name not in valid_apps:
-            zlogger.warning(f"{app_name} is not a valid app.")
-            continue
-
         zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
         zdb.init_batches(app_name, [str(item) for item in list(batches)])
 
