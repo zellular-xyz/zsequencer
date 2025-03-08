@@ -97,30 +97,8 @@ def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Response:
-        app_name = request.view_args.get("app_name") if request.view_args else None
-
-        # If not in route, try request body
-        if not app_name:
-            req_data = request.get_json(silent=True) or {}
-            app_name = req_data.get("app_name")
-
-        if not app_name:
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST,
-                "app_name is required"
-            )
-
-        if app_name not in zconfig.APPS:
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST,
-                f"Invalid app name: {app_name}"
-            )
-
-        if zconfig.get_app_syncing_flag(app_name):
-            return response_utils.error_response(
-                errors.ErrorCodes.IS_SYNCING,
-                f"Cannot process request for {app_name}: {errors.ErrorMessages.IS_SYNCING}"
-            )
+        if zconfig.check_syncing_apps():
+            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
         return func(*args, **kwargs)
 

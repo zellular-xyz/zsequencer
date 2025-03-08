@@ -20,6 +20,7 @@ node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
+@utils.not_syncing
 @utils.validate_version
 @utils.not_sequencer
 def put_bulk_batches() -> Response:
@@ -31,10 +32,6 @@ def put_bulk_batches() -> Response:
         for app_name, batches in batches_mapping.items()
         if app_name in valid_apps
     }
-
-    for app_name in filtered_batches_mapping:
-        if zconfig.get_app_syncing_flag(app_name):
-            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
     for app_name, batches in filtered_batches_mapping.items():
         zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
