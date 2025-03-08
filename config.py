@@ -41,6 +41,7 @@ class Config:
 
         # Syncing flags
         self._APPS_SYNCING_FLAGS = {}
+        self._APPS_SYNCING_FLAG_LOCKS = {}
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -96,17 +97,23 @@ class Config:
     def get_app_syncing_flag(self, app_name):
         if app_name not in self._APPS_SYNCING_FLAGS:
             raise ValueError(f'Invalid app_name: {app_name}')
-        return zconfig._APPS_SYNCING_FLAGS[app_name]
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_rlock():
+            return zconfig._APPS_SYNCING_FLAGS[app_name]
 
     def set_app_syncing_flag(self, app_name):
         if app_name not in self._APPS_SYNCING_FLAGS:
             raise ValueError(f'Invalid app_name: {app_name}')
-        zconfig._APPS_SYNCING_FLAGS[app_name] = True
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_wlock():
+            zconfig._APPS_SYNCING_FLAGS[app_name] = True
 
     def unset_app_syncing_flag(self, app_name):
         if app_name not in self._APPS_SYNCING_FLAGS:
             raise ValueError(f'Invalid app_name: {app_name}')
-        zconfig._APPS_SYNCING_FLAGS[app_name] = False
+
+        with zconfig._APPS_SYNCING_FLAG_LOCKS[app_name].gen_wlock():
+            zconfig._APPS_SYNCING_FLAGS[app_name] = False
 
     def get_mode(self):
         return self._MODE
@@ -263,6 +270,7 @@ class Config:
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
         self._APPS_SYNCING_FLAGS = {app_name: False for app_name in self.APPS}
+        self._APPS_SYNCING_FLAG_LOCKS = {app_name: rwlock.RWLockFair() for app_name in self.APPS}
 
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
