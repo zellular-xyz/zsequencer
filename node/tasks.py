@@ -17,7 +17,7 @@ from eigensdk.crypto.bls import attestation
 from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
-from common.errors import ErrorCodes
+from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
 
@@ -101,6 +101,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
                 zlogger.warning(response["error"]["message"])
                 return {}
+            if response["error"]["code"] == ErrorCodes.SEQUENCER_OUT_OF_REACH:
+                zlogger.warning(response["error"]["message"])
+                response['data'] = {}
+                raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
 

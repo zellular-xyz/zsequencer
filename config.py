@@ -234,8 +234,8 @@ class Config:
             sys.exit()
 
         self.init_sequencer()
-        is_sequencer = self.SEQUENCER["id"] == self.NODE["id"]
-        if is_sequencer:
+
+        if self.is_sequencer:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
@@ -243,6 +243,10 @@ class Config:
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
             os.makedirs(snapshot_path, exist_ok=True)
+
+    @property
+    def is_sequencer(self):
+        return self.SEQUENCER["id"] == self.NODE["id"]
 
     @property
     def last_state(self) -> NetworkState:

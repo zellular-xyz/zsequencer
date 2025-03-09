@@ -12,10 +12,22 @@ from flask import request, Response
 from web3 import Account
 
 from config import zconfig
+from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 F = TypeVar('F', bound=Callable[..., Any])
+
+
+def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        if sequencer_sabotage_simulation_state.out_of_reach:
+            return response_utils.error_response(error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
+                                                 error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH)
+        return func(*args, **kwargs)
+
+    return decorated_function
 
 
 def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:
