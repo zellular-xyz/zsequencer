@@ -46,6 +46,10 @@ def put_bulk_batches() -> Response:
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
+    if not app_name:
+        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
+    if app_name not in list(zconfig.APPS):
+        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     data = request.data.decode('latin-1')
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
