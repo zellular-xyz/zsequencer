@@ -55,7 +55,7 @@ def send_batches() -> None:
 def send_app_batches_iteration(app_name):
     response = send_app_batches(app_name).get("data", {})
     sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
-    finish_condition = not sequencer_last_finalized_hash or zdb.get_batch_record_by_hash_or_empty(app_name,
+    finish_condition = not sequencer_last_finalized_hash or zdb.get_operational_batch_record_by_hash_or_empty(app_name,
                                                                                                   sequencer_last_finalized_hash)
     return finish_condition
 

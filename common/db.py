@@ -294,7 +294,7 @@ class InMemoryDB:
                 "state": "initialized",
             }
         else:
-            return self._get_operational_batch_record_by_hash_or_empty(
+            return self.get_operational_batch_record_by_hash_or_empty(
                 app_name, batch_hash
             )
 
@@ -426,7 +426,7 @@ class InMemoryDB:
             )
             return
 
-        target_batch = self._get_operational_batch_record_by_hash_or_empty(
+        target_batch = self.get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"]
         ).get("batch", {})
         target_batch["lock_signature"] = signature_data["signature"]
@@ -466,7 +466,7 @@ class InMemoryDB:
             if index % zconfig.SNAPSHOT_CHUNK == 0:
                 snapshot_indexes.append(index)
 
-        target_batch = self._get_operational_batch_record_by_hash_or_empty(
+        target_batch = self.get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"]
         ).get("batch", {})
         target_batch["finalization_signature"] = signature_data["signature"]
@@ -716,7 +716,7 @@ class InMemoryDB:
             target_batch_sequence.append(batch)
             target_batches_hash_set.add(batch["hash"])
 
-    def _get_operational_batch_record_by_hash_or_empty(
+    def get_operational_batch_record_by_hash_or_empty(
         self, app_name: str, batch_hash: str
     ) -> BatchRecord:
         return self.apps[app_name]["operational_batch_sequence"].get_or_empty(
