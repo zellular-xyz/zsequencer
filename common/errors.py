@@ -27,6 +27,7 @@ class ErrorCodes:
     ISSUE_NOT_FOUND: str = "issue_not_found"
     PK_ALREADY_SET: str = "public_shares_already_set"
     SEQUENCER_CHANGE_NOT_APPROVED: str = "sequencer_change_not_approved"
+    SEQUENCER_OUT_OF_REACH: str = "sequencer_out_of_reach"
     PERMISSION_DENIED: str = "permission_denied"
     NOT_FOUND: str = "not_found"
 
@@ -43,5 +44,6 @@ class ErrorMessages:
     ISSUE_NOT_FOUND: str = "The specified issue was not found."
     PK_ALREADY_SET: str = "The public shares have already been set."
     SEQUENCER_CHANGE_NOT_APPROVED: str = "The sequencer change request is not approved."
+    SEQUENCER_OUT_OF_REACH: str = "The sequencer is out of reach."
     PERMISSION_DENIED: str = "Permission denied."
     NOT_FOUND: str = "Not found."

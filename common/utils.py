@@ -23,7 +23,8 @@ def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if sequencer_sabotage_simulation_state.out_of_reach:
-            return response_utils.error_response(errors.ErrorCodes.PERMISSION_DENIED)
+            return response_utils.error_response(error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
+                                                 error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH)
         return func(*args, **kwargs)
 
     return decorated_function
