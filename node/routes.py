@@ -13,16 +13,15 @@ from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
 from settings import MODE_PROD
-from common.utils import errors, response_utils
 from . import tasks
 
 node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
-@utils.is_synced
 @utils.validate_version
 @utils.not_sequencer
+@utils.is_synced
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
     batches_mapping = request.get_json()
@@ -41,9 +40,9 @@ def put_bulk_batches() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.is_synced
 @utils.validate_version
 @utils.not_sequencer
+@utils.is_synced
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
@@ -58,8 +57,9 @@ def put_batches(app_name: str) -> Response:
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
 @utils.validate_version
-@utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 @utils.not_sequencer
+@utils.is_synced
+@utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
@@ -71,8 +71,9 @@ def post_sign_sync_point() -> Response:
 
 @node_blueprint.route("/dispute", methods=["POST"])
 @utils.validate_version
-@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 @utils.not_sequencer
+@utils.is_synced
+@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
@@ -98,6 +99,7 @@ def post_dispute() -> Response:
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_version
+@utils.is_synced
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
