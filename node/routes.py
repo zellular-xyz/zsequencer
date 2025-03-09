@@ -19,19 +19,20 @@ node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
-@utils.not_syncing
 @utils.validate_version
 @utils.not_sequencer
+@utils.is_synced
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
-    valid_apps = set(zconfig.APPS)
     batches_mapping = request.get_json()
+    valid_apps = set(zconfig.APPS)
+    filtered_batches_mapping = {
+        app_name: batches
+        for app_name, batches in batches_mapping.items()
+        if app_name in valid_apps
+    }
 
-    for app_name, batches in batches_mapping.items():
-        if app_name not in valid_apps:
-            zlogger.warning(f"{app_name} is not a valid app.")
-            continue
-
+    for app_name, batches in filtered_batches_mapping.items():
         zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
         zdb.init_batches(app_name, [str(item) for item in list(batches)])
 
@@ -39,9 +40,9 @@ def put_bulk_batches() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.not_syncing
 @utils.validate_version
 @utils.not_sequencer
+@utils.is_synced
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
     if not app_name:
@@ -55,23 +56,24 @@ def put_batches(app_name: str) -> Response:
 
 
 @node_blueprint.route("/sign_sync_point", methods=["POST"])
-@utils.not_syncing
 @utils.validate_version
-@utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 @utils.not_sequencer
+@utils.is_synced
+@utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
+
     req_data["signature"] = tasks.sign_sync_point(req_data)
     return success_response(data=req_data)
 
 
 @node_blueprint.route("/dispute", methods=["POST"])
-@utils.not_syncing
 @utils.validate_version
-@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 @utils.not_sequencer
+@utils.is_synced
+@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
@@ -96,8 +98,8 @@ def post_dispute() -> Response:
 
 
 @node_blueprint.route("/switch", methods=["POST"])
-@utils.not_syncing
 @utils.validate_version
+@utils.is_synced
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""

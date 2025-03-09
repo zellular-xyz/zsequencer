@@ -8,16 +8,17 @@ import json
 import threading
 import time
 from typing import Any
+from typing import List
 
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
-from typing import List
+
 from common import bls, utils
-from common.db import zdb
-from common.logger import zlogger
-from common.errors import ErrorCodes
 from common.batch import BatchRecord, stateful_batch_to_batch_record
+from common.db import zdb
+from common.errors import ErrorCodes
+from common.logger import zlogger
 from config import zconfig
 
 switch_lock: threading.Lock = threading.Lock()
@@ -33,14 +34,30 @@ def check_finalization() -> None:
 
 def send_batches() -> None:
     """Send batches for all apps."""
+    single_iteration_apps_sync = True
     for app_name in list(zconfig.APPS.keys()):
+        finish_condition = send_app_batches_iteration(app_name)
+        if finish_condition:
+            continue
+
+        single_iteration_apps_sync = False
+        zconfig.unset_synced_flag()
+
         while True:
-            response = send_app_batches(app_name).get("data", {})
-            sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
-            if not sequencer_last_finalized_hash or \
-                    zdb.get_batch_record_by_hash_or_empty(app_name, sequencer_last_finalized_hash):
-                zconfig.IS_SYNCING = False
+            finish_condition = send_app_batches_iteration(app_name)
+            if finish_condition:
                 break
+
+    if single_iteration_apps_sync:
+        zconfig.set_synced_flag()
+
+
+def send_app_batches_iteration(app_name):
+    response = send_app_batches(app_name).get("data", {})
+    sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
+    finish_condition = not sequencer_last_finalized_hash or zdb.get_batch_record_by_hash_or_empty(app_name,
+                                                                                                  sequencer_last_finalized_hash)
+    return finish_condition
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
@@ -190,8 +207,8 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     batch_record = zdb.get_batch_record_by_hash_or_empty(sync_point["app_name"], sync_point["hash"])
     batch = batch_record.get("batch", {})
     if any(
-        batch.get(key) != sync_point[key]
-        for key in ["app_name", "hash", "chaining_hash"]
+            batch.get(key) != sync_point[key]
+            for key in ["app_name", "hash", "chaining_hash"]
     ) or batch_record["state"] != sync_point["state"] or batch_record["index"] != sync_point["index"]:
         return ""
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
@@ -276,8 +293,13 @@ async def gather_disputes(
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
-    if zconfig.IS_SYNCING or (not zdb.has_missed_batches() and not zdb.is_sequencer_down) \
-            or zdb.pause_node.is_set():
+
+    is_not_synced = not zconfig.get_synced_flag()
+    no_missed_batches = not zdb.has_missed_batches()
+    sequencer_up = not zdb.is_sequencer_down
+    is_paused = zdb.pause_node.is_set()
+
+    if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
     timestamp: int = int(time.time())

@@ -92,16 +92,17 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
     return decorated_function
 
 
-def not_syncing(func: Callable[..., Any]) -> Decorator:
-    """Decorator to validate the request."""
+def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.IS_SYNCING:
-            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
+    def wrapper(*args: Any, **kwargs: Any) -> Response:
+        if not zconfig.get_synced_flag():
+            return response_utils.error_response(errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED)
+
         return func(*args, **kwargs)
 
-    return decorated_function
+    return wrapper
 
 
 def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:

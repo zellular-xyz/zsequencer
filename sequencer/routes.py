@@ -15,7 +15,6 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 
 
 @sequencer_blueprint.route("/batches", methods=["PUT"])
-@utils.not_syncing
 @utils.validate_version
 @utils.validate_body_keys(required_keys=[
     "app_name",

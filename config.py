@@ -37,7 +37,8 @@ class Config:
         self.APPS = {}
         self.NETWORK_STATUS_TAG = None
         self.ADDRESS = None
-        self.IS_SYNCING = None
+
+        self._SYNCED_FLAG = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -74,6 +75,15 @@ class Config:
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
+
+    def get_synced_flag(self):
+        return self._SYNCED_FLAG
+
+    def set_synced_flag(self):
+        self._SYNCED_FLAG = True
+
+    def unset_synced_flag(self):
+        self._SYNCED_FLAG = False
 
     def get_mode(self):
         return self._MODE
@@ -224,9 +234,9 @@ class Config:
             sys.exit()
 
         self.init_sequencer()
-        if self.SEQUENCER["id"] == self.NODE["id"]:
+        is_sequencer = self.SEQUENCER["id"] == self.NODE["id"]
+        if is_sequencer:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
-            self.IS_SYNCING = False
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
 
