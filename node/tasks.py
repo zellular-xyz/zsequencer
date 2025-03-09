@@ -41,7 +41,7 @@ def send_batches() -> None:
             continue
 
         single_iteration_apps_sync = False
-        zconfig.unset_sync_flag()
+        zconfig.unset_synced_flag()
 
         while True:
             finish_condition = send_app_batches_iteration(app_name)
@@ -49,7 +49,7 @@ def send_batches() -> None:
                 break
 
     if single_iteration_apps_sync:
-        zconfig.set_sync_flag()
+        zconfig.set_synced_flag()
 
 
 def send_app_batches_iteration(app_name):
@@ -293,9 +293,8 @@ async def gather_disputes(
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
-    loop = asyncio.get_event_loop()
 
-    is_not_synced = not (await loop.run_in_executor(None, zconfig.get_sync_flag))
+    is_not_synced = not zconfig.get_synced_flag()
     no_missed_batches = not zdb.has_missed_batches()
     sequencer_up = not zdb.is_sequencer_down
     is_paused = zdb.pause_node.is_set()

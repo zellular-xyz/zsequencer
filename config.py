@@ -16,10 +16,9 @@ from urllib.parse import urlparse
 import requests
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from eigensdk.crypto.bls import attestation
-from readerwriterlock import rwlock
 from tenacity import retry, stop_after_attempt, wait_fixed
 from web3 import Account
-from contextlib import contextmanager
+
 import utils
 from common.logger import zlogger
 from schema import NetworkState, NodeSource
@@ -40,7 +39,7 @@ class Config:
         self.ADDRESS = None
 
         # Syncing flags
-        self._SYNC_FLAG = False
+        self._SYNCED_FLAG = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -78,14 +77,14 @@ class Config:
         # Init node encryption and networks configurations
         self._init_node()
 
-    def get_sync_flag(self):
-        return self._SYNC_FLAG
+    def get_synced_flag(self):
+        return self._SYNCED_FLAG
 
-    def set_sync_flag(self):
-        self._SYNC_FLAG = True
+    def set_synced_flag(self):
+        self._SYNCED_FLAG = True
 
-    def unset_sync_flag(self):
-        self._SYNC_FLAG = False
+    def unset_synced_flag(self):
+        self._SYNCED_FLAG = False
 
     def get_mode(self):
         return self._MODE

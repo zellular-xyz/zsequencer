@@ -10,7 +10,7 @@ import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from flask import request, Response
 from web3 import Account
-from contextlib import contextmanager
+
 from config import zconfig
 from . import errors, response_utils
 
@@ -97,7 +97,7 @@ def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Response:
-        if not zconfig.get_sync_flag():
+        if not zconfig.get_synced_flag():
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
         return func(*args, **kwargs)
