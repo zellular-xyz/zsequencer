@@ -20,7 +20,7 @@ class ErrorCodes:
 
     INVALID_REQUEST: str = "invalid_request"
     INVALID_NODE_VERSION: str = "invalid_node_version"
-    IS_SYNCING: str = "is_syncing"
+    NOT_SYNCED: str = "not_synced"
     IS_SEQUENCER: str = "is_sequencer"
     IS_NOT_SEQUENCER: str = "is_not_sequencer"
     INVALID_SEQUENCER: str = "invalid_sequencer"
@@ -36,7 +36,7 @@ class ErrorMessages:
 
     INVALID_REQUEST: str = "The request is invalid."
     INVALID_NODE_VERSION: str = "Invalid node version. Please get the latest version of node."
-    IS_SYNCING: str = "The node is syncing with the sequencer."
+    NOT_SYNCED: str = "The node is not synced with the sequencer."
     IS_SEQUENCER: str = "This node is the sequencer."
     IS_NOT_SEQUENCER: str = "This node is not the sequencer."
     INVALID_SEQUENCER: str = "The sequencer ID is invalid."

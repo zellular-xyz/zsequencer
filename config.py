@@ -38,7 +38,6 @@ class Config:
         self.NETWORK_STATUS_TAG = None
         self.ADDRESS = None
 
-        # Syncing flags
         self._SYNCED_FLAG = False
 
         # Load fields from config
