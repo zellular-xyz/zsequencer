@@ -9,7 +9,7 @@ SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
 class SequencerSabotageSimulation(BaseSettings):
-    out_of_reach: bool = Field(default=True)
+    out_of_reach_simulation: bool = Field(default=False)
     in_reach_seconds: int = Field(default=20)
     out_of_reach_seconds: int = Field(default=20)
 
