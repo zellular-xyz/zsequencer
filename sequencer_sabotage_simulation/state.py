@@ -16,12 +16,13 @@ class SequencerSabotageSimulationState:
     def get_instance(conf: SequencerSabotageSimulation):
         if not SequencerSabotageSimulationState._instance:
             SequencerSabotageSimulationState._instance = SequencerSabotageSimulationState(conf=conf)
+        SequencerSabotageSimulationState._instance.start_simulating()
         return SequencerSabotageSimulationState._instance
 
     def _simulate_out_of_reach(self):
         """Daemon thread function to periodically check the condition."""
         while not self._stop_event.is_set():
-            if zconfig.is_sequencer:
+            if zconfig.is_sequencer and self._conf.out_of_reach_simulation:
                 # Simulate a delay to represent "out of reach" duration
                 self._out_of_reach = False
                 time.sleep(self._conf.in_reach_seconds)
