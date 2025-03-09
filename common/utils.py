@@ -97,7 +97,7 @@ def not_syncing(func: Callable[..., Response]) -> Callable[..., Response]:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Response:
-        if zconfig.check_syncing_apps():
+        if not zconfig.get_sync_flag():
             return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
 
         return func(*args, **kwargs)

@@ -34,15 +34,22 @@ def check_finalization() -> None:
 
 def send_batches() -> None:
     """Send batches for all apps."""
+    single_iteration_apps_sync = True
     for app_name in list(zconfig.APPS.keys()):
         finish_condition = send_app_batches_iteration(app_name)
         if finish_condition:
             continue
-        with zconfig.app_syncing_context(app_name):
-            while True:
-                finish_condition = send_app_batches_iteration(app_name)
-                if finish_condition:
-                    break
+
+        single_iteration_apps_sync = False
+        zconfig.unset_sync_flag()
+
+        while True:
+            finish_condition = send_app_batches_iteration(app_name)
+            if finish_condition:
+                break
+
+    if single_iteration_apps_sync:
+        zconfig.set_sync_flag()
 
 
 def send_app_batches_iteration(app_name):
@@ -288,9 +295,12 @@ async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
     loop = asyncio.get_event_loop()
 
-    if await loop.run_in_executor(None, zconfig.check_syncing_apps) \
-            or (not zdb.has_missed_batches() and not zdb.is_sequencer_down) \
-            or zdb.pause_node.is_set():
+    is_not_synced = not (await loop.run_in_executor(None, zconfig.get_sync_flag))
+    no_missed_batches = not zdb.has_missed_batches()
+    sequencer_up = not zdb.is_sequencer_down
+    is_paused = zdb.pause_node.is_set()
+
+    if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
     timestamp: int = int(time.time())

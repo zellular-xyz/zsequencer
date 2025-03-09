@@ -40,7 +40,7 @@ class Config:
         self.ADDRESS = None
 
         # Syncing flags
-        self._APPS_SYNCING_FLAGS = {}
+        self._SYNC_FLAG = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -78,38 +78,14 @@ class Config:
         # Init node encryption and networks configurations
         self._init_node()
 
-    @contextmanager
-    def app_syncing_context(self, app_name: str):
-        """Manage app syncing state."""
-        self.set_app_syncing_flag(app_name)
-        try:
-            yield
-        finally:
-            self.unset_app_syncing_flag(app_name)
+    def get_sync_flag(self):
+        return self._SYNC_FLAG
 
-    def check_syncing_apps(self):
-        for app in self._APPS_SYNCING_FLAGS:
-            if self.get_app_syncing_flag(app):
-                return True
-        return False
+    def set_sync_flag(self):
+        self._SYNC_FLAG = True
 
-    def get_app_syncing_flag(self, app_name):
-        if app_name not in self._APPS_SYNCING_FLAGS:
-            raise ValueError(f'Invalid app_name: {app_name}')
-
-        return zconfig._APPS_SYNCING_FLAGS[app_name]
-
-    def set_app_syncing_flag(self, app_name):
-        if app_name not in self._APPS_SYNCING_FLAGS:
-            raise ValueError(f'Invalid app_name: {app_name}')
-
-        zconfig._APPS_SYNCING_FLAGS[app_name] = True
-
-    def unset_app_syncing_flag(self, app_name):
-        if app_name not in self._APPS_SYNCING_FLAGS:
-            raise ValueError(f'Invalid app_name: {app_name}')
-
-        zconfig._APPS_SYNCING_FLAGS[app_name] = False
+    def unset_sync_flag(self):
+        self._SYNC_FLAG = False
 
     def get_mode(self):
         return self._MODE
@@ -265,7 +241,6 @@ class Config:
             zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
-        self._APPS_SYNCING_FLAGS = {app_name: False for app_name in self.APPS}
 
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
