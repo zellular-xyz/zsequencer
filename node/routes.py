@@ -20,7 +20,7 @@ node_blueprint = Blueprint("node", __name__)
 
 
 @node_blueprint.route("/batches", methods=["PUT"])
-@utils.not_synced
+@utils.is_synced
 @utils.validate_version
 @utils.not_sequencer
 def put_bulk_batches() -> Response:
@@ -41,7 +41,7 @@ def put_bulk_batches() -> Response:
 
 
 @node_blueprint.route("/<string:app_name>/batches", methods=["PUT"])
-@utils.not_synced
+@utils.is_synced
 @utils.validate_version
 @utils.not_sequencer
 def put_batches(app_name: str) -> Response:
