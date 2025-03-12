@@ -99,7 +99,6 @@ def post_dispute() -> Response:
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_version
-@utils.is_synced
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
