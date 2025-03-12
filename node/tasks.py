@@ -347,7 +347,6 @@ async def send_dispute_requests() -> None:
         return
     proofs.extend(responses)
 
-    zdb.pause_node.set()
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
         proofs
     )
@@ -407,7 +406,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """Switch the sequencer if the proofs are approved."""
     with switch_lock:
         if not verify_switch_sequencer(old_sequencer_id):
-            zdb.pause_node.clear()
+            return
 
         zdb.pause_node.set()
         zconfig.update_sequencer(new_sequencer_id)
