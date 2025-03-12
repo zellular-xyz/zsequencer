@@ -130,6 +130,16 @@ class InMemoryDB:
         except (OSError, IOError, json.JSONDecodeError):
             return {}
 
+    def get_missed_batches(self):
+        missed_batches: dict[str, Any] = {}
+
+        for app_name in list(zconfig.APPS.keys()):
+            app_missed_batches = self.get_missed_batch_map(app_name)
+            if len(app_missed_batches) > 0:
+                missed_batches[app_name] = app_missed_batches
+
+        return missed_batches
+
     @classmethod
     def _load_finalized_batch_sequence(
         cls, app_name: str, index: int | None = None

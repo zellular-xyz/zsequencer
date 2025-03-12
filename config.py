@@ -245,6 +245,30 @@ class Config:
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
+    def node_id(self):
+        return self.NODE['id']
+
+    @property
+    def node_stake(self):
+        return self.NODES[self.node_id]['stake']
+
+    @property
+    def node_stake_percent(self):
+        return 100 * (self.node_stake / self.TOTAL_STAKE)
+
+    @property
+    def network_sequencer_id(self):
+        return self.SEQUENCER["id"]
+
+    @property
+    def network_nodes(self):
+        return {
+            address: node
+            for address, node in self.NODES.items()
+            if address != self.NODE['id']
+        }
+
+    @property
     def is_sequencer(self):
         return self.SEQUENCER["id"] == self.NODE["id"]
 

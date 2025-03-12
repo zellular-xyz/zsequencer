@@ -277,13 +277,17 @@ def is_sync_point_signature_verified(
                                    public_key=agg_pub_key)
 
 
-async def gather_disputes(
-        dispute_tasks: dict[asyncio.Task, str]
-) -> dict[str, Any] | None:
+async def gather_disputes(is_sequencer_down: bool):
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(send_dispute_request(node, is_sequencer_down)): node['id']
+        for node in list(zconfig.network_nodes.values())
+    }
+
     results = []
     pending_tasks = list(dispute_tasks.keys())
-    stake_percent = 100 * zconfig.NODES[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
+    stake_percent = zconfig.node_stake_percent
+
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
@@ -291,7 +295,7 @@ async def gather_disputes(
                 continue
             results.append(task.result())
             node_id = dispute_tasks[task]
-            stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+            stake_percent += 100 * (zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE)
     return results, stake_percent
 
 
@@ -306,64 +310,49 @@ async def send_dispute_requests() -> None:
     if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
-    timestamp: int = int(time.time())
-    new_sequencer_id: str = utils.get_next_sequencer_id(
-        old_sequencer_id=zconfig.SEQUENCER["id"]
-    )
-    proofs: list[dict[str, Any]] = []
-    proofs.append(
-        {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": new_sequencer_id,
-            "timestamp": timestamp,
-            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
-        }
-    )
-    apps_missed_batches: dict[str, Any] = {}
-
-    for app_name in list(zconfig.APPS.keys()):
-        app_missed_batches = zdb.get_missed_batch_map(app_name)
-        if len(app_missed_batches) > 0:
-            apps_missed_batches[app_name] = app_missed_batches
-
-    dispute_tasks: dict[asyncio.Task, str] = {
-        asyncio.create_task(
-            send_dispute_request(node, apps_missed_batches, zdb.is_sequencer_down)
-        ): node['id']
-        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
-    }
     try:
-        responses, stake_percent = await asyncio.wait_for(gather_disputes(dispute_tasks),
-                                                          timeout=zconfig.AGGREGATION_TIMEOUT)
+        retrieved_proofs, stake_percent = await asyncio.wait_for(
+            gather_disputes(is_sequencer_down=zdb.is_sequencer_down),
+            timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
-        zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
+        zlogger.error(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
     except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
         return None
 
-    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
+    if not retrieved_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
         return
-    proofs.extend(responses)
 
+    # Node will be paused after gathering dispute responses from network nodes
     zdb.pause_node.set()
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
-        proofs
-    )
+
+    timestamp: int = int(time.time())
+    new_sequencer_id: str = utils.get_next_sequencer_id(old_sequencer_id=zconfig.network_sequencer_id)
+
+    own_proof = {
+        "node_id": zconfig.NODE["id"],
+        "old_sequencer_id": zconfig.network_sequencer_id,
+        "new_sequencer_id": new_sequencer_id,
+        "timestamp": timestamp,
+        "signature": utils.eth_sign(f'{zconfig.network_sequencer_id}{timestamp}'),
+    }
+    proofs = [own_proof, *retrieved_proofs]
+
+    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
     switch_sequencer(old_sequencer_id, new_sequencer_id)
     send_switch_requests(proofs)
 
 
 async def send_dispute_request(
-        node: dict[str, Any], apps_missed_batches: dict[str, Any], is_sequencer_down: bool
+        node: dict[str, Any], is_sequencer_down: bool
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": apps_missed_batches,
+            "apps_missed_batches": zdb.get_missed_batches(),
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
