@@ -110,8 +110,6 @@ def post_switch_sequencer() -> Response:
         return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
 
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
-    if not tasks.verify_switch_sequencer(old_sequencer_id):
-        return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
 
     def run_switch_sequencer():
         tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
