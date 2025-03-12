@@ -395,12 +395,11 @@ def verify_switch_sequencer(old_sequencer_id: str) -> bool:
     return old_sequencer_id == zconfig.SEQUENCER["id"]
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
+def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """Switch the sequencer if the proofs are approved."""
     with switch_lock:
         if not verify_switch_sequencer(old_sequencer_id):
             zdb.pause_node.clear()
-            return False
 
         zdb.pause_node.set()
         zconfig.update_sequencer(new_sequencer_id)
@@ -415,7 +414,6 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
             time.sleep(10)
 
         zdb.pause_node.clear()
-        return True
 
 
 def find_highest_finalized_batch_record(app_name: str) -> BatchRecord:
