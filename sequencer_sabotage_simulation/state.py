@@ -13,10 +13,10 @@ class SequencerSabotageSimulationState:
             conf: Configuration object containing simulation parameters.
         """
         self._conf = conf
-        self._initial_timestamp_ms = self.get_current_timestamp_ms()
+        self._initial_timestamp_ms = self._get_current_timestamp_ms()
 
     @staticmethod
-    def get_current_timestamp_ms() -> int:
+    def _get_current_timestamp_ms() -> int:
         """Return the current Unix timestamp in milliseconds."""
         return int(time.time() * 1000)
 
@@ -32,7 +32,7 @@ class SequencerSabotageSimulationState:
             return False
 
         # Get current time and calculate elapsed time in milliseconds
-        current_timestamp_ms = self.get_current_timestamp_ms()
+        current_timestamp_ms = self._get_current_timestamp_ms()
         elapsed_ms = current_timestamp_ms - self._initial_timestamp_ms
 
         # Convert config durations to milliseconds
