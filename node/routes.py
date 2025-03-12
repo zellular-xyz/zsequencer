@@ -1,5 +1,6 @@
 """This module defines the Flask blueprint for node-related routes."""
 
+import threading
 import time
 from typing import Any
 
@@ -73,7 +74,10 @@ def post_sign_sync_point() -> Response:
 @utils.validate_version
 @utils.not_sequencer
 @utils.is_synced
-@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
+@utils.validate_body_keys(required_keys=["sequencer_id",
+                                         "missed_batches",
+                                         "is_sequencer_down",
+                                         "timestamp"])
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
@@ -91,28 +95,35 @@ def post_dispute() -> Response:
         }
         return success_response(data=data)
 
-    for app_name, missed_batches in req_data["apps_missed_batches"].items():
-        batches = [batch["body"] for batch in missed_batches.values()]
+    missed_batches = req_data["missed_batches"]
+    for app_name, app_missed_batches in missed_batches.items():
+        batches = [batch["body"] for batch in app_missed_batches.values()]
         zdb.init_batches(app_name, batches)
+
     return error_response(ErrorCodes.ISSUE_NOT_FOUND)
 
 
 @node_blueprint.route("/switch", methods=["POST"])
 @utils.validate_version
-@utils.is_synced
 @utils.validate_body_keys(required_keys=["timestamp", "proofs"])
 def post_switch_sequencer() -> Response:
     """Switch the sequencer based on the provided proofs."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
-    if utils.is_switch_approved(req_data["proofs"]):
-        zdb.pause_node.set()
-        old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
-            req_data["proofs"]
-        )
-        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
-        return success_response(data={})
+    proofs = req_data["proofs"]
 
-    return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
+    if not utils.is_switch_approved(proofs):
+        return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
+
+    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
+    if not tasks.verify_switch_sequencer(old_sequencer_id):
+        return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
+
+    def run_switch_sequencer():
+        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
+
+    threading.Thread(target=run_switch_sequencer).start()
+
+    return success_response(data={})
 
 
 @node_blueprint.route("/state", methods=["GET"])

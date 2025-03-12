@@ -7,8 +7,8 @@ import asyncio
 import json
 import threading
 import time
-from typing import Any
-from typing import List
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Any
 
 import aiohttp
 import requests
@@ -17,7 +17,7 @@ from eigensdk.crypto.bls import attestation
 from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
-from common.errors import ErrorCodes
+from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
 
@@ -34,6 +34,9 @@ def check_finalization() -> None:
 
 def send_batches() -> None:
     """Send batches for all apps."""
+    if zdb.pause_node.is_set():
+        return
+
     single_iteration_apps_sync = True
     for app_name in list(zconfig.APPS.keys()):
         finish_condition = send_app_batches_iteration(app_name)
@@ -101,6 +104,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
                 zlogger.warning(response["error"]["message"])
                 return {}
+            if response["error"]["code"] == ErrorCodes.SEQUENCER_OUT_OF_REACH:
+                zlogger.warning(response["error"]["message"])
+                response['data'] = {}
+                raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
 
@@ -273,13 +280,17 @@ def is_sync_point_signature_verified(
                                    public_key=agg_pub_key)
 
 
-async def gather_disputes(
-        dispute_tasks: dict[asyncio.Task, str]
-) -> dict[str, Any] | None:
+async def gather_disputes(is_sequencer_down: bool):
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(send_dispute_request(node, is_sequencer_down)): node['id']
+        for node in list(zconfig.network_nodes.values())
+    }
+
     results = []
     pending_tasks = list(dispute_tasks.keys())
-    stake_percent = 100 * zconfig.NODES[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
+    stake_percent = zconfig.node_stake_percent
+
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
@@ -287,7 +298,7 @@ async def gather_disputes(
                 continue
             results.append(task.result())
             node_id = dispute_tasks[task]
-            stake_percent += 100 * zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE
+            stake_percent += 100 * (zconfig.NODES[node_id]['stake'] / zconfig.TOTAL_STAKE)
     return results, stake_percent
 
 
@@ -302,65 +313,51 @@ async def send_dispute_requests() -> None:
     if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
-    timestamp: int = int(time.time())
-    new_sequencer_id: str = utils.get_next_sequencer_id(
-        old_sequencer_id=zconfig.SEQUENCER["id"]
-    )
-    proofs: list[dict[str, Any]] = []
-    proofs.append(
-        {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": new_sequencer_id,
-            "timestamp": timestamp,
-            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
-        }
-    )
-    apps_missed_batches: dict[str, Any] = {}
-
-    for app_name in list(zconfig.APPS.keys()):
-        app_missed_batches = zdb.get_missed_batch_map(app_name)
-        if len(app_missed_batches) > 0:
-            apps_missed_batches[app_name] = app_missed_batches
-
-    dispute_tasks: dict[asyncio.Task, str] = {
-        asyncio.create_task(
-            send_dispute_request(node, apps_missed_batches, zdb.is_sequencer_down)
-        ): node['id']
-        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
-    }
     try:
-        responses, stake_percent = await asyncio.wait_for(gather_disputes(dispute_tasks),
-                                                          timeout=zconfig.AGGREGATION_TIMEOUT)
+        retrieved_proofs, stake_percent = await asyncio.wait_for(
+            gather_disputes(is_sequencer_down=zdb.is_sequencer_down),
+            timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
-        zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
+        zlogger.error(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
         return
     except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
         return None
 
-    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
+    if not retrieved_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
         return
-    proofs.extend(responses)
 
+    # Node will be paused after gathering dispute responses from network nodes
     zdb.pause_node.set()
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
-        proofs
-    )
+
+    timestamp: int = int(time.time())
+    new_sequencer_id: str = utils.get_next_sequencer_id(old_sequencer_id=zconfig.network_sequencer_id)
+
+    own_proof = {
+        "node_id": zconfig.NODE["id"],
+        "old_sequencer_id": zconfig.network_sequencer_id,
+        "new_sequencer_id": new_sequencer_id,
+        "timestamp": timestamp,
+        "signature": utils.eth_sign(f'{zconfig.network_sequencer_id}{timestamp}'),
+    }
+    proofs = [own_proof, *retrieved_proofs]
+
+    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
     switch_sequencer(old_sequencer_id, new_sequencer_id)
     send_switch_requests(proofs)
 
 
 async def send_dispute_request(
-        node: dict[str, Any], apps_missed_batches: dict[str, Any], is_sequencer_down: bool
+        node: dict[str, Any],
+        is_sequencer_down: bool
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": apps_missed_batches,
             "is_sequencer_down": is_sequencer_down,
+            "missed_batches": zdb.get_missed_batches(),
             "timestamp": timestamp,
         }
     )
@@ -377,7 +374,6 @@ async def send_dispute_request(
 
 def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     """Send switch requests to all nodes except self."""
-    zlogger.info("sending switch requests...")
     for node in list(zconfig.NODES.values()):
         if node["id"] == zconfig.NODE["id"]:
             continue
@@ -391,67 +387,77 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
         url: str = f'{node["socket"]}/node/switch'
         try:
             requests.post(url=url, data=data, headers=zconfig.HEADERS)
-        except Exception as error:
+        except Exception:
             zlogger.error(f"Error occurred while sending switch request to {node['id']}")
+
+
+def verify_switch_sequencer(old_sequencer_id: str) -> bool:
+    return old_sequencer_id == zconfig.SEQUENCER["id"]
 
 
 def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
     """Switch the sequencer if the proofs are approved."""
     with switch_lock:
-        if old_sequencer_id != zconfig.SEQUENCER["id"]:
-            zlogger.warning(
-                f"Old sequencer ID mismatch: expected {zconfig.SEQUENCER['id']}, got {old_sequencer_id}"
-            )
+        if not verify_switch_sequencer(old_sequencer_id):
             zdb.pause_node.clear()
             return False
 
+        zdb.pause_node.set()
         zconfig.update_sequencer(new_sequencer_id)
-        if new_sequencer_id != zconfig.SEQUENCER["id"]:
-            zlogger.warning("Sequencer was not updated")
-            zdb.pause_node.clear()
-            return False
 
         for app_name in list(zconfig.APPS.keys()):
-            all_nodes_last_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
-            if not all_nodes_last_finalized_batch_record:
-                zlogger.error(f'Could not find all nodes last finalized batch for app: {app_name}')
-            else:
-                zdb.reinitialize(
-                    app_name, new_sequencer_id, all_nodes_last_finalized_batch_record
-                )
+            highest_finalized_batch_record = find_highest_finalized_batch_record(app_name)
+            if highest_finalized_batch_record:
+                zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
+            zdb.reset_not_finalized_batches_timestamps(app_name)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             time.sleep(10)
 
-        zdb.reset_not_finalized_batches_timestamps(app_name)
         zdb.pause_node.clear()
         return True
 
 
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
-    """Find the last finalized batch record from all nodes."""
-    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+def find_highest_finalized_batch_record(app_name: str) -> BatchRecord:
+    """Find the finalized batch record with the highest index across all nodes."""
+    # Get initial local batch record
+    highest_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="finalized"
     )
 
-    for node in list(zconfig.NODES.values()):
-        if node["id"] == zconfig.NODE["id"]:
-            continue
+    # Prepare list of nodes to query (excluding current node)
+    nodes_to_query = [
+        node for node in zconfig.NODES.values()
+        if node["id"] != zconfig.NODE["id"]
+    ]
 
-        url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
+    def fetch_node_batch(node: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper function to fetch batch record from a single node."""
+        url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
         try:
-            response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS
-            ).json()
-            if response["status"] == "error":
-                continue
-            batch_record: dict[str, Any] = stateful_batch_to_batch_record(response["data"])
-            if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
-                last_finalized_batch_record = batch_record
+            response = requests.get(url=url, headers=zconfig.HEADERS).json()
+            if response["status"] != "error":
+                return stateful_batch_to_batch_record(response["data"])
+            return {"index": 0}  # Return minimal record if error
         except Exception:
-            zlogger.error(
-                f"An unexpected error occurred while querying node {node['id']} "
-                f"for the last finalized batch at {url}"
-            )
+            return {"index": 0}  # Return minimal record on exception
 
-    return last_finalized_batch_record
+    # Execute requests concurrently
+    with ThreadPoolExecutor(max_workers=min(len(nodes_to_query), 10)) as executor:
+        # Submit all requests at once and get futures
+        future_to_node = {
+            executor.submit(fetch_node_batch, node): node
+            for node in nodes_to_query
+        }
+
+        # Process results as they complete
+        for future in future_to_node:
+            try:
+                batch_record = future.result()
+                if batch_record.get("index", 0) > highest_finalized_batch_record.get("index", 0):
+                    highest_finalized_batch_record = batch_record
+            except Exception as e:
+                node = future_to_node[future]
+                zlogger.error(f"Failed to process result from node {node['id']}: {str(e)}")
+
+    return highest_finalized_batch_record
