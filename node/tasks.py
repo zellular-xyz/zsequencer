@@ -347,7 +347,6 @@ async def send_dispute_requests() -> None:
         return
     proofs.extend(responses)
 
-    zdb.pause_node.set()
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
         proofs
     )
@@ -399,37 +398,29 @@ def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
             zlogger.error(f"Error occurred while sending switch request to {node['id']}")
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str) -> bool:
+def verify_switch_sequencer(old_sequencer_id: str) -> bool:
+    return old_sequencer_id == zconfig.SEQUENCER["id"]
+
+
+def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """Switch the sequencer if the proofs are approved."""
     with switch_lock:
-        if old_sequencer_id != zconfig.SEQUENCER["id"]:
-            zlogger.warning(
-                f"Old sequencer ID mismatch: expected {zconfig.SEQUENCER['id']}, got {old_sequencer_id}"
-            )
-            zdb.pause_node.clear()
-            return False
+        if not verify_switch_sequencer(old_sequencer_id):
+            return
 
+        zdb.pause_node.set()
         zconfig.update_sequencer(new_sequencer_id)
-        if new_sequencer_id != zconfig.SEQUENCER["id"]:
-            zlogger.warning("Sequencer was not updated")
-            zdb.pause_node.clear()
-            return False
 
         for app_name in list(zconfig.APPS.keys()):
-            all_nodes_last_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
-            if not all_nodes_last_finalized_batch_record:
-                zlogger.error(f'Could not find all nodes last finalized batch for app: {app_name}')
-            else:
-                zdb.reinitialize(
-                    app_name, new_sequencer_id, all_nodes_last_finalized_batch_record
-                )
+            highest_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
+            if highest_finalized_batch_record:
+                zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
+            zdb.reset_not_finalized_batches_timestamps(app_name)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             time.sleep(10)
 
-        zdb.reset_not_finalized_batches_timestamps(app_name)
         zdb.pause_node.clear()
-        return True
 
 
 def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
