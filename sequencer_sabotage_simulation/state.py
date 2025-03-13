@@ -1,54 +1,42 @@
-import time
-
+from config import zconfig
 from settings import SequencerSabotageSimulation
+import threading
+import time
 
 
 class SequencerSabotageSimulationState:
-    """Manages the state of a sequencer sabotage simulation, including out-of-reach conditions."""
 
     def __init__(self, conf: SequencerSabotageSimulation):
-        """Initialize the simulation state with configuration.
-
-        Args:
-            conf: Configuration object containing simulation parameters.
-        """
         self._conf = conf
-        self._initial_timestamp_ms = self._get_current_timestamp_ms()
+        self._out_of_reach = False
+        self._stop_event = threading.Event()  # To allow stopping the thread gracefully
 
-    @staticmethod
-    def _get_current_timestamp_ms() -> int:
-        """Return the current Unix timestamp in milliseconds."""
-        return int(time.time() * 1000)
+    def _simulate_out_of_reach(self):
+        """Daemon thread function to periodically check the condition."""
+        while not self._stop_event.is_set():
+            if zconfig.is_sequencer and self._conf.out_of_reach_simulation:
+                # Simulate a delay to represent "out of reach" duration
+                self._out_of_reach = False
+                time.sleep(self._conf.in_reach_seconds)
+                self._out_of_reach = True
+                time.sleep(self._conf.out_of_reach_seconds)
+            # Sleep for a short interval before checking again
+            time.sleep(0.01)  # Adjust this interval as needed
+
+    def start_simulating(self):
+        """Start the daemon thread to monitor the condition."""
+        # Create and start the daemon thread
+        thread = threading.Thread(target=self._simulate_out_of_reach, daemon=True)
+        thread.start()
+
+    def stop_simulating(self):
+        """Stop the daemon thread gracefully."""
+        self._stop_event.set()
 
     @property
     def out_of_reach(self) -> bool:
-        """Public getter for the out-of-reach status.
-
-        Returns:
-            bool: True if the sequencer is currently simulated as out of reach, False otherwise.
-        """
-        # If simulation is disabled or not a sequencer, always return False
-        if not self._conf.out_of_reach_simulation:
-            return False
-
-        # Get current time and calculate elapsed time in milliseconds
-        current_timestamp_ms = self._get_current_timestamp_ms()
-        elapsed_ms = current_timestamp_ms - self._initial_timestamp_ms
-
-        # Convert config durations to milliseconds
-        in_reach_ms = self._conf.in_reach_seconds * 1000
-        out_of_reach_ms = self._conf.out_of_reach_seconds * 1000
-        cycle_length_ms = in_reach_ms + out_of_reach_ms
-
-        # Calculate position within the current cycle using modulo
-        cycle_position_ms = elapsed_ms % cycle_length_ms
-
-        # If position is within in_reach_ms, we're in reach (return False)
-        # Otherwise, we're in the out_of_reach phase (return True)
-        return cycle_position_ms >= in_reach_ms
+        """Public getter for the _out_of_reach flag."""
+        return self._out_of_reach
 
 
-# Instantiate the simulation state with configuration from SequencerSabotageSimulation
-sequencer_sabotage_simulation_state = SequencerSabotageSimulationState(
-    conf=SequencerSabotageSimulation()
-)
+sequencer_sabotage_simulation_state = SequencerSabotageSimulationState(conf=SequencerSabotageSimulation())
