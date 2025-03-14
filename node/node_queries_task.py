@@ -1,7 +1,6 @@
-import asyncio
 from typing import Any, Dict
-
-import aiohttp
+from concurrent.futures import ThreadPoolExecutor
+import requests
 
 from common.batch import stateful_batch_to_batch_record
 from common.db import zdb
@@ -9,70 +8,46 @@ from common.logger import zlogger
 from config import zconfig
 
 
-async def fetch_node_batch(
-        session: aiohttp.ClientSession,
-        node: Dict[str, Any],
-        app_name: str,
-        retries: int = 3
-) -> Dict[str, Any]:
-    """Fetch last finalized batch from a single node with retry logic."""
-    if node["id"] == zconfig.NODE["id"]:
+def fetch_node_last_finalized_batch(node: Dict[str, Any], app_name: str) -> Dict[str, Any]:
+    """Fetch last finalized batch from a single node."""
+    url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
+    try:
+        response = requests.get(url, headers=zconfig.HEADERS, timeout=10)  # 10-second timeout per request
+        data = response.json()
+        if data.get("status") == "error":
+            return {}
+        return stateful_batch_to_batch_record(data["data"])
+    except Exception as e:
+        zlogger.error(
+            f"Failed to query node {node['id']} for last finalized batch "
+            f"at {url}: {str(e)}"
+        )
         return {}
 
-    url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
 
-    async def attempt_request():
-        try:
-            async with session.get(url, headers=zconfig.HEADERS) as response:
-                data = await response.json()
-                if data.get("status") == "error":
-                    return {}
-                return stateful_batch_to_batch_record(data["data"])
-        except Exception as e:
-            raise e
-
-    for attempt in range(retries):
-        try:
-            return await attempt_request()
-        except Exception as e:
-            if attempt == retries - 1:
-                zlogger.error(
-                    f"Failed to query node {node['id']} for last finalized batch "
-                    f"at {url} after {retries} attempts: {str(e)}"
-                )
-                return {}
-            await asyncio.sleep(1)  # Delay before retry
-
-
-async def async_find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
-    """Find the last finalized batch record from all nodes concurrently."""
+def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
+    """Find the last finalized batch record from all nodes using threads."""
     # Get local record first
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="finalized"
     )
 
-    # Set up client session with timeout
-    timeout = aiohttp.ClientTimeout(total=10)  # 10 second total timeout
+    # Filter nodes to exclude self
+    nodes_to_query = [node for node in zconfig.NODES.values() if node["id"] != zconfig.NODE["id"]]
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        tasks = [
-            fetch_node_batch(session, node, app_name)
-            for node in zconfig.NODES.values()
-        ]
+    # Use ThreadPoolExecutor to run requests concurrently
+    with ThreadPoolExecutor(max_workers=min(len(nodes_to_query), 10)) as executor:
+        # Submit all requests concurrently
+        future_to_node = {executor.submit(fetch_node_last_finalized_batch, node, app_name): node
+                          for node in nodes_to_query}
 
-        # Wait for all responses concurrently
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Find the highest indexed batch record
-        for batch_record in responses:
-            if not isinstance(batch_record, dict):  # Skip exceptions
-                continue
-            if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
-                last_finalized_batch_record = batch_record
+        # Collect results as they complete
+        for future in future_to_node:
+            try:
+                batch_record = future.result()
+                if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
+                    last_finalized_batch_record = batch_record
+            except Exception:
+                continue  # Skip any unexpected thread-level exceptions
 
     return last_finalized_batch_record
-
-
-def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
-    """Synchronous wrapper for the async function."""
-    return asyncio.run(async_find_highest_finalized_batch_record(app_name))
