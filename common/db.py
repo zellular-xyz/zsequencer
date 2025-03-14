@@ -560,6 +560,14 @@ class InMemoryDB:
         """Get missed batches."""
         return self.apps[app_name]["missed_batch_map"]
 
+    def get_apps_missed_batches(self):
+        apps_missed_batches: dict[str, Any] = {}
+        for app_name in list(zconfig.APPS.keys()):
+            app_missed_batches = self.get_missed_batch_map(app_name)
+            if len(app_missed_batches) > 0:
+                apps_missed_batches[app_name] = app_missed_batches
+        return apps_missed_batches
+
     def has_missed_batches(self) -> bool:
         """Check if there are missed batches across any app."""
         return any(
