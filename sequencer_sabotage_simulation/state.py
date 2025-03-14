@@ -5,11 +5,19 @@ import time
 
 
 class SequencerSabotageSimulationState:
+    _instance = None
 
     def __init__(self, conf: SequencerSabotageSimulation):
         self._conf = conf
         self._out_of_reach = False
         self._stop_event = threading.Event()  # To allow stopping the thread gracefully
+
+    @staticmethod
+    def get_instance(conf: SequencerSabotageSimulation):
+        if not SequencerSabotageSimulationState._instance:
+            SequencerSabotageSimulationState._instance = SequencerSabotageSimulationState(conf=conf)
+        SequencerSabotageSimulationState._instance.start_simulating()
+        return SequencerSabotageSimulationState._instance
 
     def _simulate_out_of_reach(self):
         """Daemon thread function to periodically check the condition."""
@@ -39,4 +47,4 @@ class SequencerSabotageSimulationState:
         return self._out_of_reach
 
 
-sequencer_sabotage_simulation_state = SequencerSabotageSimulationState(conf=SequencerSabotageSimulation())
+sequencer_sabotage_simulation_state = SequencerSabotageSimulationState.get_instance(conf=SequencerSabotageSimulation())
