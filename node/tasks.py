@@ -277,10 +277,15 @@ def is_sync_point_signature_verified(
                                    public_key=agg_pub_key)
 
 
-async def gather_disputes(
-        dispute_tasks: dict[asyncio.Task, str]
-) -> dict[str, Any] | None:
+async def gather_disputes() -> dict[str, Any] | None:
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(
+            send_dispute_request(node, zdb.is_sequencer_down)
+        ): node['id']
+        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
+    }
+
     results = []
     pending_tasks = list(dispute_tasks.keys())
     stake_percent = 100 * zconfig.NODES[zconfig.NODE['id']]['stake'] / zconfig.TOTAL_STAKE
@@ -320,21 +325,9 @@ async def send_dispute_requests() -> None:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     )
-    apps_missed_batches: dict[str, Any] = {}
 
-    for app_name in list(zconfig.APPS.keys()):
-        app_missed_batches = zdb.get_missed_batch_map(app_name)
-        if len(app_missed_batches) > 0:
-            apps_missed_batches[app_name] = app_missed_batches
-
-    dispute_tasks: dict[asyncio.Task, str] = {
-        asyncio.create_task(
-            send_dispute_request(node, apps_missed_batches, zdb.is_sequencer_down)
-        ): node['id']
-        for node in list(zconfig.NODES.values()) if node['id'] != zconfig.NODE['id']
-    }
     try:
-        responses, stake_percent = await asyncio.wait_for(gather_disputes(dispute_tasks),
+        responses, stake_percent = await asyncio.wait_for(gather_disputes(),
                                                           timeout=zconfig.AGGREGATION_TIMEOUT)
     except asyncio.TimeoutError:
         zlogger.warning(f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.")
@@ -355,14 +348,13 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-        node: dict[str, Any], apps_missed_batches: dict[str, Any], is_sequencer_down: bool
-) -> dict[str, Any] | None:
+        node: dict[str, Any], is_sequencer_down: bool) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": apps_missed_batches,
+            "apps_missed_batches": zdb.get_apps_missed_batches(),
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
