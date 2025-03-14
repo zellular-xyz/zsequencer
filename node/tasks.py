@@ -325,12 +325,6 @@ async def send_dispute_requests() -> None:
             "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
         }
     )
-    apps_missed_batches: dict[str, Any] = {}
-
-    for app_name in list(zconfig.APPS.keys()):
-        app_missed_batches = zdb.get_missed_batch_map(app_name)
-        if len(app_missed_batches) > 0:
-            apps_missed_batches[app_name] = app_missed_batches
 
     try:
         responses, stake_percent = await asyncio.wait_for(gather_disputes(),
