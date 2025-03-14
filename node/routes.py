@@ -114,6 +114,7 @@ def post_switch_sequencer() -> Response:
     def run_switch_sequencer():
         tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
+    zlogger.info(f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.")
     threading.Thread(target=run_switch_sequencer).start()
 
     return success_response(data={})
