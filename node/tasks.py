@@ -380,9 +380,6 @@ async def send_dispute_request(
 
 async def send_switch_request(session, node, proofs):
     """Send a single switch request to a node."""
-    if node["id"] == zconfig.NODE["id"]:
-        return
-
     data = json.dumps({
         "proofs": proofs,
         "timestamp": int(time.time()),
@@ -402,7 +399,7 @@ async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     async with aiohttp.ClientSession() as session:
         tasks = [
             send_switch_request(session, node, proofs)
-            for node in zconfig.NODES.values()
+            for node in zconfig.NODES.values() if node["id"] != zconfig.NODE["id"]
         ]
         await asyncio.gather(*tasks)
 
