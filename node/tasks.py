@@ -350,8 +350,8 @@ async def send_dispute_requests() -> None:
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(
         proofs
     )
+    await send_switch_requests(proofs)
     switch_sequencer(old_sequencer_id, new_sequencer_id)
-    send_switch_requests(proofs)
 
 
 async def send_dispute_request(
@@ -378,24 +378,33 @@ async def send_dispute_request(
         zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
 
-def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
-    """Send switch requests to all nodes except self."""
-    zlogger.info("sending switch requests...")
-    for node in list(zconfig.NODES.values()):
-        if node["id"] == zconfig.NODE["id"]:
-            continue
+async def send_switch_request(session, node, proofs):
+    """Send a single switch request to a node."""
+    if node["id"] == zconfig.NODE["id"]:
+        return
 
-        data: str = json.dumps(
-            {
-                "proofs": proofs,
-                "timestamp": int(time.time()),
-            }
-        )
-        url: str = f'{node["socket"]}/node/switch'
-        try:
-            requests.post(url=url, data=data, headers=zconfig.HEADERS)
-        except Exception as error:
-            zlogger.error(f"Error occurred while sending switch request to {node['id']}")
+    data = json.dumps({
+        "proofs": proofs,
+        "timestamp": int(time.time()),
+    })
+    url = f'{node["socket"]}/node/switch'
+
+    try:
+        async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
+            await response.text()  # Consume the response
+    except Exception as error:
+        zlogger.error(f"Error occurred while sending switch request to {node['id']}")
+
+
+async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
+    """Send switch requests to all nodes except self asynchronously."""
+    zlogger.info("sending switch requests...")
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            send_switch_request(session, node, proofs)
+            for node in zconfig.NODES.values()
+        ]
+        await asyncio.gather(*tasks)
 
 
 def verify_switch_sequencer(old_sequencer_id: str) -> bool:
