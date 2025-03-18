@@ -222,6 +222,12 @@ class InMemoryDB:
         # without the fear of change in the middle of processing.
         return self.apps[app_name]["initialized_batch_map"].copy()
 
+
+    def get_finalized_chunk(self, app_name):
+        return zconfig.get_batches_chunk_idx(self.apps[app_name][
+            "operational_batch_sequence"
+        ].get_last_index_or_default("finalized"))
+
     def get_global_operational_batch_sequence(
         self,
         app_name: str,
@@ -231,20 +237,17 @@ class InMemoryDB:
         """Get batches filtered by state and optionally by index."""
         batch_sequence = BatchSequence(index_offset=after + 1)
         batch_hash_set: set[str] = set()  # TODO: Check if this is necessary.
+        last_finalized_idx = self.apps[app_name][
+            "operational_batch_sequence"
+        ].get_last_index_or_default("finalized")
 
-        include_finalized_batches = state is None or state == "finalized"
+        include_finalized_batches = after <= last_finalized_idx
 
         if include_finalized_batches:
-            current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
-            next_chunk = math.ceil(
-                (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
-            )
-            finalized_chunk = math.ceil(
-                self.apps[app_name][
-                    "operational_batch_sequence"
-                ].get_last_index_or_default("finalized")
-                / zconfig.SNAPSHOT_CHUNK
-            )
+            current_chunk = zconfig.get_batches_chunk_idx(after + 1)
+            next_chunk = zconfig.get_batches_chunk_idx(after + 1 + zconfig.API_BATCHES_LIMIT)
+
+            finalized_chunk = self.get_finalized_chunk(app_name)
 
             if current_chunk != finalized_chunk:
                 loaded_finalized_batches = self._load_finalized_batch_sequence(

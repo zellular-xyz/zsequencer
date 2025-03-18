@@ -6,6 +6,7 @@ import cProfile
 import functools
 import json
 import os
+import math
 import pstats
 import sys
 import time
@@ -263,6 +264,9 @@ class Config:
     @property
     def TOTAL_STAKE(self):
         return self.last_state.total_stake
+
+    def get_batches_chunk_idx(self, batch_idx: int) -> int:
+        return math.ceil((batch_idx + 1) / self.SNAPSHOT_CHUNK)
 
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
