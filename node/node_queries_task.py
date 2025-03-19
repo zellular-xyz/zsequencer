@@ -1,16 +1,12 @@
 import asyncio
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import aiohttp
-import nest_asyncio
 
 from common.batch import stateful_batch_to_batch_record
 from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
-
-# Apply nest_asyncio to allow nested event loops
-nest_asyncio.apply()
 
 
 async def fetch_node_last_finalized_batch(session: aiohttp.ClientSession,
@@ -25,38 +21,45 @@ async def fetch_node_last_finalized_batch(session: aiohttp.ClientSession,
                 return {}
             return stateful_batch_to_batch_record(data["data"])
     except Exception as e:
-        zlogger.error(
-            f"Failed to query node {node['id']} for last finalized batch "
-            f"at {url}: {str(e)}"
-        )
-        return {}
+        return {"error": f"Node {node['id']} failed: {str(e)}"}
+
+
+async def fetch_all_nodes(nodes: List[Dict[str, Any]], app_name: str) -> List[Dict[str, Any]]:
+    """Fetch last finalized batches from all nodes asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_node_last_finalized_batch(session, node, app_name) for node in nodes]
+        return await asyncio.gather(*tasks)
 
 
 def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
-    """Find the last finalized batch record from all nodes synchronously using asyncio."""
-    # Get local record first
+    """Find the last finalized batch record from all nodes asynchronously."""
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="finalized"
     )
 
-    # Filter nodes to exclude self
     nodes_to_query = [node for node in zconfig.NODES.values() if node["id"] != zconfig.NODE["id"]]
 
-    # Define async helper function
-    async def fetch_all_nodes():
-        async with aiohttp.ClientSession() as session:
-            tasks = [
-                fetch_node_last_finalized_batch(session, node, app_name)
-                for node in nodes_to_query
-            ]
-            return await asyncio.gather(*tasks, return_exceptions=True)
+    if not nodes_to_query:
+        return last_finalized_batch_record
 
-    # Use nest_asyncio to allow running this in an existing event loop
-    results = asyncio.run(fetch_all_nodes())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
-    # Process results
+    if loop:
+        results = loop.run_until_complete(fetch_all_nodes(nodes_to_query, app_name))
+    else:
+        results = asyncio.run(fetch_all_nodes(nodes_to_query, app_name))
+
+    # Log errors if any
+    errors = [res["error"] for res in results if isinstance(res, dict) and "error" in res]
+    if errors:
+        zlogger.error("Errors occurred during node queries:\n" + "\n".join(errors))
+
+    # Find highest finalized batch record
     for batch_record in results:
-        if isinstance(batch_record, dict):  # Check if result is not an exception
+        if isinstance(batch_record, dict) and "index" in batch_record:
             if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
                 last_finalized_batch_record = batch_record
 
