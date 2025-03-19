@@ -24,15 +24,18 @@ async def fetch_node_last_finalized_batch(session: aiohttp.ClientSession,
         return {"error": f"Node {node['id']} failed: {str(e)}"}
 
 
-async def fetch_all_nodes(nodes: List[Dict[str, Any]], app_name: str) -> List[Dict[str, Any]]:
-    """Fetch last finalized batches from all nodes asynchronously."""
+async def fetch_all_nodes(app_name: str, nodes_to_query: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Fetch finalized batch records from all nodes asynchronously."""
+    if not nodes_to_query:
+        return []
+
     async with aiohttp.ClientSession() as session:
-        tasks = [fetch_node_last_finalized_batch(session, node, app_name) for node in nodes]
+        tasks = [fetch_node_last_finalized_batch(session, node, app_name) for node in nodes_to_query]
         return await asyncio.gather(*tasks)
 
 
-def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
-    """Find the last finalized batch record from all nodes asynchronously."""
+async def find_highest_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
+    """Asynchronous version of find_highest_finalized_batch_record."""
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="finalized"
     )
@@ -42,15 +45,7 @@ def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
     if not nodes_to_query:
         return last_finalized_batch_record
 
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop:
-        results = loop.run_until_complete(fetch_all_nodes(nodes_to_query, app_name))
-    else:
-        results = asyncio.run(fetch_all_nodes(nodes_to_query, app_name))
+    results = await fetch_all_nodes(app_name, nodes_to_query)
 
     # Log errors if any
     errors = [res["error"] for res in results if isinstance(res, dict) and "error" in res]
@@ -64,3 +59,20 @@ def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
                 last_finalized_batch_record = batch_record
 
     return last_finalized_batch_record
+
+
+def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
+    """
+    Find the last finalized batch record from all nodes.
+    This function can be called from either synchronous or asynchronous contexts.
+    """
+    try:
+        # Check if we're already in an event loop
+        loop = asyncio.get_running_loop()
+        # If we are, create a task and ensure it's properly awaited
+        return asyncio.run_coroutine_threadsafe(
+            find_highest_finalized_batch_record_async(app_name), loop
+        ).result()
+    except RuntimeError:
+        # No running event loop, safe to use run_until_complete
+        return asyncio.run(find_highest_finalized_batch_record_async(app_name))
