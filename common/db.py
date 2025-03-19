@@ -232,44 +232,41 @@ class InMemoryDB:
         batch_sequence = BatchSequence(index_offset=after + 1)
         batch_hash_set: set[str] = set()  # TODO: Check if this is necessary.
 
-        include_finalized_batches = state is None or state == "finalized"
-
-        if include_finalized_batches:
-            current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
-            next_chunk = math.ceil(
-                (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
+        current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
+        next_chunk = math.ceil(
+            (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
+        )
+        finalized_chunk = math.ceil(
+            self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default(
+                "finalized"
             )
-            finalized_chunk = math.ceil(
-                self.apps[app_name][
-                    "operational_batch_sequence"
-                ].get_last_index_or_default("finalized")
-                / zconfig.SNAPSHOT_CHUNK
+            / zconfig.SNAPSHOT_CHUNK
+        )
+
+        if current_chunk != finalized_chunk:
+            loaded_finalized_batches = self._load_finalized_batch_sequence(
+                app_name, after + 1
+            )
+            self._append_unique_batches_after_index(
+                loaded_finalized_batches,
+                after,
+                batch_sequence,
+                batch_hash_set,
             )
 
-            if current_chunk != finalized_chunk:
-                loaded_finalized_batches = self._load_finalized_batch_sequence(
-                    app_name, after + 1
-                )
-                self._append_unique_batches_after_index(
-                    loaded_finalized_batches,
-                    after,
-                    batch_sequence,
-                    batch_hash_set,
-                )
-
-            if len(batch_sequence) < zconfig.API_BATCHES_LIMIT and next_chunk not in [
-                current_chunk,
-                finalized_chunk,
-            ]:
-                loaded_finalized_batches = self._load_finalized_batch_sequence(
-                    app_name, after + 1 + len(batch_sequence)
-                )
-                self._append_unique_batches_after_index(
-                    loaded_finalized_batches,
-                    after,
-                    batch_sequence,
-                    batch_hash_set,
-                )
+        if len(batch_sequence) < zconfig.API_BATCHES_LIMIT and next_chunk not in [
+            current_chunk,
+            finalized_chunk,
+        ]:
+            loaded_finalized_batches = self._load_finalized_batch_sequence(
+                app_name, after + 1 + len(batch_sequence)
+            )
+            self._append_unique_batches_after_index(
+                loaded_finalized_batches,
+                after,
+                batch_sequence,
+                batch_hash_set,
+            )
 
         self._append_unique_batches_after_index(
             self.apps[app_name]["operational_batch_sequence"].filter(
@@ -560,7 +557,7 @@ class InMemoryDB:
         """Get missed batches."""
         return self.apps[app_name]["missed_batch_map"]
 
-    def get_apps_missed_batches(self):
+    def get_apps_missed_batches(self) -> dict[str, dict[str, Batch]]:
         apps_missed_batches: dict[str, Any] = {}
         for app_name in list(zconfig.APPS.keys()):
             app_missed_batches = self.get_missed_batch_map(app_name)
