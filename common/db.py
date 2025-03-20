@@ -243,7 +243,7 @@ class InMemoryDB:
             / zconfig.SNAPSHOT_CHUNK
         )
 
-        if current_chunk != finalized_chunk:
+        if current_chunk < finalized_chunk:
             loaded_finalized_batches = self._load_finalized_batch_sequence(
                 app_name, after + 1
             )
@@ -254,10 +254,11 @@ class InMemoryDB:
                 batch_hash_set,
             )
 
-        if len(batch_sequence) < zconfig.API_BATCHES_LIMIT and next_chunk not in [
-            current_chunk,
-            finalized_chunk,
-        ]:
+        if (
+            next_chunk != current_chunk
+            and len(batch_sequence) < zconfig.API_BATCHES_LIMIT
+            and next_chunk < finalized_chunk
+        ):
             loaded_finalized_batches = self._load_finalized_batch_sequence(
                 app_name, after + 1 + len(batch_sequence)
             )
