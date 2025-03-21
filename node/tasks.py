@@ -15,11 +15,11 @@ import requests
 from eigensdk.crypto.bls import attestation
 
 from common import bls, utils
-from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
+from node.node_queries_task import find_highest_finalized_batch_record
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -410,7 +410,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
         zconfig.update_sequencer(new_sequencer_id)
 
         for app_name in list(zconfig.APPS.keys()):
-            highest_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
+            highest_finalized_batch_record = find_highest_finalized_batch_record(app_name)
             if highest_finalized_batch_record:
                 zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
             zdb.reset_not_finalized_batches_timestamps(app_name)
@@ -421,30 +421,3 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
         zdb.pause_node.clear()
 
 
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
-    """Find the last finalized batch record from all nodes."""
-    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="finalized"
-    )
-
-    for node in list(zconfig.NODES.values()):
-        if node["id"] == zconfig.NODE["id"]:
-            continue
-
-        url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
-        try:
-            response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS
-            ).json()
-            if response["status"] == "error":
-                continue
-            batch_record: dict[str, Any] = stateful_batch_to_batch_record(response["data"])
-            if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
-                last_finalized_batch_record = batch_record
-        except Exception:
-            zlogger.error(
-                f"An unexpected error occurred while querying node {node['id']} "
-                f"for the last finalized batch at {url}"
-            )
-
-    return last_finalized_batch_record
