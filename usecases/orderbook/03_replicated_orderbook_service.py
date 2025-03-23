@@ -205,4 +205,4 @@ def process_loop():
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()
     import uvicorn
-    uvicorn.run(app, port=5002)
+    uvicorn.run(app, port=5001)
