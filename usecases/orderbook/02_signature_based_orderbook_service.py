@@ -1,75 +1,59 @@
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from starlette.middleware.sessions import SessionMiddleware
 from typing import Dict, List
 from uuid import uuid4
 from dataclasses import dataclass, field
 from bisect import insort
+from eth_account import Account
+from eth_account.messages import encode_defunct
 
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="supersecretkey")
 
-# --- In-memory users and balances ---
-
-users = {
-    "user1": "pass1",
-    "user2": "pass2"
-}
-
+# In-memory balances
 balances: Dict[str, Dict[str, float]] = {
-    "user1": {"USDT": 1000.0},
-    "user2": {"ETH": 5.0}
+    "0xc66F8Fba940064B5bA8d437d6fF829E60134230E": {"USDT": 1000.0},
+    "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0}
 }
-
-# --- Order book ---
 
 @dataclass(order=True)
 class OrderWrapper:
     sort_index: float
     order: dict = field(compare=False)
 
+# Order book
 order_book_wrapped: List[OrderWrapper] = []
 
-# --- Schemas ---
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
+# Order request schema
 class OrderRequest(BaseModel):
+    sender: str
     order_type: str  # 'buy' or 'sell'
     base_token: str
     quote_token: str
     quantity: float
     price: float
+    signature: str
 
 # --- Routes ---
 
-@app.post("/login")
-async def login(request: Request, data: LoginRequest):
-    if users.get(data.username) != data.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    request.session["username"] = data.username
-    return JSONResponse({"message": "Login successful"})
-
 @app.get("/balance")
-def get_balance(username: str):
-    if username not in balances:
+def get_balance(address: str):
+    if address not in balances:
         raise HTTPException(status_code=404, detail="User not found")
-    return balances[username]
+    return balances[address]
 
 @app.get("/orders")
 def get_orders():
     return [w.order for w in order_book_wrapped]
 
 @app.post("/order")
-def place_order(order: OrderRequest, request: Request):
-    user = request.session.get("username")
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def place_order(order: OrderRequest):
+    message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
+    print(message)
+    if not verify_signature(order.sender, message, order.signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
-    user_bal = balances.get(user, {})
+    user_bal = balances.get(order.sender, {})
     cost = order.quantity * order.price
 
     if order.order_type == 'buy':
@@ -85,7 +69,7 @@ def place_order(order: OrderRequest, request: Request):
 
     new_order = {
         "id": str(uuid4()),
-        "user": user,
+        "user": order.sender,
         "base_token": order.base_token,
         "quote_token": order.quote_token,
         "order_type": order.order_type,
@@ -103,14 +87,13 @@ def place_order(order: OrderRequest, request: Request):
 
     return {"message": "Order placed", "order_id": new_order["id"]}
 
-# --- Matching logic ---
-
+# Matching engine
 def match_order(new_order: Dict):
     i = 0
     while i < len(order_book_wrapped):
         existing = order_book_wrapped[i].order
 
-        # Skip if not eligible to match
+        # Skip if the order is not compatible for matching
         if (
             existing["user"] == new_order["user"] or
             existing["base_token"] != new_order["base_token"] or
@@ -120,7 +103,7 @@ def match_order(new_order: Dict):
             i += 1
             continue
 
-        # Check price match condition
+        # Check if price matches
         price_ok = (
             new_order["order_type"] == "buy" and existing["price"] <= new_order["price"]
         ) or (
@@ -131,22 +114,23 @@ def match_order(new_order: Dict):
             i += 1
             continue
 
-        # Match found
+        # Perform the trade
         trade_qty = min(new_order["quantity"], existing["quantity"])
         new_order["quantity"] -= trade_qty
         existing["quantity"] -= trade_qty
         update_balances(new_order, existing, trade_qty)
 
+        # Remove matched order if it's fully filled
         if existing["quantity"] == 0:
             order_book_wrapped.pop(i)
         else:
             i += 1
 
+        # Stop if the new order is fully filled
         if new_order["quantity"] == 0:
             break
 
-# --- Balance update logic ---
-
+# Balance update
 def update_balances(order1: Dict, order2: Dict, qty: float):
     buyer = order1 if order1["order_type"] == "buy" else order2
     seller = order2 if order1["order_type"] == "buy" else order1
@@ -157,3 +141,12 @@ def update_balances(order1: Dict, order2: Dict, qty: float):
 
     balances[buyer["user"]][base_token] = balances[buyer["user"]].get(base_token, 0.0) + qty
     balances[seller["user"]][quote_token] = balances[seller["user"]].get(quote_token, 0.0) + total_price
+
+# Signature verification
+def verify_signature(sender: str, message: str, signature: str) -> bool:
+    try:
+        message_hash = encode_defunct(text=message)
+        recovered = Account.recover_message(message_hash, signature=signature)
+        return recovered.lower() == sender.lower()
+    except Exception:
+        return False
