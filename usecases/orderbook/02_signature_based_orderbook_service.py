@@ -37,10 +37,8 @@ class OrderRequest(BaseModel):
 # --- Routes ---
 
 @app.get("/balance")
-def get_balance(address: str):
-    if address not in balances:
-        raise HTTPException(status_code=404, detail="User not found")
-    return balances[address]
+def get_balance(address: str, token: str):
+    return balances.get(address, {}).get(token, 0)
 
 @app.get("/orders")
 def get_orders():

@@ -54,10 +54,8 @@ async def login(request: Request, data: LoginRequest):
     return JSONResponse({"message": "Login successful"})
 
 @app.get("/balance")
-def get_balance(username: str):
-    if username not in balances:
-        raise HTTPException(status_code=404, detail="User not found")
-    return balances[username]
+def get_balance(username: str, token: str):
+    return balances.get(username, {}).get(token, 0)
 
 @app.get("/orders")
 def get_orders():
