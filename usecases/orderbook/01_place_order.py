@@ -1,6 +1,6 @@
 import httpx
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:5001"
 
 user1 = {"username": "user1", "password": "pass1"}
 user2 = {"username": "user2", "password": "pass2"}

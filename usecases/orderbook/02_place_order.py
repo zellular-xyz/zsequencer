@@ -2,7 +2,7 @@ import httpx
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:5001"
 
 # === Simulated user private keys ===
 user1_key = "0x4b7f4de058ab4d3629f438c1728ac77bea7f4ab0099218be77242f8ba099cca7"
