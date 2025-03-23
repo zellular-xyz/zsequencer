@@ -30,7 +30,6 @@ sell_order = {
 
 def sign_order(account: Account, order: dict) -> dict:
     message = f"Order {order['order_type']} {order['quantity']} {order['base_token']} at {order['price']} {order['quote_token']}"
-    print(message)
     message_hash = encode_defunct(text=message)
     signed = Account.sign_message(message_hash, private_key=account.key)
 

@@ -49,7 +49,6 @@ def get_orders():
 @app.post("/order")
 def place_order(order: OrderRequest):
     message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
-    print(message)
     if not verify_signature(order.sender, message, order.signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
