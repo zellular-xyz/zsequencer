@@ -157,3 +157,7 @@ def update_balances(order1: Dict, order2: Dict, qty: float):
 
     balances[buyer["user"]][base_token] = balances[buyer["user"]].get(base_token, 0.0) + qty
     balances[seller["user"]][quote_token] = balances[seller["user"]].get(quote_token, 0.0) + total_price
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, port=5001)

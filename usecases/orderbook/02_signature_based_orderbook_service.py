@@ -69,9 +69,9 @@ def place_order(order: OrderRequest):
     new_order = {
         "id": str(uuid4()),
         "user": order.sender,
+        "order_type": order.order_type,
         "base_token": order.base_token,
         "quote_token": order.quote_token,
-        "order_type": order.order_type,
         "quantity": order.quantity,
         "price": order.price
     }
@@ -149,3 +149,7 @@ def verify_signature(sender: str, message: str, signature: str) -> bool:
         return recovered.lower() == sender.lower()
     except Exception:
         return False
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, port=5001)
