@@ -1,9 +1,24 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
+from typing import Literal
+
+MODE_DEV = "dev"
+MODE_PROD = "prod"
+MODE_TEST = "test"
+SIMULATION_MODES = [MODE_DEV, MODE_TEST]
+
+
+class SequencerSabotageSimulation(BaseSettings):
+    out_of_reach_simulation: bool = Field(default=False)
+    in_reach_seconds: int = Field(default=20)
+    out_of_reach_seconds: int = Field(default=20)
+
+    class Config:
+        env_prefix = "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_"
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.14")
+    version: str = Field(default="v0.0.15")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -40,6 +55,10 @@ class NodeConfig(BaseSettings):
 
     register_operator: bool = Field(default=False)
     register_socket: str = Field(default="")
+
+    mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
+
+    # sequencer_sabotage_simulation: SequencerSabotageSimulation = Field(default_factory=SequencerSabotageSimulation)
 
     class Config:
         env_prefix = "ZSEQUENCER_"

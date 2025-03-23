@@ -15,7 +15,7 @@ from flask import Flask, redirect, url_for
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb, zconfig
+from common.db import zdb, zconfig, zlogger
 from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
@@ -76,6 +76,7 @@ def run_flask_app(app: Flask) -> None:
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
+    zlogger.info("Starting flask on port %s", zconfig.PORT)
     app.run(
         host="0.0.0.0",
         port=zconfig.PORT,

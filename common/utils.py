@@ -2,21 +2,55 @@
 
 import time
 from collections import Counter
-from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Any
+from typing import Callable, TypeVar, Any, List
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import request
+from flask import request, Response
 from web3 import Account
 
-
 from config import zconfig
+from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
+F = TypeVar('F', bound=Callable[..., Any])
+
+
+def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        if sequencer_sabotage_simulation_state.out_of_reach:
+            return response_utils.error_response(error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
+                                                 error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH)
+        return func(*args, **kwargs)
+
+    return decorated_function
+
+
+def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:
+    """
+    A decorator that applies another decorator only if a condition is True.
+
+    Args:
+        condition: A boolean or a callable that returns a boolean.
+        decorator: The decorator to apply if the condition is True.
+
+    Returns:
+        A decorator that conditionally applies the provided decorator.
+    """
+
+    def decorator_factory(func: F) -> F:
+        # Evaluate the condition
+        should_decorate = condition() if callable(condition) else condition
+
+        if should_decorate:
+            return decorator(func)
+        return func
+
+    return decorator_factory
 
 
 def sequencer_only(func: Callable[..., Any]) -> Decorator:
@@ -43,12 +77,18 @@ def not_sequencer(func: Callable[..., Any]) -> Decorator:
     return decorated_function
 
 
-def validate_request(func: Callable[..., Any]) -> Decorator:
-    """Decorator to validate the request."""
+def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to validate the 'Version' header against the expected version.
+
+    Checks if the request's 'Version' header matches zconfig.VERSION for endpoints
+    starting with 'sequencer' or 'node'. Returns an error response if validation fails.
+    """
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    def decorated_function(*args: Any, **kwargs: Any) -> Response:
+        # Get version from headers (default to empty string if missing)
         version = request.headers.get("Version", "")
+
         if (not version or version != zconfig.VERSION) and \
                 request.endpoint.startswith("sequencer"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
@@ -57,12 +97,59 @@ def validate_request(func: Callable[..., Any]) -> Decorator:
                 request.endpoint.startswith("node"):
             return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
                                                  errors.ErrorMessages.INVALID_NODE_VERSION)
-        if zconfig.IS_SYNCING and request.endpoint not in ["node.get_state", "node.get_last_finalized_batch",
-                                                           "node.get_batches"]:
-            return response_utils.error_response(errors.ErrorCodes.IS_SYNCING, errors.ErrorMessages.IS_SYNCING)
+
+        # Proceed to the original function
         return func(*args, **kwargs)
 
     return decorated_function
+
+
+def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
+    """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Response:
+        if not zconfig.get_synced_flag():
+            return response_utils.error_response(errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED)
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
+    """Decorator to validate required keys in the request JSON body."""
+
+    def decorator(func: Callable[..., Response]) -> Callable[..., Response]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Response:
+            try:
+                req_data = request.get_json()
+                if not isinstance(req_data, dict):
+                    return response_utils.error_response(
+                        errors.ErrorCodes.INVALID_REQUEST,
+                        "Request body must be a JSON object"
+                    )
+            except Exception:
+                return response_utils.error_response(
+                    errors.ErrorCodes.INVALID_REQUEST,
+                    "Failed to parse JSON request body"
+                )
+
+            if all(key in req_data for key in required_keys):
+                return func(*args, **kwargs)  # Proceed if all keys are present
+
+            # Build error message for missing keys
+            missing_keys = [key for key in required_keys if key not in req_data]
+            message = "Required keys are missing: " + ", ".join(missing_keys)
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_REQUEST,
+                message
+            )
+
+        return wrapper
+
+    return decorator
 
 
 def eth_sign(message: str) -> str:
@@ -97,18 +184,16 @@ def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
 
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
-    """Get the ID of the next sequencer."""
-    sorted_nodes: list[dict[str, Any]] = sorted(
-        zconfig.NODES.values(), key=lambda x: x["id"]
-    )
-    index: int | None = next(
-        (i for i, item in enumerate(sorted_nodes) if item["id"] == old_sequencer_id),
-        None,
-    )
-    if index is None or index == len(sorted_nodes) - 1:
-        return sorted_nodes[0]["id"]
+    """Get the ID of the next sequencer in a circular sorted list."""
+    sorted_nodes = sorted(zconfig.NODES.values(), key=lambda x: x["id"])
 
-    return sorted_nodes[index + 1]["id"]
+    ids = [node["id"] for node in sorted_nodes]
+
+    try:
+        index = ids.index(old_sequencer_id)
+        return ids[(index + 1) % len(ids)]  # Circular indexing
+    except ValueError:
+        return ids[0]  # Default to first if old_sequencer_id is not found
 
 
 def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:

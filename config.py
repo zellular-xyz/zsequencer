@@ -37,7 +37,8 @@ class Config:
         self.APPS = {}
         self.NETWORK_STATUS_TAG = None
         self.ADDRESS = None
-        self.IS_SYNCING = None
+
+        self._SYNCED_FLAG = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -70,10 +71,22 @@ class Config:
         self.ECDSA_KEY_PASSWORD = node_config.ecdsa_key_password
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
-
+        self._MODE = node_config.mode
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
+
+    def get_synced_flag(self):
+        return self._SYNCED_FLAG
+
+    def set_synced_flag(self):
+        self._SYNCED_FLAG = True
+
+    def unset_synced_flag(self):
+        self._SYNCED_FLAG = False
+
+    def get_mode(self):
+        return self._MODE
 
     @staticmethod
     def get_instance(node_config: NodeConfig):
@@ -221,14 +234,19 @@ class Config:
             sys.exit()
 
         self.init_sequencer()
-        if self.SEQUENCER["id"] == self.NODE["id"]:
-            self.IS_SYNCING = False
+
+        if self.is_sequencer:
+            zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
             snapshot_path = os.path.join(self.SNAPSHOT_PATH, self.VERSION, app_name)
             os.makedirs(snapshot_path, exist_ok=True)
+
+    @property
+    def is_sequencer(self):
+        return self.SEQUENCER["id"] == self.NODE["id"]
 
     @property
     def last_state(self) -> NetworkState:
