@@ -1,6 +1,7 @@
 """This module provides utility functions and decorators for the zellular application."""
 
 import time
+import sys
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
@@ -270,3 +271,7 @@ def multi_gen_hash(strings: list[str]) -> list[str]:
             index = futures[future]
             results[index] = future.result()
     return results
+
+
+def get_string_size_kb(text: str) -> float:
+    return sys.getsizeof(text) / 1024

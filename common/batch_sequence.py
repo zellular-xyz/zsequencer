@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Tuple
 from collections.abc import Iterable, Mapping
 from common.state import (
     OperationalState,
     OPERATIONAL_STATES,
     is_state_before_or_equal,
 )
-from common.batch import Batch, BatchRecord
+from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.logger import zlogger
 from common.extended_int import ExtendedInt
 
@@ -36,6 +36,7 @@ class BatchSequence:
         self._index_offset = index_offset
         self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
+        self._size_kb = sum([get_batch_size_kb(batch) for batch in self._batches])
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
@@ -115,7 +116,29 @@ class BatchSequence:
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
+        self._size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
+
+    def concat(self, batch_seq: BatchSequence):
+        if not batch_seq:
+            return
+
+        if len(self) == 0:
+            self._index_offset = batch_seq.index_offset
+            self._batches = list(batch_seq.batches())
+            self._each_state_last_index = dict(batch_seq._each_state_last_index)
+            self._size_kb = batch_seq._size_kb
+            return
+
+        # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
+        expected_start_index = self.get_last_index_or_default() + 1
+        if batch_seq.get_first_index_or_default() != expected_start_index:
+            raise ValueError(
+                f"Batch sequence must start at {expected_start_index}, but got {batch_seq.index_offset}."
+            )
+
+        for batch in batch_seq.batches():
+            self.append(batch)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
         feasible_last_index = min(
@@ -151,6 +174,38 @@ class BatchSequence:
                 for state, last_index in self._each_state_last_index.items()
             },
         }
+
+    def get_size_kb(self) -> float:
+        return self._size_kb
+
+    def slice(self, size_kb: float, after: int | None = None) -> BatchSequence:
+        """
+        Slice the batch sequence up to a specified size in KB.
+
+        Args:
+            size_kb: Maximum size in KB for the sliced sequence
+            after: Index to start from (exclusive), defaults to before first index
+        """
+        if size_kb <= 0 or not self:
+            return self._create_empty()
+
+        after = after if after is not None else self.before_index_offset
+        end_index = after
+        total_size = 0
+
+        for record in self.records():
+            if record["index"] <= after:
+                continue
+
+            batch_size = get_batch_size_kb(record["batch"])
+            if total_size + batch_size > size_kb:
+                break
+
+            total_size += batch_size
+            end_index = record["index"]
+
+        return self.filter(start_exclusive=after,
+                           end_inclusive=end_index) if end_index > after else self._create_empty()
 
     def filter(
         self,

@@ -36,7 +36,6 @@ COPY node /app/zsequencer/node
 COPY sequencer /app/zsequencer/sequencer
 COPY common /app/zsequencer/common
 COPY utils /app/zsequencer/utils
-COPY sequencer_sabotage_simulation /app/zsequencer/sequencer_sabotage_simulation
 COPY schema.py /app/zsequencer/schema.py
 COPY config.py /app/zsequencer/config.py
 COPY settings.py /app/zsequencer/settings.py

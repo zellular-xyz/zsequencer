@@ -62,8 +62,9 @@ def send_app_batches_iteration(app_name):
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
-    initialized_batches: dict[str, Any] = zdb.get_batch_map(
-        app_name=app_name
+    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(
+        app_name=app_name,
+        max_kb_size=zconfig.node_send_limit_size
     )
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(

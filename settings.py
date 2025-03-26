@@ -18,7 +18,7 @@ class SequencerSabotageSimulation(BaseSettings):
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.15")
+    version: str = Field(default="v0.0.14")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -35,6 +35,8 @@ class NodeConfig(BaseSettings):
 
     host: str = Field(default="localhost")
     port: int = Field(default=6001)
+
+    snapshot_size_kb: int = Field(default=1000)
     snapshot_chunk: int = Field(default=1000)
     remove_chunk_border: int = Field(default=2)
 
@@ -44,6 +46,10 @@ class NodeConfig(BaseSettings):
     aggregation_timeout: int = Field(default=5)
     fetch_apps_and_nodes_interval: float = Field(default=60.0)
     api_batches_limit: int = Field(default=100000)
+    bandwidth_kb: float = Field(default=10_000)
+    push_rate_limit_window_seconds: int = Field(default=1)
+
+    max_batch_size_kb: float = Field(default=5)
 
     init_sequencer_id: str = Field(default="")
     threshold_percent: int = Field(default=100)
@@ -57,8 +63,6 @@ class NodeConfig(BaseSettings):
     register_socket: str = Field(default="")
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
-
-    # sequencer_sabotage_simulation: SequencerSabotageSimulation = Field(default_factory=SequencerSabotageSimulation)
 
     class Config:
         env_prefix = "ZSEQUENCER_"

@@ -1,5 +1,6 @@
 from typing import TypedDict, cast
 from common.state import State
+from common.utils import get_string_size_kb
 
 
 class Batch(TypedDict, total=False):
@@ -15,6 +16,10 @@ class Batch(TypedDict, total=False):
     finalization_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
+
+
+def get_batch_size_kb(batch: Batch):
+    return get_string_size_kb(batch.get("body"))
 
 
 class BatchRecord(TypedDict, total=False):
