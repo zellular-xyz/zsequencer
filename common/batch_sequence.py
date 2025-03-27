@@ -36,7 +36,7 @@ class BatchSequence:
         self._index_offset = index_offset
         self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
-        self._size_kb = sum([get_batch_size_kb(batch) for batch in self._batches])
+        self.size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
@@ -116,28 +116,28 @@ class BatchSequence:
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
-        self._size_kb += get_batch_size_kb(batch)
+        self.size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
 
-    def concat(self, batch_seq: BatchSequence):
-        if not batch_seq:
+    def extend(self, other_sequence: BatchSequence):
+        if not other_sequence:
             return
 
         if len(self) == 0:
-            self._index_offset = batch_seq.index_offset
-            self._batches = list(batch_seq.batches())
-            self._each_state_last_index = dict(batch_seq._each_state_last_index)
-            self._size_kb = batch_seq._size_kb
+            self._index_offset = other_sequence.index_offset
+            self._batches = list(other_sequence.batches())
+            self._each_state_last_index = dict(other_sequence._each_state_last_index)
+            self.size_kb = other_sequence.size_kb
             return
 
         # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
         expected_start_index = self.get_last_index_or_default() + 1
-        if batch_seq.get_first_index_or_default() != expected_start_index:
+        if other_sequence.get_first_index_or_default() != expected_start_index:
             raise ValueError(
-                f"Batch sequence must start at {expected_start_index}, but got {batch_seq.index_offset}."
+                f"Batch sequence must start at {expected_start_index}, but got {other_sequence.index_offset}."
             )
 
-        for batch in batch_seq.batches():
+        for batch in other_sequence.batches():
             self.append(batch)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
@@ -175,10 +175,7 @@ class BatchSequence:
             },
         }
 
-    def get_size_kb(self) -> float:
-        return self._size_kb
-
-    def slice(self, size_kb: float, after: int | None = None) -> BatchSequence:
+    def truncate_by_size(self, size_kb: float, after: int | None = None) -> BatchSequence:
         """
         Slice the batch sequence up to a specified size in KB.
 

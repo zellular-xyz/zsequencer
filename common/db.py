@@ -1,23 +1,22 @@
 from __future__ import annotations
-import gzip
-import json
-import math
+
+import itertools
 import os
 import threading
 import time
-from typing import Any
-from threading import Thread
-from config import zconfig
-from utils import get_file_content
-from common import utils
-from common.logger import zlogger
-from common.storage_manager import StorageManager
-import itertools
-from typing import TypedDict
 from collections.abc import Iterable
-from common.state import OperationalState
+from threading import Thread
+from typing import Any
+from typing import TypedDict
+
+from common import utils
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
+from common.logger import zlogger
+from common.state import OperationalState
+from common.storage_manager import StorageManager
+from config import zconfig
+from utils import get_file_content
 
 
 class App(TypedDict, total=False):
@@ -51,9 +50,10 @@ class InMemoryDB:
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self.is_sequencer_down = False
-        self._storage_manager = StorageManager.get_instance(snapshot_path=zconfig.SNAPSHOT_PATH,
-                                                            version=zconfig.VERSION,
-                                                            apps=list(zconfig.APPS.keys()))
+        self._storage_manager = StorageManager(snapshot_path=zconfig.SNAPSHOT_PATH,
+                                               version=zconfig.VERSION,
+                                               apps=list(zconfig.APPS.keys()),
+                                               overlap_snapshot_counts=zconfig.REMOVE_CHUNK_BORDER)
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
             target=self._fetch_apps_and_network_state_periodically
@@ -102,73 +102,24 @@ class InMemoryDB:
 
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
-    @classmethod
-    def _load_finalized_batches_for_all_apps(cls) -> dict[str, App]:
+    def _load_finalized_batches_for_all_apps(self) -> dict[str, App]:
         """Load and return the initial state from the snapshot files."""
         result: dict[str, App] = {}
 
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_batch_sequence = cls._load_finalized_batch_sequence(app_name)
+            finalized_batch_sequence = self._storage_manager.load_overlap_batch_sequence(app_name)
             result[app_name] = {
                 "nodes_state": {},
                 "initialized_batch_map": {},
                 "operational_batch_sequence": finalized_batch_sequence,
-                "operational_batch_hash_index_map": cls._generate_batch_hash_index_map(
+                "operational_batch_hash_index_map": self._generate_batch_hash_index_map(
                     finalized_batch_sequence
                 ),
                 "missed_batch_map": {},
             }
 
         return result
-
-    # TODO: Remove the unused method.
-    @staticmethod
-    def _load_keys() -> dict[str, Any]:
-        """Load keys from the snapshot file."""
-        keys_path = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
-        try:
-            with gzip.open(keys_path, "rt", encoding="UTF-8") as file:
-                return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError):
-            return {}
-
-    @classmethod
-    def _load_finalized_batch_sequence(
-        cls, app_name: str, index: int | None = None
-    ) -> BatchSequence:
-        """Load finalized batches for a given app from the snapshot file."""
-        snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
-        if index is None:
-            effective_index = 0
-            snapshots = sorted(
-                file for file in os.listdir(snapshot_dir) if file.endswith(".json.gz")
-            )
-            if snapshots:
-                effective_index = int(snapshots[-1].split(".")[0])
-        else:
-            effective_index = (
-                math.ceil(index / zconfig.SNAPSHOT_CHUNK) * zconfig.SNAPSHOT_CHUNK
-            )
-
-        if effective_index <= 0:
-            return BatchSequence()
-
-        try:
-            with gzip.open(
-                snapshot_dir + f"/{str(effective_index).zfill(7)}.json.gz",
-                "rt",
-                encoding="UTF-8",
-            ) as file:
-                return BatchSequence.from_mapping(json.load(file))
-        except (FileNotFoundError, EOFError):
-            pass
-        except (OSError, IOError, json.JSONDecodeError) as error:
-            zlogger.error(
-                "An error occurred while loading finalized batches for %s: %s",
-                app_name,
-            )
-        return BatchSequence()
 
     def _save_finalized_chunk_then_prune(
             self, app_name: str, start_index: int, end_index: int
@@ -179,12 +130,8 @@ class InMemoryDB:
                 start_index=start_index,
                 end_index=end_index,
             )
-
-            # Prune old finalized batches
-            remove_border_index = max(
-                start_index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER,
-                BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-            )
+            # Detect Pruning old finalized batches index based on overlap size between in_memory and disk batches
+            remove_border_index = self._storage_manager.get_overlap_border_index(app_name)
             self._prune_old_finalized_batches(app_name, remove_border_index)
         except Exception as error:
             zlogger.error(
@@ -267,18 +214,18 @@ class InMemoryDB:
                     result.filter(exclude_state="sequenced") if state == "locked" else result
 
         # Calculate remaining size and starting point for memory data
-        remaining_size = size_limit - (result.get_size_kb() if result else 0)
+        remaining_size = size_limit - (result.size_kb if result else 0)
         memory_start = result.get_last_index_or_default() if result else after
 
         # Get in-memory batches
-        memory_sequence = self.apps[app_name]["operational_batch_sequence"].slice(
+        memory_sequence = self.apps[app_name]["operational_batch_sequence"].truncate_by_size(
             size_kb=remaining_size,
             after=memory_start
         )
 
         # Combine sequences
         if result:
-            result.concat(memory_sequence)
+            result.extend(memory_sequence)
         else:
             result = memory_sequence
 
@@ -482,7 +429,7 @@ class InMemoryDB:
             batch_size = get_batch_size_kb(record["batch"])
 
             # If adding this batch would exceed size limit, create new chunk
-            if current_size + batch_size > zconfig.SNAPSHOT_SIZE_KB and current_size > 0:
+            if current_size + batch_size > zconfig.SNAPSHOT_CHUNK_SIZE_KB and current_size > 0:
                 chunks.append((chunk_start, record["index"] - 1))
                 chunk_start = record["index"]
                 current_size = batch_size

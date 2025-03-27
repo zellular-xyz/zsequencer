@@ -45,7 +45,7 @@ class ErrorMessages:
     INVALID_SEQUENCER: str = "The sequencer ID is invalid."
     ISSUE_NOT_FOUND: str = "The specified issue was not found."
     BATCHES_LIMIT_EXCEEDED: str = "Batches limit volume exceeded."
-    BATCH_SIZE_EXCEEDED: str = "batch_size_exceeded"
+    BATCH_SIZE_EXCEEDED: str = "The batch exceeds the maximum allowed size."
     PK_ALREADY_SET: str = "The public shares have already been set."
     SEQUENCER_CHANGE_NOT_APPROVED: str = "The sequencer change request is not approved."
     SEQUENCER_OUT_OF_REACH: str = "The sequencer is out of reach."

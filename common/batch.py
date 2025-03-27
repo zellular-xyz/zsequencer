@@ -1,6 +1,6 @@
 from typing import TypedDict, cast
 from common.state import State
-from common.utils import get_string_size_kb
+from common.utils import get_utf8_size_kb
 
 
 class Batch(TypedDict, total=False):
@@ -18,8 +18,8 @@ class Batch(TypedDict, total=False):
     finalized_tag: int
 
 
-def get_batch_size_kb(batch: Batch):
-    return get_string_size_kb(batch.get("body"))
+def get_batch_size_kb(batch: Batch) -> float:
+    return get_utf8_size_kb(batch.get("body"))
 
 
 class BatchRecord(TypedDict, total=False):

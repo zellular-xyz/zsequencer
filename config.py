@@ -57,7 +57,7 @@ class Config:
         self.SEND_BATCH_INTERVAL = node_config.send_batch_interval
         self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
-        self.SNAPSHOT_SIZE_KB = node_config.snapshot_size_kb
+        self.SNAPSHOT_CHUNK_SIZE_KB = node_config.snapshot_chunk_size_kb
         self.HOST = node_config.host
         self.PORT = node_config.port
         self.NODE_SOURCE = get_node_source(node_config.nodes_source)

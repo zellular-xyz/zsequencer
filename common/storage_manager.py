@@ -9,25 +9,18 @@ from common.logger import zlogger
 
 
 class StorageManager:
-    _instance = None
 
     def __init__(self,
                  snapshot_path: str,
                  version: str,
-                 apps: List[str]):
-        if not hasattr(self, "_initialized"):
-            self._snapshots_dir = os.path.join(snapshot_path, version)
-            self._indexed_files: Dict[str, List[Tuple[int, str]]] = {}
-            self._apps = apps
-            self._last_persisted_finalized_batch_index: Dict[str, Union[int, None]] = {}
-            self._initialize()
-            self._initialized = True  # Prevents re-initialization
-
-    @classmethod
-    def get_instance(cls, snapshot_path: str, version: str, apps: List[str]):
-        if cls._instance is None:
-            cls._instance = cls(snapshot_path, version, apps)
-        return cls._instance
+                 apps: list[str],
+                 overlap_snapshot_counts: int):
+        self._snapshots_dir = os.path.join(snapshot_path, version)
+        self._indexed_files: Dict[str, List[Tuple[int, str]]] = {}
+        self._apps = apps
+        self._overlap_snapshot_counts = overlap_snapshot_counts
+        self._last_persisted_finalized_batch_index: Dict[str, Union[int, None]] = {}
+        self._initialize()
 
     def _initialize(self):
         for app_name in self._apps:
@@ -91,7 +84,7 @@ class StorageManager:
 
         return BatchSequence()
 
-    def load_finalized_batches(self, app_name: str, after: int, retrieve_size_limit_kb: float) -> BatchSequence:
+    def load_finalized_batches(self, app_name: str, after: int, retrieve_size_limit_kb: float = None) -> BatchSequence:
         """Load all finalized batches for a given app from the snapshot file after a given batch index."""
         if app_name not in self._indexed_files:
             raise KeyError(f'App not found in indexed files: {app_name}')
@@ -111,16 +104,24 @@ class StorageManager:
 
         # Load and merge batch sequences from all relevant files
         merged_batches = BatchSequence()
-        size_capacity = retrieve_size_limit_kb
+        size_capacity = retrieve_size_limit_kb \
+            if retrieve_size_limit_kb is not None else float('inf')  # No limit if None
+
         for _, file_name in indexed_files[pos:]:
             snapshot_batch_sequence = self.load_file(app_name, file_name).filter(start_exclusive=after)
 
-            sliced_batch_sequence = snapshot_batch_sequence.slice(size_kb=size_capacity)
-            contains_all_seq = sliced_batch_sequence.get_last_index_or_default() == snapshot_batch_sequence.get_last_index_or_default()
-            merged_batches.concat(sliced_batch_sequence)
-            size_capacity -= sliced_batch_sequence.get_size_kb()
+            if retrieve_size_limit_kb is None:
+                # No size limitation; take all batches
+                sliced_batch_sequence = snapshot_batch_sequence
+            else:
+                # Apply size limitation
+                sliced_batch_sequence = snapshot_batch_sequence.truncate_by_size(size_kb=size_capacity)
 
-            if not contains_all_seq or size_capacity == 0:
+            contains_all_seq = sliced_batch_sequence.get_last_index_or_default() == snapshot_batch_sequence.get_last_index_or_default()
+            merged_batches.extend(sliced_batch_sequence)
+            size_capacity -= sliced_batch_sequence.size_kb
+
+            if retrieve_size_limit_kb is not None and (not contains_all_seq or size_capacity <= 0):
                 break
 
         return merged_batches
@@ -158,6 +159,20 @@ class StorageManager:
                 batches.to_mapping(),
                 file,
             )
+
+    def get_overlap_border_index(self, app_name: str) -> int:
+        if app_name not in self._indexed_files:
+            raise KeyError(f'App not found in indexed files {app_name}')
+
+        indexed_files = self._indexed_files[app_name]
+        if len(indexed_files) < self._overlap_snapshot_counts:
+            return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+
+        return indexed_files[-1 * self._overlap_snapshot_counts][0]
+
+    def load_overlap_batch_sequence(self, app_name: str) -> BatchSequence:
+        overlay_border_index = self.get_overlap_border_index(app_name)
+        return self.load_finalized_batches(app_name=app_name, after=overlay_border_index)
 
     def _get_app_storage_path(self, app_name: str) -> str:
         return os.path.join(self._snapshots_dir, app_name)

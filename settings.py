@@ -36,7 +36,7 @@ class NodeConfig(BaseSettings):
     host: str = Field(default="localhost")
     port: int = Field(default=6001)
 
-    snapshot_size_kb: int = Field(default=1000)
+    snapshot_chunk_size_kb: int = Field(default=1000)
     snapshot_chunk: int = Field(default=1000)
     remove_chunk_border: int = Field(default=2)
 

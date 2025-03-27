@@ -273,5 +273,5 @@ def multi_gen_hash(strings: list[str]) -> list[str]:
     return results
 
 
-def get_string_size_kb(text: str) -> float:
-    return sys.getsizeof(text) / 1024
+def get_utf8_size_kb(text: str) -> float:
+    return len(text.encode("utf-8")) / 1024
