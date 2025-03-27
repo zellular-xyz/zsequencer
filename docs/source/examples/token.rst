@@ -1,7 +1,11 @@
 Token as a Verifiable Service
 =============================
 
-This guide walks through transforming a simple token service into a decentralized and verifiable application using the Zellular Sequencer. Each step corresponds to a real code implementation in the Zellular `examples/token <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/>`_ directory.
+This guide walks through transforming a simple token service into a decentralized and verifiable application using the Zellular Sequencer.
+
+We follow a progressive enhancement model, starting from a basic session-based FastAPI service, and incrementally evolving it into a replicated and cryptographically verifiable system.
+
+Each step corresponds to a real code implementation in the Zellular `examples/token <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/>`_ directory.
 
 Step 1: Centralized Token Service
 ---------------------------------
