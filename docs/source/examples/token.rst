@@ -334,4 +334,4 @@ The `/balance` endpoint signs the message before returning it:
 
 The message is signed using the BLS POP (Proof of Possession) scheme from the `blspy` library and the resulting `signature` is included in the API response.
 
-For now, this step ensures that every balance query is individually signed and verifiable. In the **Signature Aggregation and Verification** section, we’ll explore how an aggregator can collect signed responses from multiple nodes, combine them into a single BLS signature, and how clients or external services can verify that a quorum of replicas attested to the same value.
+For now, this step ensures that every balance query is individually signed and verifiable. In the :doc:`Signature Aggregation and Verification <verification>` section, we’ll explore how an aggregator can collect signed responses from multiple nodes, combine them into a single BLS signature, and how clients or external services can verify that a quorum of replicas attested to the same value.
