@@ -5,7 +5,6 @@
    architecture
    protocol
    sdk
-   integration
 
 .. toctree::
    :maxdepth: 1
@@ -13,5 +12,6 @@
 
    examples/token
    examples/orderbook
-
-   
+   examples/verification
+   examples/avs_task_management
+   examples/avs_database_replication
