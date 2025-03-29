@@ -16,7 +16,7 @@ class StorageManager:
                  apps: list[str],
                  overlap_snapshot_counts: int):
         self._snapshots_dir = os.path.join(snapshot_path, version)
-        self._indexed_files: Dict[str, List[Tuple[int, str]]] = {}
+        self._app_name_to_start_index_filename_pairs: Dict[str, List[Tuple[int, str]]] = {}
         self._apps = apps
         self._overlap_snapshot_counts = overlap_snapshot_counts
         self._last_persisted_finalized_batch_index: Dict[str, Union[int, None]] = {}
@@ -39,13 +39,13 @@ class StorageManager:
         for snapshot_filename in snapshot_filenames:
             start_index = int(snapshot_filename.removesuffix(".json.gz"))
             app_indexed_files.append((start_index, snapshot_filename))
-        self._indexed_files[app_name] = app_indexed_files
+        self._app_name_to_start_index_filename_pairs[app_name] = app_indexed_files
 
     def _load_last_persisted_finalized_batch_index(self, app_name: str):
-        if len(self._indexed_files[app_name]) == 0:
+        if len(self._app_name_to_start_index_filename_pairs[app_name]) == 0:
             self._last_persisted_finalized_batch_index[app_name] = None
             return
-        last_snapshot_filename = self._indexed_files[app_name][-1][1]
+        last_snapshot_filename = self._app_name_to_start_index_filename_pairs[app_name][-1][1]
         last_snapshot_batch_sequence = self.load_file(app_name=app_name, file_name=last_snapshot_filename)
         self._last_persisted_finalized_batch_index[app_name] = last_snapshot_batch_sequence.get_last_index_or_default()
 
@@ -53,10 +53,10 @@ class StorageManager:
         return self._last_persisted_finalized_batch_index[app_name]
 
     def _find_file(self, app_name: str, batch_index: int) -> str | None:
-        if app_name not in self._indexed_files:
+        if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
-        indexed_files = self._indexed_files.get(app_name, [])
+        indexed_files = self._app_name_to_start_index_filename_pairs.get(app_name)
         if not indexed_files:
             return None
 
@@ -86,10 +86,10 @@ class StorageManager:
 
     def load_finalized_batches(self, app_name: str, after: int, retrieve_size_limit_kb: float = None) -> BatchSequence:
         """Load all finalized batches for a given app from the snapshot file after a given batch index."""
-        if app_name not in self._indexed_files:
+        if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files: {app_name}')
 
-        indexed_files = self._indexed_files[app_name]
+        indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
         if not indexed_files:
             return BatchSequence()
 
@@ -132,11 +132,11 @@ class StorageManager:
     def load_finalized_batch_sequence(
             self, app_name: str, index: int | None = None
     ) -> BatchSequence:
-        if app_name not in self._indexed_files:
+        if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
         if index is None:
-            snapshots = self._indexed_files[app_name]
+            snapshots = self._app_name_to_start_index_filename_pairs[app_name]
             effective_index = int(snapshots[-1][0]) if snapshots else 0
         else:
             effective_index = index
@@ -152,7 +152,7 @@ class StorageManager:
     ):
         snapshot_filename = self._get_snapshot_filename(start_index)
         snapshot_filepath = os.path.join(self._get_app_storage_path(app_name), snapshot_filename)
-        self._indexed_files[app_name].append((start_index, snapshot_filename))
+        self._app_name_to_start_index_filename_pairs[app_name].append((start_index, snapshot_filename))
         self._last_persisted_finalized_batch_index[app_name] = batches.get_last_index_or_default()
 
         with gzip.open(
@@ -164,10 +164,10 @@ class StorageManager:
             )
 
     def get_overlap_border_index(self, app_name: str) -> int:
-        if app_name not in self._indexed_files:
+        if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
-        indexed_files = self._indexed_files[app_name]
+        indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
         if len(indexed_files) < self._overlap_snapshot_counts:
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
