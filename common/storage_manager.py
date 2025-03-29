@@ -60,7 +60,7 @@ class StorageManager:
         if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
-        indexed_files = self._app_name_to_start_index_filename_pairs.get(app_name)
+        indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
         if not indexed_files:
             return None, None
 
