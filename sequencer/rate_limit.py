@@ -14,11 +14,10 @@ limiter = FixedWindowRateLimiter(storage)
 
 def try_acquire_rate_limit_quota(node_id: str, batches: List[Batch]) -> bool:
     new_additive_size = sum(get_batch_size_kb(batch) for batch in batches)
-    key = f"node:{node_id}"
 
     # Create a new rate limit dynamically each time
     rate_limit = RateLimitItemPerSecond(
         zconfig.node_send_limit_size, zconfig.PUSH_RATE_LIMIT_WINDOW_SECONDS
     )
 
-    return limiter.hit(rate_limit, key, cost=new_additive_size)
+    return limiter.hit(rate_limit, node_id, cost=new_additive_size)
