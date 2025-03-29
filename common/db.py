@@ -148,7 +148,6 @@ class InMemoryDB:
         batches = (self.apps[app_name]["operational_batch_sequence"]
                    .filter(start_exclusive=start_exclusive, end_inclusive=end_inclusive))
         self._storage_manager.store_finalized_batch_sequence(app_name=app_name,
-                                                             start_index=start_exclusive,
                                                              batches=batches)
 
     def get_limited_initialized_batch_map(self, app_name: str, max_kb_size: float) -> dict[str, Batch]:

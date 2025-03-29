@@ -155,8 +155,9 @@ class StorageManager:
         return self.load_file(app_name=app_name, file_name=file_name)
 
     def store_finalized_batch_sequence(
-            self, app_name: str, start_index: int, batches: BatchSequence
+            self, app_name: str, batches: BatchSequence
     ):
+        start_index = batches.get_first_index_or_default()
         snapshot_filename = self._get_snapshot_filename(start_index)
         snapshot_filepath = os.path.join(self._get_app_storage_path(app_name), snapshot_filename)
         self._app_name_to_start_index_filename_pairs[app_name].append((start_index, snapshot_filename))
