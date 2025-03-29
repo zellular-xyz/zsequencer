@@ -38,6 +38,9 @@ class BatchSequence:
         self._each_state_last_index = dict(each_state_last_index)
         self.size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
 
+    def get_each_state_last_index(self):
+        return self._each_state_last_index.copy()
+
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
         return BatchSequence(
@@ -119,9 +122,29 @@ class BatchSequence:
         self.size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
 
+    def _includes_only_finalized_batches(self) -> bool:
+        """
+        Check if all batches in the sequence are in finalized state.
+        Returns True if all batches are finalized, False otherwise.
+        Empty sequence returns True as it has no non-finalized batches.
+        """
+        if not self._batches:
+            return True
+
+        last_finalized_index = self.get_last_index_or_default(
+            state="finalized",
+            default=self.BEFORE_GLOBAL_INDEX_OFFSET
+        )
+        last_sequence_index = self.get_last_index_or_default()
+
+        return last_sequence_index <= last_finalized_index
+
     def extend(self, other_sequence: BatchSequence):
         if not other_sequence:
             return
+
+        if not self._includes_only_finalized_batches():
+            raise ValueError("Cannot extend sequence with another not all finalized sequence")
 
         if len(self) == 0:
             self._index_offset = other_sequence.index_offset
@@ -139,6 +162,9 @@ class BatchSequence:
 
         for batch in other_sequence.batches():
             self.append(batch)
+
+        for state, index in other_sequence.get_each_state_last_index().items():
+            self.promote(index, state)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
         feasible_last_index = min(

@@ -103,7 +103,7 @@ class StorageManager:
             return BatchSequence()  # No files contain batches beyond 'after'
 
         # Load and merge batch sequences from all relevant files
-        merged_batches = BatchSequence()
+        merged_batches = None
         size_capacity = retrieve_size_limit_kb \
             if retrieve_size_limit_kb is not None else float('inf')  # No limit if None
 
@@ -118,7 +118,10 @@ class StorageManager:
                 sliced_batch_sequence = snapshot_batch_sequence.truncate_by_size(size_kb=size_capacity)
 
             contains_all_seq = sliced_batch_sequence.get_last_index_or_default() == snapshot_batch_sequence.get_last_index_or_default()
-            merged_batches.extend(sliced_batch_sequence)
+            if merged_batches is None:
+                merged_batches = sliced_batch_sequence
+            else:
+                merged_batches.extend(sliced_batch_sequence)
             size_capacity -= sliced_batch_sequence.size_kb
 
             if retrieve_size_limit_kb is not None and (not contains_all_seq or size_capacity <= 0):
