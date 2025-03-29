@@ -415,15 +415,14 @@ class InMemoryDB:
         last_persisted_index = self._storage_manager.get_last_persisted_finalized_batch_index(app_name)
         new_finalized_sequence = self._get_app_operational_batches(app_name).filter(
             exclude_state="finalized",
-            start_exclusive=last_persisted_index,
+            start_exclusive=last_persisted_index if last_persisted_index is not None else -1,
             end_inclusive=signature_finalized_index
         )
 
         # Calculate snapshot chunks based on size
-        snapshot_start = last_persisted_index + 1 if last_persisted_index is not None else 0
         current_size = 0
         chunks = []
-        chunk_start = snapshot_start
+        chunk_start = 0 if last_persisted_index is None else last_persisted_index + 1
 
         for record in new_finalized_sequence.records():
             batch_size = get_batch_size_kb(record["batch"])
@@ -458,7 +457,9 @@ class InMemoryDB:
 
         # Save and prune chunks
         for start_index, end_index in chunks:
-            self._save_finalized_chunk_then_prune(app_name, start_index, end_index)
+            # For the first chunk when there's no previous persisted data, use -1 as start_exclusive
+            start_exclusive = -1 if start_index == 0 else start_index - 1
+            self._save_finalized_chunk_then_prune(app_name, start_exclusive, end_index)
 
     def upsert_node_state(
         self,
