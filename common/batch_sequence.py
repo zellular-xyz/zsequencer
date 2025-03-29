@@ -143,31 +143,31 @@ class BatchSequence:
 
         return last_sequence_index <= last_finalized_index
 
-    def extend(self, other_sequence: BatchSequence):
-        if not other_sequence:
+    def extend(self, other: BatchSequence):
+        if not other:
             return
 
         if not self._includes_only_finalized_batches():
             raise ValueError("Cannot extend sequence with another not all finalized sequence")
 
         if len(self) == 0:
-            self._index_offset = other_sequence.index_offset
-            self._batches = list(other_sequence.batches())
-            self._each_state_last_index = dict(other_sequence._each_state_last_index)
-            self._size_kb = other_sequence.size_kb
+            self._index_offset = other.index_offset
+            self._batches = list(other.batches())
+            self._each_state_last_index = dict(other._each_state_last_index)
+            self._size_kb = other.size_kb
             return
 
         # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
         expected_start_index = self.get_last_index_or_default() + 1
-        if other_sequence.get_first_index_or_default() != expected_start_index:
+        if other.get_first_index_or_default() != expected_start_index:
             raise ValueError(
-                f"Batch sequence must start at {expected_start_index}, but got {other_sequence.index_offset}."
+                f"Batch sequence must start at {expected_start_index}, but got {other.index_offset}."
             )
 
-        for batch in other_sequence.batches():
+        for batch in other.batches():
             self.append(batch)
 
-        for state, index in other_sequence.get_each_state_last_index().items():
+        for state, index in other.get_each_state_last_index().items():
             self.promote(index, state)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
