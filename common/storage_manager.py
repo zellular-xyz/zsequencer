@@ -52,13 +52,17 @@ class StorageManager:
     def get_last_persisted_finalized_batch_index(self, app_name: str) -> Union[int, None]:
         return self._last_persisted_finalized_batch_index[app_name]
 
-    def _find_file(self, app_name: str, batch_index: int) -> str | None:
+    def _find_file(self, app_name: str, batch_index: int) -> tuple[str | None, int | None]:
+        """
+        Find the file containing the batch_index and return its filename and position.
+        Returns (None, None) if no suitable file is found.
+        """
         if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
         indexed_files = self._app_name_to_start_index_filename_pairs.get(app_name)
         if not indexed_files:
-            return None
+            return None, None
 
         # Extract start indices for binary search
         start_indices = [entry[0] for entry in indexed_files]
@@ -67,9 +71,9 @@ class StorageManager:
         pos = bisect.bisect_right(start_indices, batch_index) - 1
 
         if pos < 0:
-            return None  # No file contains this batch index
+            return None, None
 
-        return indexed_files[pos][1]
+        return indexed_files[pos][1], pos
 
     def load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
@@ -85,49 +89,52 @@ class StorageManager:
         return BatchSequence()
 
     def load_finalized_batches(self, app_name: str, after: int, retrieve_size_limit_kb: float = None) -> BatchSequence:
-        """Load all finalized batches for a given app from the snapshot file after a given batch index."""
+        """
+        Load all finalized batches for a given app from the snapshot file after a given batch index.
+
+        Args:
+            app_name: Name of the app to load batches for
+            after: Load batches after this index
+            retrieve_size_limit_kb: Maximum size of batches to load in KB
+        """
         if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files: {app_name}')
 
-        indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
-        if not indexed_files:
+        # Find the first file containing batches after the given index
+        first_file, start_pos = self._find_file(app_name, after)
+        if first_file is None or start_pos is None:
             return BatchSequence()
 
-        # Extract start indices for binary search
-        start_indices = [entry[0] for entry in indexed_files]
-
-        # Find the leftmost file index that has batches after 'after'
-        pos = bisect.bisect_right(start_indices, after)
-
-        if pos >= len(indexed_files):
-            return BatchSequence()  # No files contain batches beyond 'after'
-
-        # Load and merge batch sequences from all relevant files
+        # Initialize merge result and size tracking
         merged_batches = None
-        size_capacity = retrieve_size_limit_kb \
-            if retrieve_size_limit_kb is not None else float('inf')  # No limit if None
+        size_capacity = retrieve_size_limit_kb if retrieve_size_limit_kb is not None else float('inf')
+        indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
 
-        for _, file_name in indexed_files[pos:]:
+        # Process files starting from the found position
+        for _, file_name in indexed_files[start_pos:]:
             snapshot_batch_sequence = self.load_file(app_name, file_name).filter(start_exclusive=after)
 
-            if retrieve_size_limit_kb is None:
-                # No size limitation; take all batches
-                sliced_batch_sequence = snapshot_batch_sequence
-            else:
-                # Apply size limitation
+            # Apply size limit if specified
+            if retrieve_size_limit_kb is not None:
                 sliced_batch_sequence = snapshot_batch_sequence.truncate_by_size(size_kb=size_capacity)
+                contains_all_seq = (sliced_batch_sequence.get_last_index_or_default() ==
+                                    snapshot_batch_sequence.get_last_index_or_default())
+            else:
+                sliced_batch_sequence = snapshot_batch_sequence
+                contains_all_seq = True
 
-            contains_all_seq = sliced_batch_sequence.get_last_index_or_default() == snapshot_batch_sequence.get_last_index_or_default()
+            # Merge with existing batches
             if merged_batches is None:
                 merged_batches = sliced_batch_sequence
             else:
                 merged_batches.extend(sliced_batch_sequence)
-            size_capacity -= sliced_batch_sequence.size_kb
 
+            # Update remaining capacity and check if we should stop
+            size_capacity -= sliced_batch_sequence.size_kb
             if retrieve_size_limit_kb is not None and (not contains_all_seq or size_capacity <= 0):
                 break
 
-        return merged_batches
+        return merged_batches if merged_batches is not None else BatchSequence()
 
     def load_finalized_batch_sequence(
             self, app_name: str, index: int | None = None
@@ -144,7 +151,7 @@ class StorageManager:
         if effective_index <= 0:
             return BatchSequence()
 
-        file_name = self._find_file(app_name, effective_index)
+        file_name, _ = self._find_file(app_name, effective_index)
         return self.load_file(app_name=app_name, file_name=file_name)
 
     def store_finalized_batch_sequence(
