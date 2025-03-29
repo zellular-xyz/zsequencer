@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Tuple
 from collections.abc import Iterable, Mapping
 from common.state import (
     OperationalState,
     OPERATIONAL_STATES,
     is_state_before_or_equal,
 )
-from common.batch import Batch, BatchRecord
+from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.logger import zlogger
 from common.extended_int import ExtendedInt
 
@@ -36,6 +36,14 @@ class BatchSequence:
         self._index_offset = index_offset
         self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
+        self._size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
+
+    @property
+    def size_kb(self) -> float:
+        return self._size_kb
+
+    def get_each_state_last_index(self):
+        return self._each_state_last_index.copy()
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
@@ -115,7 +123,52 @@ class BatchSequence:
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
+        self._size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
+
+    def _includes_only_finalized_batches(self) -> bool:
+        """
+        Check if all batches in the sequence are in finalized state.
+        Returns True if all batches are finalized, False otherwise.
+        Empty sequence returns True as it has no non-finalized batches.
+        """
+        if not self._batches:
+            return True
+
+        last_finalized_index = self.get_last_index_or_default(
+            state="finalized",
+            default=self.BEFORE_GLOBAL_INDEX_OFFSET
+        )
+        last_sequence_index = self.get_last_index_or_default()
+
+        return last_sequence_index <= last_finalized_index
+
+    def extend(self, other: BatchSequence):
+        if not other:
+            return
+
+        if not self._includes_only_finalized_batches():
+            raise ValueError("Cannot extend sequence with another not all finalized sequence")
+
+        if len(self) == 0:
+            self._index_offset = other.index_offset
+            self._batches = list(other.batches())
+            self._each_state_last_index = dict(other._each_state_last_index)
+            self._size_kb = other.size_kb
+            return
+
+        # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
+        expected_start_index = self.get_last_index_or_default() + 1
+        if other.get_first_index_or_default() != expected_start_index:
+            raise ValueError(
+                f"Batch sequence must start at {expected_start_index}, but got {other.index_offset}."
+            )
+
+        for batch in other.batches():
+            self.append(batch)
+
+        for state, index in other.get_each_state_last_index().items():
+            self.promote(index, state)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
         feasible_last_index = min(
@@ -151,6 +204,35 @@ class BatchSequence:
                 for state, last_index in self._each_state_last_index.items()
             },
         }
+
+    def truncate_by_size(self, size_kb: float, after: int | None = None) -> BatchSequence:
+        """
+        Slice the batch sequence up to a specified size in KB.
+
+        Args:
+            size_kb: Maximum size in KB for the sliced sequence
+            after: Index to start from (exclusive), defaults to before first index
+        """
+        if size_kb <= 0 or not self:
+            return self._create_empty()
+
+        after = after if after is not None else self.before_index_offset
+        end_index = after
+        total_size = 0
+
+        for record in self.records():
+            if record["index"] <= after:
+                continue
+
+            batch_size = get_batch_size_kb(record["batch"])
+            if total_size + batch_size > size_kb:
+                break
+
+            total_size += batch_size
+            end_index = record["index"]
+
+        return self.filter(start_exclusive=after,
+                           end_inclusive=end_index) if end_index > after else self._create_empty()
 
     def filter(
         self,
