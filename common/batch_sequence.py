@@ -36,7 +36,11 @@ class BatchSequence:
         self._index_offset = index_offset
         self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
-        self.size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
+        self._size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
+
+    @property
+    def size_kb(self) -> float:
+        return self._size_kb
 
     def get_each_state_last_index(self):
         return self._each_state_last_index.copy()
@@ -119,7 +123,7 @@ class BatchSequence:
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
-        self.size_kb += get_batch_size_kb(batch)
+        self._size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
 
     def _includes_only_finalized_batches(self) -> bool:
@@ -150,7 +154,7 @@ class BatchSequence:
             self._index_offset = other_sequence.index_offset
             self._batches = list(other_sequence.batches())
             self._each_state_last_index = dict(other_sequence._each_state_last_index)
-            self.size_kb = other_sequence.size_kb
+            self._size_kb = other_sequence.size_kb
             return
 
         # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
