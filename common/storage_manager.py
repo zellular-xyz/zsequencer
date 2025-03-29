@@ -2,7 +2,7 @@ import bisect
 import gzip
 import json
 import os
-from typing import List, Dict, Tuple, Union
+from typing import Union
 
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
@@ -16,10 +16,10 @@ class StorageManager:
                  apps: list[str],
                  overlap_snapshot_counts: int):
         self._snapshots_dir = os.path.join(snapshot_path, version)
-        self._app_name_to_start_index_filename_pairs: Dict[str, List[Tuple[int, str]]] = {}
+        self._app_name_to_start_index_filename_pairs: dict[str, list[tuple[int, str]]] = {}
         self._apps = apps
         self._overlap_snapshot_counts = overlap_snapshot_counts
-        self._last_persisted_finalized_batch_index: Dict[str, Union[int, None]] = {}
+        self._last_persisted_finalized_batch_index: dict[str, Union[int, None]] = {}
         self._initialize()
 
     def _initialize(self):
