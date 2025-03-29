@@ -131,7 +131,7 @@ class StorageManager:
 
             # Update remaining capacity and check if we should stop
             size_capacity -= sliced_batch_sequence.size_kb
-            if retrieve_size_limit_kb is not None and (not contains_all_seq or size_capacity <= 0):
+            if not contains_all_seq or size_capacity <= 0:
                 break
 
         return merged_batches if merged_batches is not None else BatchSequence()
