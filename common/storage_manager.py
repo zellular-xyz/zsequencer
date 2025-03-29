@@ -181,8 +181,8 @@ class StorageManager:
         return indexed_files[-1 * self._overlap_snapshot_counts][0]
 
     def load_overlap_batch_sequence(self, app_name: str) -> BatchSequence:
-        overlay_border_index = self.get_overlap_border_index(app_name)
-        return self.load_finalized_batches(app_name=app_name, after=overlay_border_index)
+        overlap_border_index = self.get_overlap_border_index(app_name)
+        return self.load_finalized_batches(app_name=app_name, after=overlap_border_index)
 
     def _get_app_storage_path(self, app_name: str) -> str:
         return os.path.join(self._snapshots_dir, app_name)

@@ -122,13 +122,13 @@ class InMemoryDB:
         return result
 
     def _save_finalized_chunk_then_prune(
-            self, app_name: str, start_index: int, end_index: int
+            self, app_name: str, start_exclusive: int, end_inclusive: int
     ) -> None:
         try:
             self._save_finalized_batches_chunk_to_file(
                 app_name,
-                start_index=start_index,
-                end_index=end_index,
+                start_exclusive=start_exclusive,
+                end_inclusive=end_inclusive,
             )
             # Detect Pruning old finalized batches index based on overlap size between in_memory and disk batches
             remove_border_index = self._storage_manager.get_overlap_border_index(app_name)
@@ -137,18 +137,18 @@ class InMemoryDB:
             zlogger.error(
                 "An error occurred while saving snapshot for %s from index %d to %d: %s",
                 app_name,
-                start_index,
-                end_index,
+                start_exclusive,
+                end_inclusive,
                 error,
             )
 
     def _save_finalized_batches_chunk_to_file(
-        self, app_name: str, start_index: int, end_index: int
+        self, app_name: str, start_exclusive: int, end_inclusive: int
     ) -> None:
         batches = (self.apps[app_name]["operational_batch_sequence"]
-                   .filter(start_exclusive=start_index, end_inclusive=end_index))
+                   .filter(start_exclusive=start_exclusive, end_inclusive=end_inclusive))
         self._storage_manager.store_finalized_batch_sequence(app_name=app_name,
-                                                             start_index=start_index,
+                                                             start_index=start_exclusive,
                                                              batches=batches)
 
     def get_limited_initialized_batch_map(self, app_name: str, max_kb_size: float) -> dict[str, Batch]:
@@ -180,7 +180,7 @@ class InMemoryDB:
         # without the fear of change in the middle of processing.
         return self.apps[app_name]["initialized_batch_map"].copy()
 
-    def _get_first_finalized_batch_in_memory_index(self, app_name: str) -> int:
+    def _get_first_finalized_batch(self, app_name: str) -> int:
         return self.apps[app_name]["operational_batch_sequence"].get_first_index_or_default("finalized")
 
     def get_global_operational_batch_sequence(
@@ -198,7 +198,7 @@ class InMemoryDB:
             after: Starting index (exclusive)
         """
         size_limit = zconfig.node_receive_limit_size
-        first_memory_index = self._get_first_finalized_batch_in_memory_index(app_name)
+        first_memory_index = self._get_first_finalized_batch(app_name)
         result = None
 
         # Get batches from storage if needed
