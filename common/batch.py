@@ -19,7 +19,10 @@ class Batch(TypedDict, total=False):
 
 
 def get_batch_size_kb(batch: Batch) -> float:
-    return get_utf8_size_kb(batch.get("body"))
+    body = batch.get("body")
+    if body is None:
+        return 0.0
+    return get_utf8_size_kb(body)
 
 
 class BatchRecord(TypedDict, total=False):

@@ -154,7 +154,7 @@ class InMemoryDB:
         # NOTE: We copy the dictionary in order to make it safe to work on it
         # without the fear of change in the middle of processing.
         initialized_batch_map = self.apps[app_name]["initialized_batch_map"].copy()
-        total_batches_size = 0
+        total_batches_size = 0.0
         limited_batch_map = {}
         for batch_hash, batch in initialized_batch_map.items():
             batch_size = get_batch_size_kb(batch)
@@ -419,7 +419,7 @@ class InMemoryDB:
         )
 
         # Calculate snapshot chunks based on size
-        current_size = 0
+        current_size = 0.0
         chunks = []
         chunk_start = 0 if last_persisted_index is None else last_persisted_index + 1
 

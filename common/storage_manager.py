@@ -2,7 +2,7 @@ import bisect
 import gzip
 import json
 import os
-from typing import Union
+from typing import Union, Optional
 
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
@@ -88,7 +88,8 @@ class StorageManager:
 
         return BatchSequence()
 
-    def load_finalized_batches(self, app_name: str, after: int, retrieve_size_limit_kb: float = None) -> BatchSequence:
+    def load_finalized_batches(self, app_name: str, after: int,
+                               retrieve_size_limit_kb: Optional[float] = None) -> BatchSequence:
         """
         Load all finalized batches for a given app from the snapshot file after a given batch index.
 
@@ -135,24 +136,6 @@ class StorageManager:
                 break
 
         return merged_batches if merged_batches is not None else BatchSequence()
-
-    def load_finalized_batch_sequence(
-            self, app_name: str, index: int | None = None
-    ) -> BatchSequence:
-        if app_name not in self._app_name_to_start_index_filename_pairs:
-            raise KeyError(f'App not found in indexed files {app_name}')
-
-        if index is None:
-            snapshots = self._app_name_to_start_index_filename_pairs[app_name]
-            effective_index = int(snapshots[-1][0]) if snapshots else 0
-        else:
-            effective_index = index
-
-        if effective_index <= 0:
-            return BatchSequence()
-
-        file_name, _ = self._find_file(app_name, effective_index)
-        return self.load_file(app_name=app_name, file_name=file_name)
 
     def store_finalized_batch_sequence(
             self, app_name: str, batches: BatchSequence

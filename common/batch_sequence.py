@@ -218,7 +218,7 @@ class BatchSequence:
 
         after = after if after is not None else self.before_index_offset
         end_index = after
-        total_size = 0
+        total_size = 0.0
 
         for record in self.records():
             if record["index"] <= after:

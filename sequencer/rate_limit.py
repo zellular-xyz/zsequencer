@@ -11,7 +11,7 @@ limiter = FixedWindowRateLimiter(storage)
 
 
 def try_acquire_rate_limit_quota(node_id: str, batches: list[Batch]) -> bool:
-    new_additive_size = sum(get_batch_size_kb(batch) for batch in batches)
+    new_additive_size = int(sum(get_batch_size_kb(batch) for batch in batches))
 
     # Create a new rate limit dynamically each time
     rate_limit = RateLimitItemPerSecond(
