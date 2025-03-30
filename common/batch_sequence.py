@@ -148,7 +148,7 @@ class BatchSequence:
             return
 
         if not self._includes_only_finalized_batches():
-            raise ValueError("Cannot extend sequence with another not all finalized sequence")
+            raise ValueError("The sequence batches are not finalized yet!")
 
         if len(self) == 0:
             self._index_offset = other.index_offset
