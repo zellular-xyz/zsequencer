@@ -144,7 +144,7 @@ class BatchSequence:
         return last_index_of_sequence <= last_finalized_index
 
     def extend(self, other: BatchSequence):
-        if not other:
+        if not other or len(other._batches) == 0:
             return
 
         if not self._includes_only_finalized_batches():
