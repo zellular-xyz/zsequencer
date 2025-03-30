@@ -154,7 +154,7 @@ class BatchSequence:
             self._index_offset = other.index_offset
             self._batches = list(other.batches())
             self._each_state_last_index = dict(other._each_state_last_index)
-            self._size_kb = other.size_kb
+            self._size_kb = other._size_kb
             return
 
         # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
