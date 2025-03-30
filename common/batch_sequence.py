@@ -139,9 +139,9 @@ class BatchSequence:
             state="finalized",
             default=self.BEFORE_GLOBAL_INDEX_OFFSET
         )
-        last_sequence_index = self.get_last_index_or_default()
+        last_index_of_sequence = self.get_last_index_or_default(default=self.BEFORE_GLOBAL_INDEX_OFFSET)
 
-        return last_sequence_index <= last_finalized_index
+        return last_index_of_sequence <= last_finalized_index
 
     def extend(self, other: BatchSequence):
         if not other:
