@@ -217,10 +217,9 @@ class InMemoryDB:
         memory_start = result.get_last_index_or_default() if result else after
 
         # Get in-memory batches
-        memory_sequence = self.apps[app_name]["operational_batch_sequence"].truncate_by_size(
-            size_kb=remaining_size,
-            after=memory_start
-        )
+        memory_sequence = (self.apps[app_name]["operational_batch_sequence"]
+                           .filter(start_exclusive=memory_start)
+                           .truncate_by_size(size_kb=remaining_size))
 
         # Combine sequences
         if result:

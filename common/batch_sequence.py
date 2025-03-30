@@ -202,25 +202,20 @@ class BatchSequence:
             },
         }
 
-    def truncate_by_size(self, size_kb: float, after: int | None = None) -> BatchSequence:
+    def truncate_by_size(self, size_kb: float) -> BatchSequence:
         """
-        Slice the batch sequence up to a specified size in KB.
+        Truncate the batch sequence up to a specified size in KB.
 
         Args:
-            size_kb: Maximum size in KB for the sliced sequence
-            after: Index to start from (exclusive), defaults to before first index
+            size_kb: Maximum size in KB for the truncated sequence
         """
         if size_kb <= 0 or not self:
             return self._create_empty()
 
-        after = after if after is not None else self.before_index_offset
-        end_index = after
         total_size = 0.0
+        end_index = self.before_index_offset
 
         for record in self.records():
-            if record["index"] <= after:
-                continue
-
             batch_size = get_batch_size_kb(record["batch"])
             if total_size + batch_size > size_kb:
                 break
@@ -228,8 +223,7 @@ class BatchSequence:
             total_size += batch_size
             end_index = record["index"]
 
-        return self.filter(start_exclusive=after,
-                           end_inclusive=end_index) if end_index > after else self._create_empty()
+        return self.filter(end_inclusive=end_index) if end_index > self.before_index_offset else self._create_empty()
 
     def filter(
         self,
