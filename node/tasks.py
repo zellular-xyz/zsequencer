@@ -112,7 +112,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
                 response['data'] = {}
                 raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
             if response["error"]["code"] == ErrorCodes.BATCHES_LIMIT_EXCEEDED:
-                zlogger.info("batches capacity limit exceeded from sequencer.")
+                zlogger.warning(response["error"]["message"])
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
 
