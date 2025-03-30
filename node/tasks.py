@@ -18,6 +18,7 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
+from .rate_limit import try_acquire_node_rate_limit_quota
 from common.logger import zlogger
 from config import zconfig
 
@@ -52,7 +53,7 @@ def send_batches() -> None:
         zconfig.set_synced_flag()
 
 
-def send_app_batches_iteration(app_name):
+def send_app_batches_iteration(app_name: str) -> bool:
     response = send_app_batches(app_name).get("data", {})
     sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
     finish_condition = not sequencer_last_finalized_hash or zdb.get_batch_record_by_hash_or_empty(app_name,
@@ -66,6 +67,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         app_name=app_name,
         max_kb_size=zconfig.node_send_limit_size
     )
+    batches = list(initialized_batches.values())
+    if not try_acquire_node_rate_limit_quota(batches):
+        response = {'data': {}}
+        return response
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="sequenced"
@@ -108,7 +113,6 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
                 raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
             if response["error"]["code"] == ErrorCodes.BATCHES_LIMIT_EXCEEDED:
                 zlogger.info("batches capacity limit exceeded from sequencer.")
-                return {}
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
 
