@@ -42,9 +42,6 @@ class BatchSequence:
     def size_kb(self) -> float:
         return self._size_kb
 
-    def get_each_state_last_index(self):
-        return self._each_state_last_index.copy()
-
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
         return BatchSequence(
@@ -167,7 +164,7 @@ class BatchSequence:
         for batch in other.batches():
             self.append(batch)
 
-        for state, index in other.get_each_state_last_index().items():
+        for state, index in other._each_state_last_index.items():
             self.promote(index, state)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
