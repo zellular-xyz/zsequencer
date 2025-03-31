@@ -23,9 +23,9 @@ class StorageManager:
 
     def _initialize(self):
         for app_name in self._app_names:
-            self.handle_app(app_name)
+            self.initialize_app_storage(app_name)
 
-    def handle_app(self, app_name: str):
+    def initialize_app_storage(self, app_name: str):
         self._index_files(app_name=app_name)
         self._load_last_persisted_finalized_batch_index(app_name=app_name)
 

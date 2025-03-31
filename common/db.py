@@ -76,7 +76,7 @@ class InMemoryDB:
                     "operational_batch_hash_index_map": {},
                     "missed_batch_map": {},
                 }
-                self._storage_manager.handle_app(app_name)
+                self._storage_manager.initialize_app_storage(app_name)
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
