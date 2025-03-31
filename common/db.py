@@ -392,16 +392,13 @@ class InMemoryDB:
             last_index=signature_data["index"], target_state="locked"
         )
 
-    def _get_app_operational_batches(self, app_name: str) -> BatchSequence:
-        return self.apps[app_name]["operational_batch_sequence"]
-
     def finalize_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """
         Update batches to 'finalized' state up to a specified index and save snapshots.
         Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
         """
         signature_finalized_index = signature_data.get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
-        last_finalized_index = self._get_app_operational_batches(app_name) \
+        last_finalized_index = self.apps[app_name]["operational_batch_sequence"] \
             .get_last_index_or_default("finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
 
         # Skip if already finalized or batch not found
@@ -416,7 +413,7 @@ class InMemoryDB:
 
         # Get new batches to be finalized
         last_persisted_index = self._storage_manager.get_last_batch_index(app_name)
-        new_finalized_sequence = self._get_app_operational_batches(app_name).filter(
+        new_finalized_sequence = self.apps[app_name]["operational_batch_sequence"].filter(
             exclude_state="finalized",
             start_exclusive=last_persisted_index if last_persisted_index is not None else -1,
             end_inclusive=signature_finalized_index
