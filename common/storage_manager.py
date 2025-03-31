@@ -46,6 +46,7 @@ class StorageManager:
         self._app_name_to_start_index_filename_pairs[app_name] = app_indexed_files
 
     def _load_last_persisted_finalized_batch_index(self, app_name: str):
+        # Todo: prevent parsing snapshot file for finding last batch index by tracking both start_index and end_index for snapshots
         if len(self._app_name_to_start_index_filename_pairs[app_name]) == 0:
             self._last_persisted_finalized_batch_index[app_name] = None
             return
