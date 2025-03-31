@@ -458,7 +458,7 @@ class InMemoryDB:
         # Save and prune chunks
         for start_index, end_index in chunks:
             # For the first chunk when there's no previous persisted data, use -1 as start_exclusive
-            start_exclusive = -1 if start_index == 0 else start_index - 1
+            start_exclusive = start_index - 1
             self._save_finalized_chunk_then_prune(app_name, start_exclusive, end_index)
 
     def upsert_node_state(
