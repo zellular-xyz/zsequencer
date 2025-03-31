@@ -152,8 +152,8 @@ class InMemoryDB:
     ) -> None:
         batches = (self.apps[app_name]["operational_batch_sequence"]
                    .filter(start_exclusive=start_exclusive, end_inclusive=end_inclusive))
-        self._storage_manager.store_finalized_batch_sequence(app_name=app_name,
-                                                             batches=batches)
+        self._storage_manager.store_batch_sequence(app_name=app_name,
+                                                   batches=batches)
 
     def get_limited_initialized_batch_map(self, app_name: str, max_kb_size: float) -> dict[str, Batch]:
         # NOTE: We copy the dictionary in order to make it safe to work on it
@@ -207,7 +207,7 @@ class InMemoryDB:
 
         # Get batches from storage if needed
         if after + 1 < first_memory_index:
-            result = self._storage_manager.load_finalized_batches(
+            result = self._storage_manager.load_batches(
                 app_name=app_name,
                 after=after,
                 retrieve_size_limit_kb=size_limit
@@ -415,7 +415,7 @@ class InMemoryDB:
             return
 
         # Get new batches to be finalized
-        last_persisted_index = self._storage_manager.get_last_persisted_finalized_batch_index(app_name)
+        last_persisted_index = self._storage_manager.get_last_batch_index(app_name)
         new_finalized_sequence = self._get_app_operational_batches(app_name).filter(
             exclude_state="finalized",
             start_exclusive=last_persisted_index if last_persisted_index is not None else -1,
