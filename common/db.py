@@ -415,7 +415,7 @@ class InMemoryDB:
         last_persisted_index = self._storage_manager.get_last_batch_index(app_name)
         new_finalized_sequence = self.apps[app_name]["operational_batch_sequence"].filter(
             exclude_state="finalized",
-            start_exclusive=last_persisted_index if last_persisted_index is not None else -1,
+            start_exclusive=last_persisted_index,
             end_inclusive=signature_finalized_index
         )
 
