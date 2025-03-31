@@ -52,7 +52,7 @@ class InMemoryDB:
         self.is_sequencer_down = False
         self._storage_manager = StorageManager(snapshot_path=zconfig.SNAPSHOT_PATH,
                                                version=zconfig.VERSION,
-                                               apps=list(zconfig.APPS.keys()),
+                                               app_names=list(zconfig.APPS.keys()),
                                                overlap_snapshot_counts=zconfig.REMOVE_CHUNK_BORDER)
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(

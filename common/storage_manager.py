@@ -12,17 +12,17 @@ class StorageManager:
     def __init__(self,
                  snapshot_path: str,
                  version: str,
-                 apps: list[str],
+                 app_names: list[str],
                  overlap_snapshot_counts: int):
         self._snapshots_dir = os.path.join(snapshot_path, version)
         self._app_name_to_start_index_filename_pairs: dict[str, list[tuple[int, str]]] = {}
-        self._apps = apps
+        self._app_names = app_names
         self._overlap_snapshot_counts = overlap_snapshot_counts
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 
     def _initialize(self):
-        for app_name in self._apps:
+        for app_name in self._app_names:
             self.handle_app(app_name)
 
     def handle_app(self, app_name: str):
