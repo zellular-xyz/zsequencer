@@ -18,8 +18,7 @@ class SnapshotManager:
     def __init__(self,
                  base_path: str,
                  version: str,
-                 app_names: list[str],
-                 overlap_snapshot_counts: int):
+                 app_names: list[str]):
         """
         Initialize the SnapshotManager.
 
@@ -27,12 +26,10 @@ class SnapshotManager:
             base_path: Base directory path for storing snapshots
             version: Version identifier for the snapshot directory
             app_names: List of application names to manage
-            overlap_snapshot_counts: Number of chunks to keep in memory overlap
         """
         self._root_dir = os.path.join(base_path, version)
         self._app_name_to_chunks: dict[str, list[ChunkFileInfo]] = {}
         self._app_names = app_names
-        self._overlap_snapshot_counts = overlap_snapshot_counts
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 
@@ -167,20 +164,35 @@ class SnapshotManager:
         with gzip.open(chunk_path, "wt", encoding="UTF-8") as file:
             json.dump(batches.to_mapping(), file)
 
-    def get_overlap_border_index(self, app_name: str) -> int:
+    def get_latest_chunks_start_index(self, app_name: str, latest_chunks_count: int) -> int:
+        """
+        Get the starting index for loading the specified number of most recent chunks.
+
+        Args:
+            app_name: Name of the app to get the index for
+            latest_chunks_count: Number of most recent chunks to consider
+
+        Returns:
+            The index where the latest chunks start, or BEFORE_GLOBAL_INDEX_OFFSET if not enough chunks
+
+        Raises:
+            KeyError: If app_name is not found in indexed chunks
+        """
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
         indexed_chunks = self._app_name_to_chunks[app_name]
-        if len(indexed_chunks) < self._overlap_snapshot_counts:
-            return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+        start_exclusive_index = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
-        return indexed_chunks[-self._overlap_snapshot_counts][0]
+        if len(indexed_chunks) >= latest_chunks_count:
+            start_exclusive_index = indexed_chunks[-latest_chunks_count][0]
 
-    def load_overlap_batch_sequence(self, app_name: str) -> BatchSequence:
-        """Load the overlapping batch sequence for memory and storage synchronization."""
-        overlap_border_index = self.get_overlap_border_index(app_name)
-        return self.load_finalized_batches(app_name=app_name, after=overlap_border_index)
+        return start_exclusive_index
+
+    def load_latest_chunks(self, app_name: str, latest_chunks_count: int) -> BatchSequence:
+        start_exclusive_index = self.get_latest_chunks_start_index(app_name, latest_chunks_count)
+
+        return self.load_finalized_batches(app_name=app_name, after=start_exclusive_index)
 
     def _get_app_storage_path(self, app_name: str) -> str:
         return os.path.join(self._root_dir, app_name)

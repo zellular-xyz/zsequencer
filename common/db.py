@@ -52,8 +52,7 @@ class InMemoryDB:
         self.is_sequencer_down = False
         self._storage_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
                                                 version=zconfig.VERSION,
-                                                app_names=list(zconfig.APPS.keys()),
-                                                overlap_snapshot_counts=zconfig.REMOVE_CHUNK_BORDER)
+                                                app_names=list(zconfig.APPS.keys()))
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
             target=self._fetch_apps_and_network_state_periodically
@@ -108,7 +107,10 @@ class InMemoryDB:
 
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_batch_sequence = self._storage_manager.load_overlap_batch_sequence(app_name)
+            finalized_batch_sequence = self._storage_manager.load_latest_chunks(
+                app_name=app_name,
+                latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
+            )
             result[app_name] = {
                 "nodes_state": {},
                 "initialized_batch_map": {},
@@ -131,7 +133,10 @@ class InMemoryDB:
                 end_inclusive=end_inclusive,
             )
             # Detect Pruning old finalized batches index based on overlap size between in_memory and disk batches
-            remove_border_index = self._storage_manager.get_overlap_border_index(app_name)
+            remove_border_index = self._storage_manager.get_latest_chunks_start_index(
+                app_name=app_name,
+                latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
+            )
             self._prune_old_finalized_batches(app_name, remove_border_index)
         except Exception as error:
             zlogger.error(
