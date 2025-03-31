@@ -175,7 +175,7 @@ class SnapshotManager:
         if len(indexed_chunks) < self._overlap_snapshot_counts:
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
-        return indexed_chunks[-1 * self._overlap_snapshot_counts][0]
+        return indexed_chunks[-self._overlap_snapshot_counts][0]
 
     def load_overlap_batch_sequence(self, app_name: str) -> BatchSequence:
         """Load the overlapping batch sequence for memory and storage synchronization."""
