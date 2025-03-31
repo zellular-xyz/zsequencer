@@ -57,10 +57,6 @@ class StorageManager:
         return self._last_persisted_finalized_batch_index[app_name]
 
     def _find_file(self, app_name: str, batch_index: int) -> IndexedFile | None:
-        """
-        Find the file containing the batch_index and return its filename and position.
-        Returns (None, None) if no suitable file is found.
-        """
         if app_name not in self._app_name_to_start_index_filename_pairs:
             raise KeyError(f'App not found in indexed files {app_name}')
 
