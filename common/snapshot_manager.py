@@ -140,21 +140,21 @@ class SnapshotManager:
 
             # Apply size limit if specified
             if retrieve_size_limit_kb is not None:
-                sliced_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
-                contains_all = (sliced_sequence.get_last_index_or_default() ==
+                truncated_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
+                contains_all = (truncated_sequence.get_last_index_or_default() ==
                                 chunk_sequence.get_last_index_or_default())
             else:
-                sliced_sequence = chunk_sequence
+                truncated_sequence = chunk_sequence
                 contains_all = True
 
             # Merge with existing batches
             if merged_batches is None:
-                merged_batches = sliced_sequence
+                merged_batches = truncated_sequence
             else:
-                merged_batches.extend(sliced_sequence)
+                merged_batches.extend(truncated_sequence)
 
             # Update remaining capacity and check if we should stop
-            size_capacity -= sliced_sequence.size_kb
+            size_capacity -= truncated_sequence.size_kb
             if retrieve_size_limit_kb is not None and (not contains_all or size_capacity <= 0):
                 break
 
