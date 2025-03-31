@@ -14,7 +14,7 @@ from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
 from common.state import OperationalState
-from common.storage_manager import StorageManager
+from common.snapshot_manager import SnapshotManager
 from config import zconfig
 from utils import get_file_content
 
@@ -50,10 +50,10 @@ class InMemoryDB:
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self.is_sequencer_down = False
-        self._storage_manager = StorageManager(base_path=zconfig.SNAPSHOT_PATH,
-                                               version=zconfig.VERSION,
-                                               app_names=list(zconfig.APPS.keys()),
-                                               overlap_snapshot_counts=zconfig.REMOVE_CHUNK_BORDER)
+        self._storage_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
+                                                version=zconfig.VERSION,
+                                                app_names=list(zconfig.APPS.keys()),
+                                                overlap_snapshot_counts=zconfig.REMOVE_CHUNK_BORDER)
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
             target=self._fetch_apps_and_network_state_periodically
