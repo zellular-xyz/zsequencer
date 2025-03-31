@@ -65,7 +65,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
     initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(
         app_name=app_name,
-        max_kb_size=zconfig.node_send_limit_size
+        max_kb_size=zconfig.node_send_limit_kb_size
     )
     batches = list(initialized_batches.values())
     if not try_acquire_node_rate_limit_quota(batches):
