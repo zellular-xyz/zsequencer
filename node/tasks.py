@@ -69,8 +69,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     )
     batches = list(initialized_batches.values())
     if not try_acquire_node_rate_limit_quota(batches):
-        response = {'data': {}}
-        return response
+        return {'data': {}}
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="sequenced"
