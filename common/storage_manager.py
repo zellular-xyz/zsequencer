@@ -45,7 +45,7 @@ class StorageManager:
             self._last_persisted_finalized_batch_index[app_name] = None
             return
         last_snapshot_filename = self._app_name_to_start_index_filename_pairs[app_name][-1][1]
-        last_snapshot_batch_sequence = self.load_file(app_name=app_name, file_name=last_snapshot_filename)
+        last_snapshot_batch_sequence = self._load_file(app_name=app_name, file_name=last_snapshot_filename)
         self._last_persisted_finalized_batch_index[app_name] = last_snapshot_batch_sequence.get_last_index_or_default()
 
     def get_last_persisted_finalized_batch_index(self, app_name: str) -> int | None:
@@ -74,7 +74,7 @@ class StorageManager:
 
         return indexed_files[pos][1], pos
 
-    def load_file(self, app_name: str, file_name: str) -> BatchSequence:
+    def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
 
         try:
@@ -112,7 +112,7 @@ class StorageManager:
 
         # Process files starting from the found position
         for _, file_name in indexed_files[start_pos:]:
-            snapshot_batch_sequence = self.load_file(app_name, file_name).filter(start_exclusive=after)
+            snapshot_batch_sequence = self._load_file(app_name, file_name).filter(start_exclusive=after)
 
             # Apply size limit if specified
             if retrieve_size_limit_kb is not None:
