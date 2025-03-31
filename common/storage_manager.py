@@ -2,7 +2,6 @@ import bisect
 import gzip
 import json
 import os
-from typing import Union, Optional
 
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
@@ -19,7 +18,7 @@ class StorageManager:
         self._app_name_to_start_index_filename_pairs: dict[str, list[tuple[int, str]]] = {}
         self._apps = apps
         self._overlap_snapshot_counts = overlap_snapshot_counts
-        self._last_persisted_finalized_batch_index: dict[str, Union[int, None]] = {}
+        self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 
     def _initialize(self):
@@ -49,7 +48,7 @@ class StorageManager:
         last_snapshot_batch_sequence = self.load_file(app_name=app_name, file_name=last_snapshot_filename)
         self._last_persisted_finalized_batch_index[app_name] = last_snapshot_batch_sequence.get_last_index_or_default()
 
-    def get_last_persisted_finalized_batch_index(self, app_name: str) -> Union[int, None]:
+    def get_last_persisted_finalized_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
     def _find_file(self, app_name: str, batch_index: int) -> tuple[str | None, int | None]:
@@ -89,7 +88,7 @@ class StorageManager:
         return BatchSequence()
 
     def load_finalized_batches(self, app_name: str, after: int,
-                               retrieve_size_limit_kb: Optional[float] = None) -> BatchSequence:
+                               retrieve_size_limit_kb: float | None = None) -> BatchSequence:
         """
         Load all finalized batches for a given app from the snapshot file after a given batch index.
 
