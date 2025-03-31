@@ -129,36 +129,28 @@ class SnapshotManager:
 
         file_name, start_pos = found_file
 
-        # Initialize merge result and size tracking
-        merged_batches = None
+        # Initialize result and size tracking
+        merged_batches = BatchSequence()
         size_capacity = retrieve_size_limit_kb if retrieve_size_limit_kb is not None else float('inf')
         indexed_chunks = self._app_name_to_chunks[app_name]
 
         # Process chunks starting from the found position
         for _, file_name in indexed_chunks[start_pos:]:
             chunk_sequence = self._load_file(app_name, file_name).filter(start_exclusive=after)
+            truncated_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
 
-            # Apply size limit if specified
-            if retrieve_size_limit_kb is not None:
-                truncated_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
-                contains_all = (truncated_sequence.get_last_index_or_default() ==
-                                chunk_sequence.get_last_index_or_default())
-            else:
-                truncated_sequence = chunk_sequence
-                contains_all = True
-
-            # Merge with existing batches
-            if merged_batches is None:
-                merged_batches = truncated_sequence
-            else:
-                merged_batches.extend(truncated_sequence)
-
-            # Update remaining capacity and check if we should stop
+            merged_batches.extend(truncated_sequence)
             size_capacity -= truncated_sequence.size_kb
-            if retrieve_size_limit_kb is not None and (not contains_all or size_capacity <= 0):
+
+            # Check if we've reached the size limit
+            if size_capacity <= 0:
                 break
 
-        return merged_batches if merged_batches is not None else BatchSequence()
+            # Check if we got all batches from the current chunk
+            if truncated_sequence.get_last_index_or_default() < chunk_sequence.get_last_index_or_default():
+                break
+
+        return merged_batches
 
     def store_finalized_batch_sequence(self, app_name: str, batches: BatchSequence):
         """Store a finalized batch sequence as a new chunk."""
