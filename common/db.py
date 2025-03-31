@@ -190,7 +190,7 @@ class InMemoryDB:
     def get_global_operational_batch_sequence(
             self,
             app_name: str,
-            state: OperationalState = "sequenced",
+            exact_state: OperationalState = "sequenced",
             after: int = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
     ) -> BatchSequence:
         """
@@ -198,7 +198,7 @@ class InMemoryDB:
 
         Args:
             app_name: Name of the app to get batches for
-            state: Target operational state
+            exact_state: Target operational state
             after: Starting index (exclusive)
         """
         size_limit = zconfig.node_receive_limit_size
@@ -214,8 +214,8 @@ class InMemoryDB:
             )
             # Return if storage data doesn't reach memory boundary
             if result.get_last_index_or_default() < first_memory_index - 1:
-                return result.filter(target_state=state) if state == "finalized" else \
-                    result.filter(exclude_state="sequenced") if state == "locked" else result
+                return result.filter(target_state=exact_state) if exact_state == "finalized" else \
+                    result.filter(exclude_state="sequenced") if exact_state == "locked" else result
 
         # Calculate remaining size and starting point for memory data
         remaining_size = size_limit - (result.size_kb if result else 0)
@@ -233,9 +233,9 @@ class InMemoryDB:
             result = memory_sequence
 
         # Apply state filtering
-        if state == "finalized":
+        if exact_state == "finalized":
             return result.filter(target_state="finalized")
-        elif state == "locked":
+        elif exact_state == "locked":
             return result.filter(exclude_state="sequenced")
         return result
 
