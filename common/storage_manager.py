@@ -10,11 +10,11 @@ from common.logger import zlogger
 class StorageManager:
 
     def __init__(self,
-                 snapshot_path: str,
+                 base_path: str,
                  version: str,
                  app_names: list[str],
                  overlap_snapshot_counts: int):
-        self._snapshots_dir = os.path.join(snapshot_path, version)
+        self._snapshots_dir = os.path.join(base_path, version)
         self._app_name_to_start_index_filename_pairs: dict[str, list[tuple[int, str]]] = {}
         self._app_names = app_names
         self._overlap_snapshot_counts = overlap_snapshot_counts
