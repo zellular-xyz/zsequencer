@@ -18,7 +18,7 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
-from .rate_limit import try_acquire_node_rate_limit_quota
+from node.rate_limit import try_acquire_node_rate_limit_quota
 from common.logger import zlogger
 from config import zconfig
 
