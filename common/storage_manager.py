@@ -2,9 +2,14 @@ import bisect
 import gzip
 import json
 import os
+from typing import TypeAlias
 
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
+
+# Type aliases for improved readability
+SnapshotFileInfo: TypeAlias = tuple[int, str]  # (start_index, filename)
+IndexedFile: TypeAlias = tuple[str, int]  # (filename, position)
 
 
 class StorageManager:
@@ -15,7 +20,7 @@ class StorageManager:
                  app_names: list[str],
                  overlap_snapshot_counts: int):
         self._snapshots_dir = os.path.join(base_path, version)
-        self._app_name_to_start_index_filename_pairs: dict[str, list[tuple[int, str]]] = {}
+        self._app_name_to_start_index_filename_pairs: dict[str, list[SnapshotFileInfo]] = {}
         self._app_names = app_names
         self._overlap_snapshot_counts = overlap_snapshot_counts
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
@@ -34,7 +39,7 @@ class StorageManager:
         snapshot_filenames = sorted(
             file for file in os.listdir(snapshot_dir) if file.endswith(".json.gz")
         )
-        app_indexed_files = []
+        app_indexed_files: list[SnapshotFileInfo] = []
         for snapshot_filename in snapshot_filenames:
             start_index = int(snapshot_filename.removesuffix(".json.gz"))
             app_indexed_files.append((start_index, snapshot_filename))
@@ -51,7 +56,7 @@ class StorageManager:
     def get_last_persisted_finalized_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
-    def _find_file(self, app_name: str, batch_index: int) -> tuple[str | None, int | None]:
+    def _find_file(self, app_name: str, batch_index: int) -> IndexedFile | None:
         """
         Find the file containing the batch_index and return its filename and position.
         Returns (None, None) if no suitable file is found.
@@ -61,7 +66,7 @@ class StorageManager:
 
         indexed_files = self._app_name_to_start_index_filename_pairs[app_name]
         if not indexed_files:
-            return None, None
+            return None
 
         # Extract start indices for binary search
         start_indices = [entry[0] for entry in indexed_files]
@@ -70,9 +75,9 @@ class StorageManager:
         pos = bisect.bisect_right(start_indices, batch_index) - 1
 
         if pos < 0:
-            return None, None
+            return None
 
-        return indexed_files[pos][1], pos
+        return (indexed_files[pos][1], pos)
 
     def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
@@ -101,9 +106,11 @@ class StorageManager:
             raise KeyError(f'App not found in indexed files: {app_name}')
 
         # Find the first file containing batches after the given index
-        first_file, start_pos = self._find_file(app_name, after)
-        if first_file is None or start_pos is None:
+        found_file = self._find_file(app_name, after)
+        if found_file is None:
             return BatchSequence()
+
+        file_name, start_pos = found_file
 
         # Initialize merge result and size tracking
         merged_batches = None
