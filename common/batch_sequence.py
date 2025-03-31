@@ -212,6 +212,9 @@ class BatchSequence:
         if size_kb <= 0 or not self:
             return self._create_empty()
 
+        if size_kb >= self._size_kb:
+            return self
+
         total_size = 0.0
         end_index = self.before_index_offset
 
