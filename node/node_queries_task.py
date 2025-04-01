@@ -33,7 +33,7 @@ async def fetch_node_last_finalized_batch(
         return {}
 
 
-async def find_highest_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
+async def _find_highest_finalized_batch_record_core(app_name: str) -> Dict[str, Any]:
     """Core async implementation to find highest finalized batch record."""
     try:
         # Get local record first
@@ -60,11 +60,10 @@ async def find_highest_finalized_batch_record_async(app_name: str) -> Dict[str, 
             ]
             results = await asyncio.gather(*tasks)
 
-            # Find highest index among valid results
+            # Process results and find highest index
             for record in results:
                 if not record:  # Skip empty or error results
                     continue
-
                 record_index = record.get("index", 0)
                 if record_index > highest_index:
                     highest_index = record_index
@@ -87,25 +86,38 @@ def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
     Can be called from both sync and async contexts.
     """
     try:
-        # Try to get the current event loop
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're in an async context (like send_dispute_requests)
-            # We need to create a new loop in this case
-            new_loop = asyncio.new_event_loop()
-            try:
-                return new_loop.run_until_complete(find_highest_finalized_batch_record_async(app_name))
-            finally:
-                new_loop.close()
-        else:
-            # We have a loop but it's not running
-            return loop.run_until_complete(find_highest_finalized_batch_record_async(app_name))
-    except RuntimeError:
-        # No event loop exists (like in run_switch_sequencer thread)
-        # Create a new loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Check if we're in an async context
         try:
-            return loop.run_until_complete(find_highest_finalized_batch_record_async(app_name))
-        finally:
-            loop.close()
+            loop = asyncio.get_event_loop()
+            # We're in an async context, use await directly
+            if loop.is_running():
+                raise RuntimeError("Cannot run the event loop while another loop is running")
+            return loop.run_until_complete(_find_highest_finalized_batch_record_core(app_name))
+        except RuntimeError:
+            # We're in a sync context, create a new loop
+            return asyncio.run(_find_highest_finalized_batch_record_core(app_name))
+    except Exception as e:
+        zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
+        # Return local record as ultimate fallback
+        return zdb.get_last_operational_batch_record_or_empty(
+            app_name=app_name,
+            state="finalized"
+        )
+
+
+# Modify find_highest_finalized_batch_record to be async
+async def find_highest_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
+    """
+    Async wrapper to find the highest finalized batch record.
+    Can be called from async contexts.
+    """
+    try:
+        # Get the result asynchronously
+        return await _find_highest_finalized_batch_record_core(app_name)
+    except Exception as e:
+        zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
+        # Return local record as ultimate fallback
+        return zdb.get_last_operational_batch_record_or_empty(
+            app_name=app_name,
+            state="finalized"
+        )
