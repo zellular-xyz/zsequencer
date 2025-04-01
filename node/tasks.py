@@ -354,7 +354,7 @@ async def send_dispute_request(
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": zdb.get_apps_missed_batches(),
+            "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
         }
