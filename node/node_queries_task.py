@@ -7,7 +7,7 @@ from config import zconfig
 from common.db import zdb
 
 
-async def fetch_node_last_finalized_batch(
+async def fetch_node_last_finalized_batch_record_or_empty(
         session: aiohttp.ClientSession,
         node: Dict[str, Any],
         app_name: str
@@ -55,7 +55,7 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
         # Query all nodes concurrently
         async with aiohttp.ClientSession() as session:
             tasks = [
-                fetch_node_last_finalized_batch(session, node, app_name)
+                fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
                 for node in nodes_to_query
             ]
             results = await asyncio.gather(*tasks)
