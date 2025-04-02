@@ -66,19 +66,6 @@ class SnapshotManager:
         return self._last_persisted_finalized_batch_index[app_name]
 
     def _find_file(self, app_name: str, batch_index: int) -> IndexedChunk | None:
-        """
-        Find the chunk containing the batch_index and return its filename and position.
-
-        Args:
-            app_name: Name of the app to find chunk for
-            batch_index: Index to search for
-
-        Returns:
-            Tuple of (filename, position) if found, None if not found
-
-        Raises:
-            KeyError: If app_name is not found in indexed chunks
-        """
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
