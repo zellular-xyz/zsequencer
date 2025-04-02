@@ -22,7 +22,7 @@ from node.rate_limit import try_acquire_rate_limit_of_self_node
 from common.logger import zlogger
 from config import zconfig
 from node.rate_limit import get_remaining_capacity_kb_of_self_node
-from node.node_queries_task import find_highest_finalized_batch_record, find_highest_finalized_batch_record_async
+from node.node_queries_task import find_all_nodes_last_finalized_batch_record, find_all_nodes_last_finalized_batch_record_async
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -424,9 +424,9 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
         zconfig.update_sequencer(new_sequencer_id)
 
         for app_name in list(zconfig.APPS.keys()):
-            highest_finalized_batch_record = find_highest_finalized_batch_record(app_name)
-            if highest_finalized_batch_record:
-                zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
+            all_nodes_last_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
+            if all_nodes_last_finalized_batch_record:
+                zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
             zdb.reset_not_finalized_batches_timestamps(app_name)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
@@ -465,7 +465,7 @@ async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
 
 async def process_app(app_name: str, new_sequencer_id: str):
     """Helper function to handle the app processing concurrently."""
-    highest_finalized_batch_record = await find_highest_finalized_batch_record_async(app_name)  # Now await the async function
-    if highest_finalized_batch_record:
-        zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
+    all_nodes_last_finalized_batch_record = await find_all_nodes_last_finalized_batch_record_async(app_name)  # Now await the async function
+    if all_nodes_last_finalized_batch_record:
+        zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
     zdb.reset_not_finalized_batches_timestamps(app_name)

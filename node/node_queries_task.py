@@ -33,7 +33,7 @@ async def fetch_node_last_finalized_batch(
         return {}
 
 
-async def _find_highest_finalized_batch_record_core(app_name: str) -> Dict[str, Any]:
+async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dict[str, Any]:
     """Core async implementation to find highest finalized batch record."""
     try:
         # Get local record first
@@ -80,7 +80,7 @@ async def _find_highest_finalized_batch_record_core(app_name: str) -> Dict[str, 
         )
 
 
-def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
+def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
     """
     Thread-safe wrapper to find the highest finalized batch record.
     Can be called from both sync and async contexts.
@@ -92,10 +92,10 @@ def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
             # We're in an async context, use await directly
             if loop.is_running():
                 raise RuntimeError("Cannot run the event loop while another loop is running")
-            return loop.run_until_complete(_find_highest_finalized_batch_record_core(app_name))
+            return loop.run_until_complete(_find_all_nodes_last_finalized_batch_record_core(app_name))
         except RuntimeError:
             # We're in a sync context, create a new loop
-            return asyncio.run(_find_highest_finalized_batch_record_core(app_name))
+            return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
     except Exception as e:
         zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
         # Return local record as ultimate fallback
@@ -105,15 +105,14 @@ def find_highest_finalized_batch_record(app_name: str) -> Dict[str, Any]:
         )
 
 
-# Modify find_highest_finalized_batch_record to be async
-async def find_highest_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
+async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
     """
     Async wrapper to find the highest finalized batch record.
     Can be called from async contexts.
     """
     try:
         # Get the result asynchronously
-        return await _find_highest_finalized_batch_record_core(app_name)
+        return await _find_all_nodes_last_finalized_batch_record_core(app_name)
     except Exception as e:
         zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
         # Return local record as ultimate fallback
