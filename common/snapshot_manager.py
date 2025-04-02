@@ -40,7 +40,7 @@ class SnapshotManager:
     def initialize_app_storage(self, app_name: str):
         """Initialize storage for an app by indexing its chunks and loading the last persisted state."""
         self._index_files(app_name=app_name)
-        self._load_last__batch_index(app_name=app_name)
+        self._load_last_batch_index(app_name=app_name)
 
     def _index_files(self, app_name: str):
         app_dir = self._get_app_storage_path(app_name=app_name)
@@ -53,7 +53,7 @@ class SnapshotManager:
             indexed_chunks.append((start_index, filename))
         self._app_name_to_chunks[app_name] = indexed_chunks
 
-    def _load_last__batch_index(self, app_name: str):
+    def _load_last_batch_index(self, app_name: str):
         # Todo: prevent parsing chunk file for finding last batch index by tracking both start_index and end_index for chunks
         if len(self._app_name_to_chunks[app_name]) == 0:
             self._last_persisted_finalized_batch_index[app_name] = None
