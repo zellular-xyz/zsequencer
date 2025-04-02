@@ -1,6 +1,6 @@
 from typing import TypedDict, cast
 from common.state import State
-from common.utils import get_utf8_size_kb
+from common.utils import get_utf8_size_kb, get_utf8_size_bytes
 
 
 class Batch(TypedDict, total=False):
@@ -23,6 +23,13 @@ def get_batch_size_kb(batch: Batch) -> float:
     if body is None:
         return 0.0
     return get_utf8_size_kb(body)
+
+
+def get_batch_size_bytes(batch: Batch) -> int:
+    body = batch.get("body")
+    if body is None:
+        return 0
+    return get_utf8_size_bytes(body)
 
 
 class BatchRecord(TypedDict, total=False):
@@ -54,9 +61,9 @@ def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
         {
             key: value
             for key, value in {
-                **batch_record,
-                **batch_record.get("batch", {}),
-            }.items()
+            **batch_record,
+            **batch_record.get("batch", {}),
+        }.items()
             if key in StatefulBatch.__annotations__
         },
     )

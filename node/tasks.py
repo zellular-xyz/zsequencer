@@ -18,7 +18,7 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
-from node.rate_limit import try_acquire_node_rate_limit_quota
+from node.rate_limit import try_acquire_self_node_rate_limit
 from common.logger import zlogger
 from config import zconfig
 
@@ -68,7 +68,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         max_size_kb=zconfig.node_send_limit_size_kb
     )
     batches = list(initialized_batches.values())
-    if not try_acquire_node_rate_limit_quota(batches):
+    if not try_acquire_self_node_rate_limit(batches):
         return {'data': {}}
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(

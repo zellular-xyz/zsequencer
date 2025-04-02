@@ -251,14 +251,18 @@ class Config:
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
-    def max_node_send_limit_size_kb_per_second(self):
-        return self.BANDWIDTH_KB / len(self.NODES) ** 2
+    def node_send_limit_size_kb_per_second(self) -> float:
+        return self.BANDWIDTH_KB / (len(self.NODES) ** 2)
+
+    @property
+    def node_send_limit_size_bytes_per_second(self) -> int:
+        return int(self.node_send_limit_size_kb_per_second * 1024)
 
     @property
     def node_send_limit_size_kb(self) -> float:
         if zconfig.SEND_BATCH_INTERVAL >= 1:
-            return self.max_node_send_limit_size_kb_per_second
-        return self.max_node_send_limit_size_kb_per_second * zconfig.SEND_BATCH_INTERVAL
+            return self.node_send_limit_size_kb_per_second
+        return self.node_send_limit_size_kb_per_second * zconfig.SEND_BATCH_INTERVAL
 
     @property
     def node_receive_limit_size_kb(self) -> float:
