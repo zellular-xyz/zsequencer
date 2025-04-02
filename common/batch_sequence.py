@@ -156,7 +156,7 @@ class BatchSequence:
 
         # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
         expected_start_index = self.get_last_index_or_default() + 1
-        if other.get_first_index_or_default() != expected_start_index:
+        if other.index_offset != expected_start_index:
             raise ValueError(
                 f"Batch sequence must start at {expected_start_index}, but got {other.index_offset}."
             )
