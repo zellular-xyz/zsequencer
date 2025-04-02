@@ -9,7 +9,6 @@ from common.logger import zlogger
 
 # Type aliases for improved readability
 ChunkFileInfo: TypeAlias = tuple[int, str]  # (start_index, filename)
-IndexedChunk: TypeAlias = tuple[str, int]  # (filename, position)
 
 
 class SnapshotManager:
@@ -65,7 +64,7 @@ class SnapshotManager:
     def get_last_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
-    def _find_file(self, app_name: str, batch_index: int) -> IndexedChunk | None:
+    def _find_file(self, app_name: str, batch_index: int) -> int | None:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
@@ -80,7 +79,7 @@ class SnapshotManager:
         if pos < 0:
             return None
 
-        return (indexed_chunks[pos][1], pos)
+        return pos
 
     def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
@@ -107,11 +106,9 @@ class SnapshotManager:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
-        found_file = self._find_file(app_name, after)
-        if found_file is None:
+        file_position = self._find_file(app_name, after)
+        if file_position is None:
             return BatchSequence()
-
-        file_name, start_pos = found_file
 
         # Initialize result and size tracking
         merged_batches = BatchSequence()
@@ -119,7 +116,7 @@ class SnapshotManager:
         indexed_chunks = self._app_name_to_chunks[app_name]
 
         # Process chunks starting from the found position
-        for _, file_name in indexed_chunks[start_pos:]:
+        for _, file_name in indexed_chunks[file_position:]:
             chunk_sequence = self._load_file(app_name, file_name).filter(start_exclusive=after)
             truncated_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
 
