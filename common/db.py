@@ -155,7 +155,7 @@ class InMemoryDB:
         self._storage_manager.store_batch_sequence(app_name=app_name,
                                                    batches=batches)
 
-    def get_limited_initialized_batch_map(self, app_name: str, max_kb_size: float) -> dict[str, Batch]:
+    def get_limited_initialized_batch_map(self, app_name: str, max_size_kb: float) -> dict[str, Batch]:
         # NOTE: We copy the dictionary in order to make it safe to work on it
         # without the fear of change in the middle of processing.
         initialized_batch_map = self.apps[app_name]["initialized_batch_map"].copy()
@@ -163,7 +163,7 @@ class InMemoryDB:
         limited_batch_map = {}
         for batch_hash, batch in initialized_batch_map.items():
             batch_size = get_batch_size_kb(batch)
-            if total_batches_size + batch_size > max_kb_size:
+            if total_batches_size + batch_size > max_size_kb:
                 break
             limited_batch_map[batch_hash] = batch
             total_batches_size += batch_size
@@ -201,7 +201,7 @@ class InMemoryDB:
             exact_state: Target operational state
             after: Starting index (exclusive)
         """
-        size_limit = zconfig.node_receive_limit_size
+        size_limit = zconfig.node_receive_limit_size_kb
         first_memory_index = self._get_first_finalized_batch(app_name)
         result = None
 

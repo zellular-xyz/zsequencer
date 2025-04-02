@@ -14,7 +14,7 @@ def try_acquire_node_rate_limit_quota(batches: list[Batch]) -> bool:
     new_additive_size = int(sum(get_batch_size_kb(batch) for batch in batches))
 
     rate_limit = RateLimitItemPerSecond(
-        zconfig.max_node_send_limit_kb_size_per_second,
+        zconfig.max_node_send_limit_size_kb_per_second,
         zconfig.PUSH_RATE_LIMIT_WINDOW_SECONDS
     )
 

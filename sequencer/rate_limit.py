@@ -15,7 +15,7 @@ def try_acquire_rate_limit_quota(node_id: str, batches: list[Batch]) -> bool:
 
     # Create a new rate limit dynamically each time
     rate_limit = RateLimitItemPerSecond(
-        zconfig.max_node_send_limit_kb_size_per_second,
+        zconfig.max_node_send_limit_size_kb_per_second,
         zconfig.PUSH_RATE_LIMIT_WINDOW_SECONDS
     )
 
