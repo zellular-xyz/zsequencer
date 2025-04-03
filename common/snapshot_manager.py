@@ -3,7 +3,7 @@ import gzip
 import json
 import os
 from typing import TypeAlias
-
+from common.batch import get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
 
@@ -17,6 +17,7 @@ class SnapshotManager:
     def __init__(self,
                  base_path: str,
                  version: str,
+                 max_snapshot_size_kb: float,
                  app_names: list[str]):
         """
         Initialize the SnapshotManager.
@@ -29,6 +30,7 @@ class SnapshotManager:
         self._root_dir = os.path.join(base_path, version)
         self._app_name_to_chunks: dict[str, list[ChunkFileInfo]] = {}
         self._app_names = app_names
+        self._max_snapshot_size_kb = max_snapshot_size_kb
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 
@@ -133,7 +135,7 @@ class SnapshotManager:
 
         return merged_batches
 
-    def store_batch_sequence(self, app_name: str, batches: BatchSequence):
+    def _persist_batch_sequence(self, app_name: str, batches: BatchSequence):
         """Store a finalized batch sequence as a new chunk."""
         if not batches:
             return
@@ -147,6 +149,31 @@ class SnapshotManager:
 
         with gzip.open(chunk_path, "wt", encoding="UTF-8") as file:
             json.dump(batches.to_mapping(), file)
+
+    def chunk_and_store_batch_sequence(self, app_name: str, batches: BatchSequence):
+        # Calculate snapshot chunks based on size
+        current_size = 0.0
+        chunk_indices = []
+        chunk_start = batches.index_offset
+
+        for record in batches.records():
+            batch_size = get_batch_size_kb(record["batch"])
+
+            # If adding this batch would exceed size limit, create new chunk
+            if current_size + batch_size > self._max_snapshot_size_kb and current_size > 0:
+                chunk_indices.append((chunk_start, record["index"] - 1))
+                chunk_start = record["index"]
+                current_size = batch_size
+            else:
+                current_size += batch_size
+
+        # Add final chunk if there are remaining batches
+        if current_size > 0:
+            chunk_indices.append((chunk_start, batches.get_last_index_or_default()))
+
+        for start_index, end_index in chunk_indices:
+            self._persist_batch_sequence(app_name=app_name,
+                                         batches=batches.filter(start_exclusive=start_index - 1, end_inclusive=end_index))
 
     def get_latest_chunks_start_index(self, app_name: str, latest_chunks_count: int) -> int:
         """

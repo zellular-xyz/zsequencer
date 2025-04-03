@@ -50,9 +50,10 @@ class InMemoryDB:
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self.is_sequencer_down = False
-        self._storage_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
-                                                version=zconfig.VERSION,
-                                                app_names=list(zconfig.APPS.keys()))
+        self._snapshot_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
+                                                 version=zconfig.VERSION,
+                                                 max_snapshot_size_kb=zconfig.REMOVE_CHUNK_BORDER,
+                                                 app_names=list(zconfig.APPS.keys()))
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
             target=self._fetch_apps_and_network_state_periodically
@@ -75,7 +76,7 @@ class InMemoryDB:
                     "operational_batch_hash_index_map": {},
                     "missed_batch_map": {},
                 }
-                self._storage_manager.initialize_app_storage(app_name)
+                self._snapshot_manager.initialize_app_storage(app_name)
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
@@ -107,7 +108,7 @@ class InMemoryDB:
 
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_batch_sequence = self._storage_manager.load_latest_chunks(
+            finalized_batch_sequence = self._snapshot_manager.load_latest_chunks(
                 app_name=app_name,
                 latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
             )
@@ -123,38 +124,6 @@ class InMemoryDB:
 
         return result
 
-    def _save_finalized_chunk_then_prune(
-            self, app_name: str, start_exclusive: int, end_inclusive: int
-    ) -> None:
-        try:
-            self._save_finalized_batches_chunk_to_file(
-                app_name,
-                start_exclusive=start_exclusive,
-                end_inclusive=end_inclusive,
-            )
-            # Detect Pruning old finalized batches index based on overlap size between in_memory and disk batches
-            remove_border_index = self._storage_manager.get_latest_chunks_start_index(
-                app_name=app_name,
-                latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
-            )
-            self._prune_old_finalized_batches(app_name, remove_border_index)
-        except Exception as error:
-            zlogger.error(
-                "An error occurred while saving snapshot for %s from index %d to %d: %s",
-                app_name,
-                start_exclusive,
-                end_inclusive,
-                error,
-            )
-
-    def _save_finalized_batches_chunk_to_file(
-        self, app_name: str, start_exclusive: int, end_inclusive: int
-    ) -> None:
-        batches = (self.apps[app_name]["operational_batch_sequence"]
-                   .filter(start_exclusive=start_exclusive, end_inclusive=end_inclusive))
-        self._storage_manager.store_batch_sequence(app_name=app_name,
-                                                   batches=batches)
-
     def get_limited_initialized_batch_map(self, app_name: str, max_size_kb: float) -> dict[str, Batch]:
         # NOTE: We copy the dictionary in order to make it safe to work on it
         # without the fear of change in the middle of processing.
@@ -169,10 +138,15 @@ class InMemoryDB:
             total_batches_size += batch_size
         return limited_batch_map
 
-    def _prune_old_finalized_batches(self, app_name: str, border_index: int) -> None:
+    def _prune_old_finalized_batches(self, app_name: str) -> None:
+        remove_border_index = self._snapshot_manager.get_latest_chunks_start_index(
+            app_name=app_name,
+            latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
+        )
+
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].filter(start_exclusive=border_index)
+        ].filter(start_exclusive=remove_border_index)
         self.apps[app_name]["operational_batch_hash_index_map"] = (
             self._generate_batch_hash_index_map(
                 self.apps[app_name]["operational_batch_sequence"]
@@ -207,7 +181,7 @@ class InMemoryDB:
 
         # Get batches from storage if needed
         if after + 1 < first_memory_index:
-            result = self._storage_manager.load_batches(
+            result = self._snapshot_manager.load_batches(
                 app_name=app_name,
                 after=after,
                 retrieve_size_limit_kb=size_limit
@@ -405,34 +379,6 @@ class InMemoryDB:
             )
             return
 
-        # Get new batches to be finalized
-        last_persisted_index = self._storage_manager.get_last_batch_index(app_name)
-        new_finalized_sequence = self.apps[app_name]["operational_batch_sequence"].filter(
-            exclude_state="finalized",
-            start_exclusive=last_persisted_index,
-            end_inclusive=signature_finalized_index
-        )
-
-        # Calculate snapshot chunks based on size
-        current_size = 0.0
-        chunks = []
-        chunk_start = 0 if last_persisted_index is None else last_persisted_index + 1
-
-        for record in new_finalized_sequence.records():
-            batch_size = get_batch_size_kb(record["batch"])
-
-            # If adding this batch would exceed size limit, create new chunk
-            if current_size + batch_size > zconfig.SNAPSHOT_CHUNK_SIZE_KB and current_size > 0:
-                chunks.append((chunk_start, record["index"] - 1))
-                chunk_start = record["index"]
-                current_size = batch_size
-            else:
-                current_size += batch_size
-
-        # Add final chunk if there are remaining batches
-        if current_size > 0:
-            chunks.append((chunk_start, signature_finalized_index))
-
         # Update target batch with finalization data
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"]
@@ -449,12 +395,15 @@ class InMemoryDB:
             target_state="finalized"
         )
 
-        # Save and prune chunks
-        for start_index, end_index in chunks:
-            # For the first chunk when there's no previous persisted data, use -1 as start_exclusive
-            self._save_finalized_chunk_then_prune(app_name=app_name,
-                                                  start_exclusive=start_index-1,
-                                                  end_inclusive=end_index)
+        last_persisted_index = self._snapshot_manager.get_last_batch_index(app_name)
+        fresh_finalized_sequence = self.apps[app_name]["operational_batch_sequence"].filter(
+            start_exclusive=last_persisted_index,
+            end_inclusive=signature_finalized_index
+        )
+
+        self._snapshot_manager.chunk_and_store_batch_sequence(app_name=app_name,
+                                                              batches=fresh_finalized_sequence)
+        self._prune_old_finalized_batches(app_name)
 
     def upsert_node_state(
         self,
