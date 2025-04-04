@@ -82,20 +82,11 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
 
 def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
     """
-    Thread-safe wrapper to find the highest finalized batch record.
-    Can be called from both sync and async contexts.
+    Synchronous wrapper to find the highest finalized batch record.
+    For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
     """
     try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_event_loop()
-            # We're in an async context, use await directly
-            if loop.is_running():
-                raise RuntimeError("Cannot run the event loop while another loop is running")
-            return loop.run_until_complete(_find_all_nodes_last_finalized_batch_record_core(app_name))
-        except RuntimeError:
-            # We're in a sync context, create a new loop
-            return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
+        return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
     except Exception as e:
         zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
         # Return local record as ultimate fallback
