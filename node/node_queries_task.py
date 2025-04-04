@@ -10,6 +10,39 @@ from common.logger import zlogger
 from config import zconfig
 
 
+def find_all_nodes_last_finalized_batch_record(app_name: str) -> dict[str, Any]:
+    """
+    Synchronous wrapper to find the last finalized batch record.
+    For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
+    """
+    try:
+        return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
+    except Exception as e:
+        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
+        # Return local record as ultimate fallback
+        return zdb.get_last_operational_batch_record_or_empty(
+            app_name=app_name,
+            state="finalized"
+        )
+
+
+async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> dict[str, Any]:
+    """
+    Async wrapper to find the last finalized batch record of network.
+    Can be called from async contexts.
+    """
+    try:
+        # Get the result asynchronously
+        return await _find_all_nodes_last_finalized_batch_record_core(app_name)
+    except Exception as e:
+        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
+        # Return local record as ultimate fallback
+        return zdb.get_last_operational_batch_record_or_empty(
+            app_name=app_name,
+            state="finalized"
+        )
+
+
 async def _fetch_node_last_finalized_batch_record_or_empty(
         session: aiohttp.ClientSession,
         node: dict[str, Any],
@@ -77,39 +110,6 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> dic
     except Exception as e:
         zlogger.error(f"Error in find_all_nodes_last_finalized_batch_record: {str(e)}")
         # Return local record as fallback
-        return zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
-
-
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> dict[str, Any]:
-    """
-    Synchronous wrapper to find the last finalized batch record.
-    For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
-    """
-    try:
-        return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
-    except Exception as e:
-        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
-        # Return local record as ultimate fallback
-        return zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
-
-
-async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> dict[str, Any]:
-    """
-    Async wrapper to find the last finalized batch record of network.
-    Can be called from async contexts.
-    """
-    try:
-        # Get the result asynchronously
-        return await _find_all_nodes_last_finalized_batch_record_core(app_name)
-    except Exception as e:
-        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
-        # Return local record as ultimate fallback
         return zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
             state="finalized"
