@@ -10,7 +10,7 @@ from common.logger import zlogger
 from config import zconfig
 
 
-async def fetch_node_last_finalized_batch_record_or_empty(
+async def _fetch_node_last_finalized_batch_record_or_empty(
         session: aiohttp.ClientSession,
         node: dict[str, Any],
         app_name: str
@@ -58,7 +58,7 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> dic
         # Query all nodes concurrently
         async with aiohttp.ClientSession() as session:
             tasks = [
-                fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
+                _fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
                 for node in nodes_to_query
             ]
             results = await asyncio.gather(*tasks)
