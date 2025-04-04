@@ -1,17 +1,19 @@
 import asyncio
-from typing import Any, Dict
+from typing import Any
+
 import aiohttp
+
 from common.batch import stateful_batch_to_batch_record
+from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
-from common.db import zdb
 
 
 async def fetch_node_last_finalized_batch_record_or_empty(
         session: aiohttp.ClientSession,
-        node: Dict[str, Any],
+        node: dict[str, Any],
         app_name: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fetch last finalized batch from a single node asynchronously."""
     url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
     try:
@@ -33,7 +35,7 @@ async def fetch_node_last_finalized_batch_record_or_empty(
         return {}
 
 
-async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dict[str, Any]:
+async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> dict[str, Any]:
     """Core async implementation to find all nodes last finalized batch record."""
     try:
         # Get local record first
@@ -80,7 +82,7 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
         )
 
 
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
+def find_all_nodes_last_finalized_batch_record(app_name: str) -> dict[str, Any]:
     """
     Synchronous wrapper to find the last finalized batch record.
     For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
@@ -96,7 +98,7 @@ def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
         )
 
 
-async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
+async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> dict[str, Any]:
     """
     Async wrapper to find the last finalized batch record of network.
     Can be called from async contexts.
