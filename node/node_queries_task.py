@@ -34,14 +34,14 @@ async def fetch_node_last_finalized_batch_record_or_empty(
 
 
 async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dict[str, Any]:
-    """Core async implementation to find highest finalized batch record."""
+    """Core async implementation to find all nodes last finalized batch record."""
     try:
         # Get local record first
-        highest_record = zdb.get_last_operational_batch_record_or_empty(
+        record = zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
             state="finalized"
         )
-        highest_index = highest_record.get("index", 0)
+        index = record.get("index", 0)
 
         # Filter nodes to exclude self
         nodes_to_query = [
@@ -50,7 +50,7 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
         ]
 
         if not nodes_to_query:
-            return highest_record
+            return record
 
         # Query all nodes concurrently
         async with aiohttp.ClientSession() as session:
@@ -60,19 +60,19 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
             ]
             results = await asyncio.gather(*tasks)
 
-            # Process results and find highest index
+            # Process results and find last finalized index
             for record in results:
                 if not record:  # Skip empty or error results
                     continue
                 record_index = record.get("index", 0)
-                if record_index > highest_index:
-                    highest_index = record_index
-                    highest_record = record
+                if record_index > index:
+                    index = record_index
+                    record = record
 
-        return highest_record
+        return record
 
     except Exception as e:
-        zlogger.error(f"Error in find_highest_finalized_batch_record: {str(e)}")
+        zlogger.error(f"Error in find_all_nodes_last_finalized_batch_record: {str(e)}")
         # Return local record as fallback
         return zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
@@ -82,13 +82,13 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Dic
 
 def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
     """
-    Synchronous wrapper to find the highest finalized batch record.
+    Synchronous wrapper to find the last finalized batch record.
     For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
     """
     try:
         return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
     except Exception as e:
-        zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
+        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
         # Return local record as ultimate fallback
         return zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
@@ -98,14 +98,14 @@ def find_all_nodes_last_finalized_batch_record(app_name: str) -> Dict[str, Any]:
 
 async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> Dict[str, Any]:
     """
-    Async wrapper to find the highest finalized batch record.
+    Async wrapper to find the last finalized batch record of network.
     Can be called from async contexts.
     """
     try:
         # Get the result asynchronously
         return await _find_all_nodes_last_finalized_batch_record_core(app_name)
     except Exception as e:
-        zlogger.error(f"Critical error in find_highest_finalized_batch_record: {str(e)}")
+        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
         # Return local record as ultimate fallback
         return zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
