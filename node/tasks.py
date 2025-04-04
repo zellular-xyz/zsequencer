@@ -451,7 +451,7 @@ async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
         tasks = []
         for app_name in list(zconfig.APPS.keys()):
             # Await the async version of find_highest_finalized_batch_record
-            tasks.append(process_app(app_name, new_sequencer_id))
+            tasks.append(sync_app_finalized_state(app_name, new_sequencer_id))
 
         # Wait for all tasks to complete
         await asyncio.gather(*tasks)
@@ -463,9 +463,17 @@ async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
         # Clear pause node (still blocking, we keep it as is)
         zdb.pause_node.clear()
 
-async def process_app(app_name: str, new_sequencer_id: str):
-    """Helper function to handle the app processing concurrently."""
-    all_nodes_last_finalized_batch_record = await find_all_nodes_last_finalized_batch_record_async(app_name)  # Now await the async function
+
+async def sync_app_finalized_state(app_name: str, new_sequencer_id: str):
+    """
+    Process a single app during sequencer switch by updating its finalized batch records
+    and resetting batch timestamps.
+
+    Args:
+        app_name: Name of the app to process
+        new_sequencer_id: ID of the new sequencer
+    """
+    all_nodes_last_finalized_batch_record = await find_all_nodes_last_finalized_batch_record_async(app_name)
     if all_nodes_last_finalized_batch_record:
         zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
     zdb.reset_not_finalized_batches_timestamps(app_name)
