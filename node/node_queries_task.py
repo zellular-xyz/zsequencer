@@ -10,7 +10,7 @@ from common.logger import zlogger
 from config import zconfig
 
 
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> dict[str, Any]:
+def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
     """
     Synchronous wrapper to find the last finalized batch record.
     For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
@@ -26,7 +26,7 @@ def find_all_nodes_last_finalized_batch_record(app_name: str) -> dict[str, Any]:
         )
 
 
-async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> dict[str, Any]:
+async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> BatchRecord:
     """
     Async wrapper to find the last finalized batch record of network.
     Can be called from async contexts.
@@ -69,25 +69,26 @@ async def _fetch_node_last_finalized_batch_record_or_empty(
         return {}
 
 
-async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> dict[str, Any]:
+async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> BatchRecord:
     """Core async implementation to find all nodes last finalized batch record."""
+    # Get local record first
+    local_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=app_name,
+        state="finalized"
+    )
+    highest_record = local_record
+    highest_index = local_record.get("index", 0)
+
+    # Filter nodes to exclude self
+    nodes_to_query = [
+        node for node in zconfig.NODES.values()
+        if node["id"] != zconfig.NODE["id"]
+    ]
+
+    if not nodes_to_query:
+        return highest_record
+
     try:
-        # Get local record first
-        record = zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
-        index = record.get("index", 0)
-
-        # Filter nodes to exclude self
-        nodes_to_query = [
-            node for node in zconfig.NODES.values()
-            if node["id"] != zconfig.NODE["id"]
-        ]
-
-        if not nodes_to_query:
-            return record
-
         # Query all nodes concurrently
         async with aiohttp.ClientSession() as session:
             tasks = [
@@ -101,16 +102,15 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> dic
                 if not record:  # Skip empty or error results
                     continue
                 record_index = record.get("index", 0)
-                if record_index > index:
-                    index = record_index
-                    record = record
+                if record_index > highest_index:
+                    highest_index = record_index
+                    highest_record = record
 
-        return record
+        return highest_record
 
+    except aiohttp.ClientError as e:
+        zlogger.error(f"Network error in batch record fetch: {str(e)}")
+        return highest_record
     except Exception as e:
-        zlogger.error(f"Error in find_all_nodes_last_finalized_batch_record: {str(e)}")
-        # Return local record as fallback
-        return zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
+        zlogger.error(f"Unexpected error in batch record fetch: {str(e)}")
+        return highest_record
