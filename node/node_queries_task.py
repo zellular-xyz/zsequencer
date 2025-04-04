@@ -5,6 +5,7 @@ import aiohttp
 
 from common.batch import stateful_batch_to_batch_record
 from common.db import zdb
+from common.batch import BatchRecord
 from common.logger import zlogger
 from config import zconfig
 
@@ -13,7 +14,7 @@ async def fetch_node_last_finalized_batch_record_or_empty(
         session: aiohttp.ClientSession,
         node: dict[str, Any],
         app_name: str
-) -> dict[str, Any]:
+) -> BatchRecord:
     """Fetch last finalized batch from a single node asynchronously."""
     url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
     try:
