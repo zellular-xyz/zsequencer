@@ -88,29 +88,21 @@ async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> Bat
     if not nodes_to_query:
         return highest_record
 
-    try:
         # Query all nodes concurrently
-        async with aiohttp.ClientSession() as session:
-            tasks = [
-                _fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
-                for node in nodes_to_query
-            ]
-            results = await asyncio.gather(*tasks)
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            _fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
+            for node in nodes_to_query
+        ]
+        results = await asyncio.gather(*tasks)
 
-            # Process results and find last finalized index
-            for record in results:
-                if not record:  # Skip empty or error results
-                    continue
-                record_index = record.get("index", 0)
-                if record_index > highest_index:
-                    highest_index = record_index
-                    highest_record = record
+        # Process results and find last finalized index
+        for record in results:
+            if not record:  # Skip empty or error results
+                continue
+            record_index = record.get("index", 0)
+            if record_index > highest_index:
+                highest_index = record_index
+                highest_record = record
 
-        return highest_record
-
-    except aiohttp.ClientError as e:
-        zlogger.error(f"Network error in batch record fetch: {str(e)}")
-        return highest_record
-    except Exception as e:
-        zlogger.error(f"Unexpected error in batch record fetch: {str(e)}")
-        return highest_record
+    return highest_record
