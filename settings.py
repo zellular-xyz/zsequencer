@@ -64,5 +64,8 @@ class NodeConfig(BaseSettings):
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
+    max_missed_batches_to_pick: int = Field(default=10)
+    # sequencer_sabotage_simulation: SequencerSabotageSimulation = Field(default_factory=SequencerSabotageSimulation)
+
     class Config:
         env_prefix = "ZSEQUENCER_"
