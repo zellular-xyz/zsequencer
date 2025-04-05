@@ -22,7 +22,8 @@ from node.rate_limit import try_acquire_rate_limit_of_self_node
 from common.logger import zlogger
 from config import zconfig
 from node.rate_limit import get_remaining_capacity_kb_of_self_node
-from node.node_queries_task import find_all_nodes_last_finalized_batch_record, find_all_nodes_last_finalized_batch_record_async
+from node.node_queries_task import find_all_nodes_last_finalized_batch_record, \
+    find_all_nodes_last_finalized_batch_record_async
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -414,54 +415,45 @@ def verify_switch_sequencer(old_sequencer_id: str) -> bool:
     return old_sequencer_id == zconfig.SEQUENCER["id"]
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
-    """Switch the sequencer if the proofs are approved."""
-    with switch_lock:
-        if not verify_switch_sequencer(old_sequencer_id):
-            return
+async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Core implementation of sequencer switching logic.
+    Used by both sync and async switch functions.
+    """
+    if not verify_switch_sequencer(old_sequencer_id):
+        return
 
-        zdb.pause_node.set()
+    zdb.pause_node.set()
+
+    try:
         zconfig.update_sequencer(new_sequencer_id)
 
-        for app_name in list(zconfig.APPS.keys()):
-            all_nodes_last_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
-            if all_nodes_last_finalized_batch_record:
-                zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
-            zdb.reset_not_finalized_batches_timestamps(app_name)
+        tasks = [
+            sync_app_finalized_state(app_name, new_sequencer_id)
+            for app_name in list(zconfig.APPS.keys())
+        ]
+        await asyncio.gather(*tasks)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
-            time.sleep(10)
-
+            await asyncio.sleep(10)
+    finally:
         zdb.pause_node.clear()
+
+
+def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Synchronous wrapper for sequencer switching.
+    """
+    with switch_lock:
+        asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
 
 
 async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
-    """Switch the sequencer if the proofs are approved."""
+    """
+    Asynchronous version of sequencer switching.
+    """
     with switch_lock:
-        if not verify_switch_sequencer(old_sequencer_id):
-            return
-
-        # Pause the node (still blocking, so we keep it as is)
-        zdb.pause_node.set()
-
-        # Update the sequencer
-        zconfig.update_sequencer(new_sequencer_id)
-
-        # Create a list of async tasks to process each app concurrently
-        tasks = []
-        for app_name in list(zconfig.APPS.keys()):
-            # Await the async version of find_highest_finalized_batch_record
-            tasks.append(sync_app_finalized_state(app_name, new_sequencer_id))
-
-        # Wait for all tasks to complete
-        await asyncio.gather(*tasks)
-
-        # If not the current sequencer, wait for 10 seconds (use asyncio.sleep instead of time.sleep)
-        if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
-            await asyncio.sleep(10)
-
-        # Clear pause node (still blocking, we keep it as is)
-        zdb.pause_node.clear()
+        await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
 
 
 async def sync_app_finalized_state(app_name: str, new_sequencer_id: str):
