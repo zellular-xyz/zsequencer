@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import Any, Dict
-
 from pydantic import BaseModel
 
 

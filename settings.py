@@ -9,9 +9,8 @@ SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
 class SequencerSabotageSimulation(BaseSettings):
+    timeseries_nodes_state_file: str = Field("")
     out_of_reach_simulation: bool = Field(default=False)
-    in_reach_seconds: int = Field(default=20)
-    out_of_reach_seconds: int = Field(default=20)
 
     class Config:
         env_prefix = "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_"
@@ -57,8 +56,6 @@ class NodeConfig(BaseSettings):
     register_socket: str = Field(default="")
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
-
-    # sequencer_sabotage_simulation: SequencerSabotageSimulation = Field(default_factory=SequencerSabotageSimulation)
 
     class Config:
         env_prefix = "ZSEQUENCER_"
