@@ -15,11 +15,12 @@ import requests
 from eigensdk.crypto.bls import attestation
 
 from common import bls, utils
-from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
+from node.node_queries_task import find_all_nodes_last_finalized_batch_record, \
+    find_all_nodes_last_finalized_batch_record_async
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -344,7 +345,7 @@ async def send_dispute_requests() -> None:
         proofs
     )
     await send_switch_requests(proofs)
-    switch_sequencer(old_sequencer_id, new_sequencer_id)
+    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
 
 
 async def send_dispute_request(
@@ -400,51 +401,57 @@ def verify_switch_sequencer(old_sequencer_id: str) -> bool:
     return old_sequencer_id == zconfig.SEQUENCER["id"]
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
-    """Switch the sequencer if the proofs are approved."""
-    with switch_lock:
-        if not verify_switch_sequencer(old_sequencer_id):
-            return
+async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Core implementation of sequencer switching logic.
+    Used by both sync and async switch functions.
+    """
+    if not verify_switch_sequencer(old_sequencer_id):
+        return
 
-        zdb.pause_node.set()
+    zdb.pause_node.set()
+
+    try:
         zconfig.update_sequencer(new_sequencer_id)
 
-        for app_name in list(zconfig.APPS.keys()):
-            highest_finalized_batch_record = find_all_nodes_last_finalized_batch_record(app_name)
-            if highest_finalized_batch_record:
-                zdb.reinitialize(app_name, new_sequencer_id, highest_finalized_batch_record)
-            zdb.reset_not_finalized_batches_timestamps(app_name)
+        tasks = [
+            sync_app_finalized_state(app_name, new_sequencer_id)
+            for app_name in list(zconfig.APPS.keys())
+        ]
+        await asyncio.gather(*tasks)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
-            time.sleep(10)
-
+            await asyncio.sleep(10)
+    finally:
         zdb.pause_node.clear()
 
 
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
-    """Find the last finalized batch record from all nodes."""
-    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="finalized"
-    )
+def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Synchronous wrapper for sequencer switching.
+    """
+    with switch_lock:
+        asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
 
-    for node in list(zconfig.NODES.values()):
-        if node["id"] == zconfig.NODE["id"]:
-            continue
 
-        url: str = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
-        try:
-            response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS
-            ).json()
-            if response["status"] == "error":
-                continue
-            batch_record: dict[str, Any] = stateful_batch_to_batch_record(response["data"])
-            if batch_record.get("index", 0) > last_finalized_batch_record.get("index", 0):
-                last_finalized_batch_record = batch_record
-        except Exception:
-            zlogger.error(
-                f"An unexpected error occurred while querying node {node['id']} "
-                f"for the last finalized batch at {url}"
-            )
+async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Asynchronous version of sequencer switching.
+    """
+    with switch_lock:
+        await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
 
-    return last_finalized_batch_record
+
+async def sync_app_finalized_state(app_name: str, new_sequencer_id: str):
+    """
+    Process a single app during sequencer switch by updating its finalized batch records
+    and resetting batch timestamps.
+
+    Args:
+        app_name: Name of the app to process
+        new_sequencer_id: ID of the new sequencer
+    """
+    all_nodes_last_finalized_batch_record = await find_all_nodes_last_finalized_batch_record_async(app_name)
+    if all_nodes_last_finalized_batch_record:
+        zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
+    zdb.reset_not_finalized_batches_timestamps(app_name)
