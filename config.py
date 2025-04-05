@@ -72,6 +72,7 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
+        self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
         self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
         # Init node encryption and networks configurations
         self._init_node()
