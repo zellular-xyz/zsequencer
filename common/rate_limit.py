@@ -58,3 +58,38 @@ class DynamicWindowRateLimiter:
         window.append((current_time, cost))
         self.current_sums[identifier] += cost
         return True
+
+    def get_remaining_capacity(self, identifier: str) -> float:
+        """
+        Returns the remaining allowed capacity for an identifier in the last 1 second from current timestamp.
+
+        Args:
+            identifier: Unique identifier to check remaining capacity for.
+
+        Returns:
+            float: Remaining capacity in cost units. Returns max_cost if identifier has no usage.
+        """
+        current_time = time.time()
+
+        # If identifier doesn't exist, return full capacity
+        if identifier not in self.windows:
+            return self.max_cost
+
+        window = self.windows[identifier]
+        current_sum = self.current_sums[identifier]
+
+        # Find the index of the first non-expired item using binary search
+        expiration_time = current_time - self.window_seconds
+        expire_idx = bisect_left(window, expiration_time, key=lambda x: x[0])
+
+        # Remove expired items and update sum
+        if expire_idx > 0:
+            expired = window[:expire_idx]
+            window[:] = window[expire_idx:]
+            expired_sum = sum(cost for _, cost in expired)
+            self.current_sums[identifier] = current_sum - expired_sum
+            current_sum = self.current_sums[identifier]
+
+        # Calculate remaining capacity
+        remaining = self.max_cost - current_sum
+        return max(0.0, remaining)  # Ensure we don't return negative values
