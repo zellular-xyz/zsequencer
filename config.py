@@ -45,7 +45,7 @@ class Config:
         self.INIT_SEQUENCER_ID = node_config.init_sequencer_id
         self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
         self.API_BATCHES_LIMIT = node_config.api_batches_limit
-        self.BANDWIDTH_KB = node_config.bandwidth_kb
+        self.BANDWIDTH_KB_PER_WINDOW = node_config.bandwidth_kb_per_window
         self.PUSH_RATE_LIMIT_WINDOW_SECONDS = node_config.push_rate_limit_window_seconds
         self.MAX_BATCH_SIZE_KB = node_config.max_batch_size_kb
 
@@ -251,12 +251,12 @@ class Config:
             os.makedirs(snapshot_path, exist_ok=True)
 
     @property
-    def node_send_limit_size_kb_per_second(self) -> float:
-        return self.BANDWIDTH_KB / (len(self.NODES) ** 2)
+    def node_send_limit_per_window_size_kb(self) -> float:
+        return self.BANDWIDTH_KB_PER_WINDOW / (len(self.NODES) ** 2)
 
     @property
     def node_receive_limit_size_kb(self) -> float:
-        return self.BANDWIDTH_KB / len(self.NODES)
+        return self.BANDWIDTH_KB_PER_WINDOW / len(self.NODES)
 
     @property
     def is_sequencer(self):
