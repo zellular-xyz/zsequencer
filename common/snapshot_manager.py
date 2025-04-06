@@ -30,7 +30,7 @@ class SnapshotManager:
         self._root_dir = os.path.join(base_path, version)
         self._app_name_to_chunks: dict[str, list[ChunkFileInfo]] = {}
         self._app_names = app_names
-        self._max_snapshot_size_kb = max_snapshot_size_kb
+        self._max_chunk_size_kb = max_snapshot_size_kb
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 
@@ -160,7 +160,7 @@ class SnapshotManager:
             batch_size = get_batch_size_kb(record["batch"])
 
             # If adding this batch would exceed size limit, create new chunk
-            if current_size + batch_size > self._max_snapshot_size_kb and current_size > 0:
+            if current_size + batch_size > self._max_chunk_size_kb and current_size > 0:
                 chunk_indices.append((chunk_start, record["index"] - 1))
                 chunk_start = record["index"]
                 current_size = batch_size
