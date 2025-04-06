@@ -13,8 +13,8 @@ from common import utils
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
-from common.state import OperationalState
 from common.snapshot_manager import SnapshotManager
+from common.state import OperationalState
 from config import zconfig
 from utils import get_file_content
 
@@ -127,7 +127,7 @@ class InMemoryDB:
     def get_limited_initialized_batch_map(self, app_name: str, max_size_kb: float) -> dict[str, Batch]:
         # NOTE: We copy the dictionary in order to make it safe to work on it
         # without the fear of change in the middle of processing.
-        initialized_batch_map = self.apps[app_name]["initialized_batch_map"].copy()
+        initialized_batch_map = self.get_batch_map(app_name=app_name)
         total_batches_size = 0.0
         limited_batch_map = {}
         for batch_hash, batch in initialized_batch_map.items():

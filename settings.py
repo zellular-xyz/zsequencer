@@ -40,7 +40,6 @@ class NodeConfig(BaseSettings):
     snapshot_chunk: int = Field(default=1000)
     remove_chunk_border: int = Field(default=2)
 
-    send_batch_interval: float = Field(default=5.0)
     sync_interval: float = Field(default=30.0)
     finalization_time_border: int = Field(default=120)
     aggregation_timeout: int = Field(default=5)

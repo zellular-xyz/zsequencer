@@ -54,7 +54,6 @@ class Config:
         self.AGGREGATION_TIMEOUT = node_config.aggregation_timeout
         self.FINALIZATION_TIME_BORDER = node_config.finalization_time_border
         self.SYNC_INTERVAL = node_config.sync_interval
-        self.SEND_BATCH_INTERVAL = node_config.send_batch_interval
         self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
         self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.SNAPSHOT_CHUNK_SIZE_KB = node_config.snapshot_chunk_size_kb
@@ -254,16 +253,6 @@ class Config:
     @property
     def node_send_limit_size_kb_per_second(self) -> float:
         return self.BANDWIDTH_KB / (len(self.NODES) ** 2)
-
-    @property
-    def node_send_limit_size_bytes_per_second(self) -> int:
-        return int(self.node_send_limit_size_kb_per_second * 1024)
-
-    @property
-    def node_send_limit_size_kb(self) -> float:
-        if zconfig.SEND_BATCH_INTERVAL >= 1:
-            return self.node_send_limit_size_kb_per_second
-        return self.node_send_limit_size_kb_per_second * zconfig.SEND_BATCH_INTERVAL
 
     @property
     def node_receive_limit_size_kb(self) -> float:

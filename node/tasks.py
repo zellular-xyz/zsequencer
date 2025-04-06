@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any
 from typing import List
-
+import random
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
@@ -21,6 +21,7 @@ from common.errors import ErrorCodes, ErrorMessages
 from node.rate_limit import try_acquire_self_node_rate_limit
 from common.logger import zlogger
 from config import zconfig
+from node.rate_limit import get_node_remaining_capacity_kb
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -36,8 +37,11 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     single_iteration_apps_sync = True
-    for app_name in list(zconfig.APPS.keys()):
-        finish_condition = send_app_batches_iteration(app_name)
+    app_names = list(zconfig.APPS.keys())
+    random.shuffle(app_names)
+
+    for app_name in app_names:
+        finish_condition = send_app_batches_iteration(app_name=app_name)
         if finish_condition:
             continue
 
@@ -45,7 +49,7 @@ def send_batches() -> None:
         zconfig.unset_synced_flag()
 
         while True:
-            finish_condition = send_app_batches_iteration(app_name)
+            finish_condition = send_app_batches_iteration(app_name=app_name)
             if finish_condition:
                 break
 
@@ -63,12 +67,12 @@ def send_app_batches_iteration(app_name: str) -> bool:
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
-    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(
-        app_name=app_name,
-        max_size_kb=zconfig.node_send_limit_size_kb
-    )
+    max_size_kb = get_node_remaining_capacity_kb()
+    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(app_name=app_name,
+                                                                                max_size_kb=max_size_kb)
     batches = list(initialized_batches.values())
-    if not try_acquire_self_node_rate_limit(batches):
+
+    if not try_acquire_self_node_rate_limit(batches=batches):
         return {'data': {}}
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
