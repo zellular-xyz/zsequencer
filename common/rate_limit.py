@@ -39,7 +39,6 @@ class DynamicWindowRateLimiter:
             return self.max_cost
 
         window = self.windows[identifier]
-        current_sum = self.current_sums[identifier]
 
         # Find and remove expired items
         expiration_time = current_time - self.window_seconds
@@ -49,8 +48,7 @@ class DynamicWindowRateLimiter:
             expired = window[:expire_idx]
             window[:] = window[expire_idx:]
             expired_sum = sum(cost for _, cost in expired)
-            self.current_sums[identifier] = current_sum - expired_sum
-            current_sum = self.current_sums[identifier]
+            self.current_sums[identifier] -= expired_sum
 
-        remaining = self.max_cost - current_sum
+        remaining = self.max_cost - self.current_sums[identifier]
         return max(0.0, remaining)
