@@ -38,6 +38,7 @@ def send_batches() -> None:
     """Send batches for all apps."""
     single_iteration_apps_sync = True
     app_names = list(zconfig.APPS.keys())
+    # shuffle apps to prevent starvation of later apps by earlier ones when limit is reaching
     random.shuffle(app_names)
 
     for app_name in app_names:
