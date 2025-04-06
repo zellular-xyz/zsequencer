@@ -256,7 +256,7 @@ class Config:
 
     @property
     def node_receive_limit_size_kb(self) -> float:
-        return self.BANDWIDTH_KB / (len(self.NODES) - 1)
+        return self.BANDWIDTH_KB / len(self.NODES)
 
     @property
     def is_sequencer(self):
