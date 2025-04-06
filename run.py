@@ -41,7 +41,7 @@ def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
-            continue
+            time.sleep(0.1)
 
         node_tasks.send_batches()
         asyncio.run(node_tasks.send_dispute_requests())
