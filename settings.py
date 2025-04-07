@@ -43,7 +43,6 @@ class NodeConfig(BaseSettings):
     finalization_time_border: int = Field(default=120)
     aggregation_timeout: int = Field(default=5)
     fetch_apps_and_nodes_interval: float = Field(default=60.0)
-    api_batches_limit: int = Field(default=100000)
 
     bandwidth_kb_per_window: float = Field(default=10_000)
     push_rate_limit_window_seconds: int = Field(default=1)

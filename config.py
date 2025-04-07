@@ -44,7 +44,6 @@ class Config:
         self.THRESHOLD_PERCENT = node_config.threshold_percent
         self.INIT_SEQUENCER_ID = node_config.init_sequencer_id
         self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
-        self.API_BATCHES_LIMIT = node_config.api_batches_limit
         self.BANDWIDTH_KB_PER_WINDOW = node_config.bandwidth_kb_per_window
         self.PUSH_RATE_LIMIT_WINDOW_SECONDS = node_config.push_rate_limit_window_seconds
         self.MAX_BATCH_SIZE_KB = node_config.max_batch_size_kb
