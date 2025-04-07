@@ -167,13 +167,10 @@ class SnapshotManager:
             else:
                 current_size += batch_size
 
-        # Add final chunk if there are remaining batches
-        if current_size > 0:
-            chunk_indices.append((chunk_start, batches.get_last_index_or_default()))
-
         for start_index, end_index in chunk_indices:
             self._persist_batch_sequence(app_name=app_name,
-                                         batches=batches.filter(start_exclusive=start_index - 1, end_inclusive=end_index))
+                                         batches=batches.filter(start_exclusive=start_index - 1,
+                                                                end_inclusive=end_index))
 
     def get_latest_chunks_start_index(self, app_name: str, latest_chunks_count: int) -> int:
         """
