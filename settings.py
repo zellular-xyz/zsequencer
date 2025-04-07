@@ -37,7 +37,6 @@ class NodeConfig(BaseSettings):
     port: int = Field(default=6001)
 
     snapshot_chunk_size_kb: int = Field(default=1000)
-    snapshot_chunk: int = Field(default=1000)
     remove_chunk_border: int = Field(default=2)
 
     sync_interval: float = Field(default=30.0)

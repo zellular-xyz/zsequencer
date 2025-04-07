@@ -55,7 +55,6 @@ class Config:
         self.FINALIZATION_TIME_BORDER = node_config.finalization_time_border
         self.SYNC_INTERVAL = node_config.sync_interval
         self.REMOVE_CHUNK_BORDER = node_config.remove_chunk_border
-        self.SNAPSHOT_CHUNK = node_config.snapshot_chunk
         self.SNAPSHOT_CHUNK_SIZE_KB = node_config.snapshot_chunk_size_kb
         self.HOST = node_config.host
         self.PORT = node_config.port
