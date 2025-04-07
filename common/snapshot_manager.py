@@ -17,7 +17,7 @@ class SnapshotManager:
     def __init__(self,
                  base_path: str,
                  version: str,
-                 max_snapshot_size_kb: float,
+                 max_chunk_size_kb: float,
                  app_names: list[str]):
         """
         Initialize the SnapshotManager.
@@ -30,7 +30,7 @@ class SnapshotManager:
         self._root_dir = os.path.join(base_path, version)
         self._app_name_to_chunks: dict[str, list[ChunkFileInfo]] = {}
         self._app_names = app_names
-        self._max_chunk_size_kb = max_snapshot_size_kb
+        self._max_chunk_size_kb = max_chunk_size_kb
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
         self._initialize()
 

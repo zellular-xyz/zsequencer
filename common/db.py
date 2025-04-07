@@ -52,7 +52,7 @@ class InMemoryDB:
         self.is_sequencer_down = False
         self._snapshot_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
                                                  version=zconfig.VERSION,
-                                                 max_snapshot_size_kb=zconfig.REMOVE_CHUNK_BORDER,
+                                                 max_chunk_size_kb=zconfig.SNAPSHOT_CHUNK_SIZE_KB,
                                                  app_names=list(zconfig.APPS.keys()))
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
@@ -400,6 +400,9 @@ class InMemoryDB:
             start_exclusive=last_persisted_index,
             end_inclusive=signature_finalized_index
         )
+
+        if fresh_finalized_sequence.size_kb < zconfig.SNAPSHOT_CHUNK_SIZE_KB:
+            return
 
         self._snapshot_manager.chunk_and_store_batch_sequence(app_name=app_name,
                                                               batches=fresh_finalized_sequence)
