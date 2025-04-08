@@ -78,7 +78,7 @@ def run_flask_app(app: Flask) -> None:
         host="0.0.0.0",
         port=zconfig.PORT,
         debug=False,
-        threaded=True,
+        threaded=False,
         use_reloader=False,
     )
 
