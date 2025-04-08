@@ -1,7 +1,6 @@
 """This module provides utility functions and decorators for the zellular application."""
 
 import time
-import sys
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
