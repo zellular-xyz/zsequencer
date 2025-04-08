@@ -206,4 +206,4 @@ class SnapshotManager:
         return os.path.join(self._root_dir, app_name)
 
     def _get_snapshot_filename(self, start_index: int) -> str:
-        return f"{str(start_index).zfill(7)}.json.gz"
+        return f"{str(start_index).zfill(12)}.json.gz"
