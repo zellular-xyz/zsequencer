@@ -174,27 +174,30 @@ class InMemoryDB:
             after: Starting index (exclusive)
         """
         size_limit = zconfig.node_receive_limit_per_window_size_kb
-        first_memory_index = self._get_first_finalized_batch(app_name)
-        result = None
+        remaining_size = size_limit
+        result = BatchSequence()
 
         # Get batches from storage if needed
-        if after + 1 < first_memory_index:
-            result = self._snapshot_manager.load_batches(
+        first_memory_index = self._get_first_finalized_batch(app_name)
+        while after + 1 < first_memory_index:
+            result.extend(self._snapshot_manager.load_batches(
                 app_name=app_name,
                 after=after,
-                retrieve_size_limit_kb=size_limit
-            )
-            # Return if storage data doesn't reach memory boundary
-            if result.get_last_index_or_default() < first_memory_index - 1:
-                return result.filter(target_state=state)
+                retrieve_size_limit_kb=remaining_size
+            ))
+            # Return if result passes size_limit
+            if result.size_kb >= size_limit:
+                return result.truncate_by_size(
+                    size_kb=size_limit).filter(target_state=state)
 
-        # Calculate remaining size and starting point for memory data
-        remaining_size = size_limit - (result.size_kb if result else 0)
-        memory_start = result.get_last_index_or_default() if result else after
+            remaining_size = size_limit - result.size_kb
+            after = result.get_last_index_or_default()
+            first_memory_index = self._get_first_finalized_batch(app_name)
+
 
         # Get in-memory batches
         memory_sequence = (self.apps[app_name]["operational_batch_sequence"]
-                           .filter(start_exclusive=memory_start)
+                           .filter(start_exclusive=after, target_state=state)
                            .truncate_by_size(size_kb=remaining_size))
 
         # Combine sequences
@@ -203,7 +206,7 @@ class InMemoryDB:
         else:
             result = memory_sequence
 
-        return result.filter(target_state=state)
+        return result
 
     def get_batch_record_by_hash_or_empty(
         self, app_name: str, batch_hash: str
