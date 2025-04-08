@@ -11,7 +11,7 @@ from common.batch import get_batch_size_kb
 from common.errors import ErrorCodes, ErrorMessages
 from common.response_utils import error_response, success_response
 from config import zconfig
-from sequencer.rate_limit import try_acquire_other_nodes_rate_limit_quota
+from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
 sequencer_blueprint = Blueprint("sequencer", __name__)
 
@@ -37,8 +37,8 @@ def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     initializing_batches = req_data["batches"]
-    if not try_acquire_other_nodes_rate_limit_quota(node_id=req_data["node_id"],
-                                                    batches=initializing_batches):
+    if not try_acquire_rate_limit_of_other_nodes(node_id=req_data["node_id"],
+                                                 batches=initializing_batches):
         return error_response(error_code=ErrorCodes.BATCHES_LIMIT_EXCEEDED,
                               error_message=ErrorMessages.BATCHES_LIMIT_EXCEEDED)
 
