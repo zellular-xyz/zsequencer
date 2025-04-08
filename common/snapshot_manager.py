@@ -66,22 +66,14 @@ class SnapshotManager:
     def get_last_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
-    def _find_file(self, app_name: str, batch_index: int) -> int | None:
+    def _find_file_pos(self, app_name: str, batch_index: int) -> int | None:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
         indexed_chunks = self._app_name_to_chunks[app_name]
-        if not indexed_chunks:
-            return None
 
         # Extract start indices for binary search
-        start_indices = [entry[0] for entry in indexed_chunks]
-        pos = bisect.bisect_right(start_indices, batch_index) - 1
-
-        if pos < 0:
-            return None
-
-        return pos
+        return bisect.bisect_right(indexed_chunks, batch_index, key=lambda row: row[0]) - 1
 
     def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
@@ -108,29 +100,23 @@ class SnapshotManager:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
-        file_position = self._find_file(app_name, 1 if after == 0 else after)
-        if file_position is None:
+        file_pos = self._find_file_pos(app_name, 1 if after == 0 else after)
+        if file_pos < 0:
             return BatchSequence()
 
         # Initialize result and size tracking
         merged_batches = BatchSequence()
-        size_capacity = retrieve_size_limit_kb if retrieve_size_limit_kb is not None else float('inf')
-        indexed_chunks = self._app_name_to_chunks[app_name]
+        if not retrieve_size_limit_kb:
+            retrieve_size_limit_kb = float('inf')
 
         # Process chunks starting from the found position
-        for _, file_name in indexed_chunks[file_position:]:
+        indexed_chunks = self._app_name_to_chunks[app_name][file_pos:]
+        for _, file_name in indexed_chunks:
             chunk_sequence = self._load_file(app_name, file_name).filter(start_exclusive=after)
-            truncated_sequence = chunk_sequence.truncate_by_size(size_kb=size_capacity)
-
-            merged_batches.extend(truncated_sequence)
-            size_capacity -= truncated_sequence.size_kb
+            merged_batches.extend(chunk_sequence)
 
             # Check if we've reached the size limit
-            if size_capacity <= 0:
-                break
-
-            # Check if we got all batches from the current chunk
-            if truncated_sequence.get_last_index_or_default() < chunk_sequence.get_last_index_or_default():
+            if merged_batches.size_kb >= retrieve_size_limit_kb:
                 break
 
         return merged_batches
