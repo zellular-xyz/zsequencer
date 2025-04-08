@@ -20,5 +20,5 @@ def check_capacity_of_self_node(batches: list[Batch]) -> bool:
     return _limiter.check_capacity(identifier=_SELF_NODE_RATE_LIMIT_ID, cost=cost)
 
 
-def get_remaining_capacity_kb_of_self_node() -> int:
-    return int(_limiter.get_remaining_capacity(identifier=_SELF_NODE_RATE_LIMIT_ID))
+def get_remaining_capacity_kb_of_self_node() -> float:
+    return _limiter.get_remaining_capacity(identifier=_SELF_NODE_RATE_LIMIT_ID)
