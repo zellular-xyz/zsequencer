@@ -175,7 +175,7 @@ class InMemoryDB:
             state: Target operational state
             after: Starting index (exclusive)
         """
-        size_limit = zconfig.node_receive_limit_size_kb
+        size_limit = zconfig.node_receive_limit_per_window_size_kb
         first_memory_index = self._get_first_finalized_batch(app_name)
         result = None
 

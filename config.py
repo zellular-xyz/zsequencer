@@ -253,7 +253,7 @@ class Config:
         return self.BANDWIDTH_KB_PER_WINDOW / (len(self.NODES) ** 2)
 
     @property
-    def node_receive_limit_size_kb(self) -> float:
+    def node_receive_limit_per_window_size_kb(self) -> float:
         return self.BANDWIDTH_KB_PER_WINDOW / len(self.NODES)
 
     @property
