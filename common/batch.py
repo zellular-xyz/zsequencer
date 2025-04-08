@@ -25,13 +25,6 @@ def get_batch_size_kb(batch: Batch) -> float:
     return get_utf8_size_kb(body)
 
 
-def get_batch_size_bytes(batch: Batch) -> int:
-    body = batch.get("body")
-    if body is None:
-        return 0
-    return get_utf8_size_bytes(body)
-
-
 class BatchRecord(TypedDict, total=False):
     batch: Batch
     index: int
