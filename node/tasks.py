@@ -322,6 +322,7 @@ async def send_dispute_requests() -> None:
     if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
+    zlogger.warning(f"Sending dispute is_not_synced: {is_not_synced}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}")
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"]
@@ -348,6 +349,7 @@ async def send_dispute_requests() -> None:
         return None
 
     if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
+        zlogger.warning(f"Not enough stake for dispute, stake_percent : {stake_percent}")
         return
     proofs.extend(responses)
 
@@ -398,7 +400,7 @@ async def send_switch_request(session, node, proofs):
 
 async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
-    zlogger.info("sending switch requests...")
+    zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:
         tasks = [
             send_switch_request(session, node, proofs)
