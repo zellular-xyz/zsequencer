@@ -9,7 +9,7 @@ from flask import Blueprint, Response, request
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
-from common.errors import ErrorCodes
+from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
@@ -34,8 +34,12 @@ def put_bulk_batches() -> Response:
     }
 
     for app_name, batches in filtered_batches_mapping.items():
-        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
-        zdb.init_batches(app_name, [str(item) for item in list(batches)])
+        valid_batches = [
+            str(item) for item in list(batches)
+            if utils.get_utf8_size_kb(str(item)) <= zconfig.MAX_BATCH_SIZE_KB
+        ]
+        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(valid_batches)}.")
+        zdb.init_batches(app_name, valid_batches)
 
     return success_response(data={}, message="The batch is received successfully.")
 
@@ -51,6 +55,10 @@ def put_batches(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     data = request.data.decode('latin-1')
+    if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
+        return error_response(error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
+                              error_message=ErrorMessages.BATCH_SIZE_EXCEEDED)
+
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The batch is received successfully.")
