@@ -125,8 +125,6 @@ class InMemoryDB:
         return result
 
     def get_limited_initialized_batch_map(self, app_name: str, max_size_kb: float) -> dict[str, Batch]:
-        # NOTE: We copy the dictionary in order to make it safe to work on it
-        # without the fear of change in the middle of processing.
         initialized_batch_map = self.get_batch_map(app_name=app_name)
         total_batches_size = 0.0
         limited_batch_map = {}
