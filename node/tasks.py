@@ -18,10 +18,10 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
-from node.rate_limit import try_acquire_self_node_rate_limit, check_capacity
+from node.rate_limit import try_acquire_rate_limit_of_self_node, check_capacity_of_self_node
 from common.logger import zlogger
 from config import zconfig
-from node.rate_limit import get_node_remaining_capacity_kb
+from node.rate_limit import get_remaining_capacity_kb_of_self_node
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -68,12 +68,12 @@ def send_app_batches_iteration(app_name: str) -> bool:
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
-    max_size_kb = get_node_remaining_capacity_kb()
+    max_size_kb = get_remaining_capacity_kb_of_self_node()
     initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(app_name=app_name,
                                                                                 max_size_kb=max_size_kb)
     batches = list(initialized_batches.values())
 
-    if not check_capacity(batches=batches):
+    if not check_capacity_of_self_node(batches=batches):
         return {'data': {}}
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
@@ -120,7 +120,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
 
-        try_acquire_self_node_rate_limit(batches)
+        try_acquire_rate_limit_of_self_node(batches)
 
         sequencer_resp = response["data"]
         censored_batches = sync_with_sequencer(
