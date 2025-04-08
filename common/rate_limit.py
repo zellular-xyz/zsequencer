@@ -9,7 +9,7 @@ class DynamicWindowRateLimiter:
         """
         self._max_cost = max_cost
         self._window_seconds = window_seconds
-        self.windows: dict[str, list[tuple[float, float]]] = {}
+        self._windows: dict[str, list[tuple[float, float]]] = {}
         self._current_sums: dict[str, float] = {}
 
     def update_max_cost(self, max_cost: float):
@@ -28,7 +28,7 @@ class DynamicWindowRateLimiter:
         # Since get_remaining_capacity already initialized the window if needed,
         # we can directly append the new entry
         current_time = time.perf_counter()
-        self.windows[identifier].append((current_time, cost))
+        self._windows[identifier].append((current_time, cost))
         self._current_sums[identifier] += cost
         return True
 
@@ -38,12 +38,12 @@ class DynamicWindowRateLimiter:
         """
         current_time = time.perf_counter()
 
-        if identifier not in self.windows:
-            self.windows[identifier] = []
+        if identifier not in self._windows:
+            self._windows[identifier] = []
             self._current_sums[identifier] = 0.0
             return self._max_cost
 
-        window = self.windows[identifier]
+        window = self._windows[identifier]
 
         # Find and remove expired items
         expiration_time = current_time - self._window_seconds
