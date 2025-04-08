@@ -1,9 +1,9 @@
 from common.batch import Batch, get_batch_size_kb
-from common.rate_limit import DynamicWindowRateLimiter
+from common.rate_limit import MovingWindowRateLimiter
 from config import zconfig
 
-_limiter = DynamicWindowRateLimiter(max_cost=zconfig.node_send_limit_per_window_size_kb,
-                                    window_seconds=zconfig.PUSH_RATE_LIMIT_WINDOW_SECONDS)
+_limiter = MovingWindowRateLimiter(max_cost=zconfig.node_send_limit_per_window_size_kb,
+                                   window_seconds=zconfig.PUSH_RATE_LIMIT_WINDOW_SECONDS)
 
 _SELF_NODE_RATE_LIMIT = 'self_node_rate_limit'
 

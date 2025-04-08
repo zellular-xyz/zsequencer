@@ -2,7 +2,7 @@ import time
 from bisect import bisect_left
 
 
-class DynamicWindowRateLimiter:
+class MovingWindowRateLimiter:
     def __init__(self, max_cost: float, window_seconds: float = 1.0):
         """
         Initialize a dynamic sliding window rate limiter for multiple identifiers.
