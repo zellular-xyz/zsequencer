@@ -108,7 +108,7 @@ class SnapshotManager:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
-        file_position = self._find_file(app_name, after)
+        file_position = self._find_file(app_name, 1 if after == 0 else after)
         if file_position is None:
             return BatchSequence()
 
