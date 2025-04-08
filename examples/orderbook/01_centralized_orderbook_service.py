@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
-from typing import Dict, List
 from uuid import uuid4
 from dataclasses import dataclass, field
 from bisect import insort
@@ -17,7 +16,7 @@ users = {
 }
 
 # In-memory balances
-balances: Dict[str, Dict[str, float]] = {
+balances: dict[str, dict[str, float]] = {
     "user1": {"USDT": 1000.0},
     "user2": {"ETH": 5.0}
 }
@@ -28,7 +27,7 @@ class OrderWrapper:
     order: dict = field(compare=False)
 
 # Order book
-order_book_wrapped: List[OrderWrapper] = []
+order_book_wrapped: list[OrderWrapper] = []
 
 
 # Login request schema
@@ -102,7 +101,7 @@ def place_order(order: OrderRequest, request: Request):
     return {"message": "Order placed", "order_id": new_order["id"]}
 
 # Matching engine
-def match_order(new_order: Dict):
+def match_order(new_order: dict):
     i = 0
     while i < len(order_book_wrapped):
         existing = order_book_wrapped[i].order
@@ -145,7 +144,7 @@ def match_order(new_order: Dict):
             break
 
 # Balance update
-def update_balances(order1: Dict, order2: Dict, qty: float):
+def update_balances(order1: dict, order2: dict, qty: float):
     buyer = order1 if order1["order_type"] == "buy" else order2
     seller = order2 if order1["order_type"] == "buy" else order1
 

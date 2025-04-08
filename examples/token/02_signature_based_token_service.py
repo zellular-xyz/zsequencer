@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from eth_account import Account
@@ -8,7 +8,7 @@ from starlette.responses import JSONResponse
 app = FastAPI()
 
 # Simulated Balances
-balances: Dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
+balances: dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
 
 def verify_signature(sender: str, message: str, signature: str) -> bool:
     """Verifies if the provided signature is valid for the given sender address."""
@@ -41,7 +41,7 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     return JSONResponse({"message": "Transfer successful"})
 
 @app.get("/balance")
-async def balance(address: str) -> Dict[str, Any]:
+async def balance(address: str) -> dict[str, Any]:
     """Retrieves the balance of a given address."""
     return {"address": address, "balance": balances.get(address, 0)}
 

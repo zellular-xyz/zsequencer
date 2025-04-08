@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Any
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="supersecretkey")  # Use a strong secret key
@@ -44,7 +44,7 @@ async def transfer(request: Request, data: TransferRequest):
     return JSONResponse({"message": "Transfer successful"})
 
 @app.get("/balance")
-async def balance(username: str) -> Dict[str, Any]:
+async def balance(username: str) -> dict[str, Any]:
     """Retrieve user balance."""
     return {"username": username, "balance": balances.get(username, 0)}
 

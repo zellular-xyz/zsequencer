@@ -1,7 +1,7 @@
 import logging
 import json
 from threading import Thread
-from typing import Dict, Any
+from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from eth_account import Account
@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 zellular = Zellular("token", "http://37.27.41.237:6001/", threshold_percent=1)
 
 # Simulated Balances
-balances: Dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
+balances: dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
 
 def verify_signature(sender: str, message: str, signature: str) -> bool:
     """Verifies if the provided signature is valid for the given sender address."""
@@ -66,7 +66,7 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     zellular.send(txs, blocking=False)
     return JSONResponse({"message": "Transfer sent"})
 
-def __transfer(data: Dict[str, Any]) -> None:
+def __transfer(data: dict[str, Any]) -> None:
     """Executes a transfer after batch processing."""
     sender, receiver, amount, signature = (
         data["sender"], data["receiver"], data["amount"], data["signature"]
@@ -86,7 +86,7 @@ def __transfer(data: Dict[str, Any]) -> None:
     logger.info(f"Transfer successful: {data}")
 
 @app.get("/balance")
-async def balance(address: str) -> Dict[str, Any]:
+async def balance(address: str) -> dict[str, Any]:
     """Retrieves the balance of a given address and returns a BLS-signed message."""
     balance = balances.get(address, 0)
     message = f"Address: {address}, Balance: {balance}".encode("utf-8")

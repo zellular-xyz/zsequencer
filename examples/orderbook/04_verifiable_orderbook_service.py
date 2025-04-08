@@ -4,7 +4,7 @@ from threading import Thread
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Dict, List, Any
+from typing import Any
 from uuid import uuid4
 from dataclasses import dataclass, field
 from bisect import insort
@@ -29,7 +29,7 @@ sk = PrivateKey.from_bytes(bytes.fromhex(NODE_PRIVATE_KEY))
 zellular = Zellular("orderbook", "http://37.27.41.237:6001/", threshold_percent=1)
 
 # In-memory balances
-balances: Dict[str, Dict[str, float]] = {
+balances: dict[str, dict[str, float]] = {
     "0xc66F8Fba940064B5bA8d437d6fF829E60134230E": {"USDT": 1000.0},
     "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0}
 }
@@ -40,7 +40,7 @@ class OrderWrapper:
     order: dict = field(compare=False)
 
 # Order book
-order_book_wrapped: List[OrderWrapper] = []
+order_book_wrapped: list[OrderWrapper] = []
 
 # Order request schema
 class OrderRequest(BaseModel):
@@ -88,7 +88,7 @@ def place_order(order: OrderRequest):
     return JSONResponse({"message": "Order sent to consensus layer"})
 
 # Core order processing
-def __place_order(order: Dict[str, Any]) -> None:
+def __place_order(order: dict[str, Any]) -> None:
     user = order["user"]
     order_type = order["order_type"]
     base_token = order["base_token"]
@@ -140,7 +140,7 @@ def __place_order(order: Dict[str, Any]) -> None:
     logger.info(f"Order placed: {new_order}")
 
 # Matching engine
-def match_order(new_order: Dict):
+def match_order(new_order: dict):
     i = 0
     while i < len(order_book_wrapped):
         existing = order_book_wrapped[i].order
@@ -183,7 +183,7 @@ def match_order(new_order: Dict):
             break
 
 # Balance update
-def update_balances(order1: Dict, order2: Dict, qty: float):
+def update_balances(order1: dict, order2: dict, qty: float):
     buyer = order1 if order1["order_type"] == "buy" else order2
     seller = order2 if order1["order_type"] == "buy" else order1
 
