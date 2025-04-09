@@ -18,7 +18,7 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
-from node.rate_limit import try_acquire_rate_limit_of_self_node, check_capacity_of_self_node
+from node.rate_limit import try_acquire_rate_limit_of_self_node
 from common.logger import zlogger
 from config import zconfig
 from node.rate_limit import get_remaining_capacity_kb_of_self_node
