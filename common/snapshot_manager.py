@@ -66,7 +66,7 @@ class SnapshotManager:
     def get_last_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
-    def _find_file_pos(self, app_name: str, batch_index: int) -> int | None:
+    def _find_file_pos(self, app_name: str, batch_index: int) -> int:
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f'App not found in indexed chunks: {app_name}')
 
@@ -106,7 +106,7 @@ class SnapshotManager:
 
         # Initialize result and size tracking
         merged_batches = BatchSequence()
-        if not retrieve_size_limit_kb:
+        if retrieve_size_limit_kb is None:
             retrieve_size_limit_kb = float('inf')
 
         # Process chunks starting from the found position
