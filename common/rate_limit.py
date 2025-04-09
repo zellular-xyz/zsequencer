@@ -13,8 +13,8 @@ class MovingWindowRateLimiter:
         """
         self._max_cost = max_cost
         self._window_seconds = window_seconds
-        self._costs_sum_by_id: dict[str, list[tuple[float, float]]] = {}
-        self._active_window_costs: dict[str, float] = {}
+        self._cost_history_by_id: dict[str, list[tuple[float, float]]] = {}
+        self._costs_sum_by_id: dict[str, float] = {}
 
     def update_max_cost(self, max_cost: float) -> None:
         """
@@ -45,8 +45,8 @@ class MovingWindowRateLimiter:
         # Since get_remaining_capacity already initialized the window if needed,
         # we can directly append the new entry
         current_time = time.perf_counter()
-        self._costs_sum_by_id[identifier].append((current_time, cost))
-        self._active_window_costs[identifier] += cost
+        self._cost_history_by_id[identifier].append((current_time, cost))
+        self._costs_sum_by_id[identifier] += cost
         return True
 
     def get_remaining_capacity(self, identifier: str) -> float:
@@ -61,12 +61,12 @@ class MovingWindowRateLimiter:
         """
         current_time = time.perf_counter()
 
-        if identifier not in self._costs_sum_by_id:
-            self._costs_sum_by_id[identifier] = []
-            self._active_window_costs[identifier] = 0.0
+        if identifier not in self._cost_history_by_id:
+            self._cost_history_by_id[identifier] = []
+            self._costs_sum_by_id[identifier] = 0.0
             return self._max_cost
 
-        events = self._costs_sum_by_id[identifier]
+        events = self._cost_history_by_id[identifier]
 
         # Find and remove expired items
         expiration_time = current_time - self._window_seconds
@@ -76,9 +76,9 @@ class MovingWindowRateLimiter:
             expired = events[:expire_idx]
             events[:] = events[expire_idx:]
             expired_sum = sum(cost for _, cost in expired)
-            self._active_window_costs[identifier] -= expired_sum
+            self._costs_sum_by_id[identifier] -= expired_sum
 
-        remaining = self._max_cost - self._active_window_costs[identifier]
+        remaining = self._max_cost - self._costs_sum_by_id[identifier]
         return max(0.0, remaining)
 
     def check_capacity(self, identifier: str, cost: float) -> bool:
