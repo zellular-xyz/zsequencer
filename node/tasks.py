@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any
 from typing import List
-
+import random
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
@@ -18,8 +18,10 @@ from common import bls, utils
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
+from node.rate_limit import try_acquire_rate_limit_of_self_node
 from common.logger import zlogger
 from config import zconfig
+from node.rate_limit import get_remaining_capacity_kb_of_self_node
 
 switch_lock: threading.Lock = threading.Lock()
 
@@ -35,8 +37,12 @@ def check_finalization() -> None:
 def send_batches() -> None:
     """Send batches for all apps."""
     single_iteration_apps_sync = True
-    for app_name in list(zconfig.APPS.keys()):
-        finish_condition = send_app_batches_iteration(app_name)
+    app_names = list(zconfig.APPS.keys())
+    # shuffle apps to prevent starvation of later apps by earlier ones when limit is reaching
+    random.shuffle(app_names)
+
+    for app_name in app_names:
+        finish_condition = send_app_batches_iteration(app_name=app_name)
         if finish_condition:
             continue
 
@@ -44,7 +50,7 @@ def send_batches() -> None:
         zconfig.unset_synced_flag()
 
         while True:
-            finish_condition = send_app_batches_iteration(app_name)
+            finish_condition = send_app_batches_iteration(app_name=app_name)
             if finish_condition:
                 break
 
@@ -52,7 +58,7 @@ def send_batches() -> None:
         zconfig.set_synced_flag()
 
 
-def send_app_batches_iteration(app_name):
+def send_app_batches_iteration(app_name: str) -> bool:
     response = send_app_batches(app_name).get("data", {})
     sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
     finish_condition = not sequencer_last_finalized_hash or zdb.get_batch_record_by_hash_or_empty(app_name,
@@ -62,9 +68,10 @@ def send_app_batches_iteration(app_name):
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
-    initialized_batches: dict[str, Any] = zdb.get_batch_map(
-        app_name=app_name
-    )
+    max_size_kb = get_remaining_capacity_kb_of_self_node()
+    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(app_name=app_name,
+                                                                                max_size_kb=max_size_kb)
+    batches = list(initialized_batches.values())
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="sequenced"
@@ -105,8 +112,12 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
                 zlogger.warning(response["error"]["message"])
                 response['data'] = {}
                 raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
+            if response["error"]["code"] == ErrorCodes.BATCHES_LIMIT_EXCEEDED:
+                zlogger.warning(response["error"]["message"])
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}
+
+        try_acquire_rate_limit_of_self_node(batches)
 
         sequencer_resp = response["data"]
         censored_batches = sync_with_sequencer(
@@ -311,6 +322,7 @@ async def send_dispute_requests() -> None:
     if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
         return
 
+    zlogger.warning(f"Sending dispute is_not_synced: {is_not_synced}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}")
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"]
@@ -337,6 +349,7 @@ async def send_dispute_requests() -> None:
         return None
 
     if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
+        zlogger.warning(f"Not enough stake for dispute, stake_percent : {stake_percent}")
         return
     proofs.extend(responses)
 
@@ -387,7 +400,7 @@ async def send_switch_request(session, node, proofs):
 
 async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
-    zlogger.info("sending switch requests...")
+    zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:
         tasks = [
             send_switch_request(session, node, proofs)
