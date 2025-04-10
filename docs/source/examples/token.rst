@@ -5,14 +5,14 @@ This guide walks through transforming a simple token service into a decentralize
 
 We follow a progressive enhancement model, starting from a basic session-based FastAPI service, and incrementally evolving it into a replicated and cryptographically verifiable system.
 
-Each step corresponds to a real code implementation in the Zellular `examples/token <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/>`_ directory.
+Each step corresponds to a real code implementation in the Zellular :src:`token` directory.
 
 Step 1: Centralized Token Service
 ---------------------------------
 
 In the first stage, we build a basic centralized token service using FastAPI. User sessions are tracked with server-side cookies, and balances are stored in-memory.
 
-📄 File: `01_centralized_token_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/01_centralized_token_service.py>`_
+📄 File: :src:`token/01_centralized_token_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -71,7 +71,7 @@ Step 2: Signature-Based Token Service
 
 This version removes session-based auth and introduces **Ethereum-style digital signatures**. Users sign transfer messages off-chain using their private key. The backend verifies these signatures and recovers the sender address directly from the signed message.
 
-📄 File: `02_signature_based_token_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/02_signature_based_token_service.py>`_
+📄 File: :src:`token/02_signature_based_token_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -154,7 +154,7 @@ Test Script
 
 To simplify development, a helper script is included:
 
-📄 File: `transfer.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/transfer.py>`_
+📄 File: :src:`token/transfer.py`
 
 This script:
 
@@ -206,7 +206,7 @@ In this step, we integrate the **Zellular Sequencer** to replicate the token sta
 
 Each replica node independently fetches the same ordered batch of transfers and applies them locally. This ensures all nodes remain consistent, even in the presence of faults or restarts.
 
-📄 File: `03_replicated_token_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/03_replicated_token_service.py>`_
+📄 File: :src:`token/03_replicated_token_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -288,7 +288,7 @@ Step 4: Verifiable Token Service
 
 In this step, we make balance queries verifiable by cryptographically signing every `/balance` response using **BLS signatures**. Each node signs the message with its own private key, allowing external services to confirm the authenticity of the returned value.
 
-📄 File: `04_verifiable_token_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/token/04_verifiable_token_service.py>`_
+📄 File: :src:`token/04_verifiable_token_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~

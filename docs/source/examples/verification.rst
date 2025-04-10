@@ -3,9 +3,7 @@ Signature Aggregation and Verification
 
 This section explains how to aggregate signed balance responses from multiple nodes and verify that a **quorum of replicas attested to the same value** using BLS signature aggregation.
 
-All examples here are located in:
-
-📁 `examples/verification <https://github.com/zellular-xyz/zsequencer/tree/usecases/examples/verification>`_
+All examples here are located in :src: `verification` directory.
 
 Overview
 --------
@@ -21,7 +19,7 @@ Nodes and Configuration
 
 Nodes are listed in a shared config file:
 
-📄 `nodes.json <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/verification/nodes.json>`_
+📄 File: :src:`verification\nodes.json`
 
 Each node entry includes:
 
@@ -45,7 +43,7 @@ Example:
 Aggregating Signatures
 ----------------------
 
-📄 `signature_aggregator.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/verification/signature_aggregator.py>`_
+📄 File: :src:`verification/signature_aggregator.py`
 
 This script:
 
@@ -70,7 +68,7 @@ The result includes:
 Verifying Aggregated Signatures
 -------------------------------
 
-📄 `verify_aggregated_signature.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/verification/verify_aggregated_signature.py>`_
+📄 File: :src:`verification/verify_aggregated_signature.py`
 
 This implementation uses the **EigenLayer-style BLS verification model**, where the verifier starts with a **precomputed aggregate public key** representing all expected nodes.
 

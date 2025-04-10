@@ -5,14 +5,14 @@ This guide walks through transforming a simple centralized orderbook into a full
 
 We follow a progressive enhancement model, starting from a basic session-based FastAPI service, and incrementally evolving it into a replicated and cryptographically verifiable system.
 
-Each step corresponds to a real implementation in the Zellular `examples/orderbook <https://github.com/zellular-xyz/zsequencer/tree/usecases/examples/orderbook>`_ directory.
+Each step corresponds to a real implementation in the Zellular :src:`orderbook` directory.
 
 Step 1: Centralized Orderbook Service
 -------------------------------------
 
 In this stage, we implement a basic in-memory orderbook service using FastAPI and session-based authentication. Users log in with a username and password, and can place buy/sell orders if they have sufficient balance. Submitted orders are either matched immediately or added to the orderbook.
 
-📄 File: `01_centralized_orderbook_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/01_centralized_orderbook_service.py>`_
+📄 File: :src:`orderbook/01_centralized_orderbook_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -102,7 +102,7 @@ Testing with Script
 
 A helper script is provided for testing this centralized version of the orderbook:
 
-📄 `01_place_order.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/01_place_order.py>`_
+📄 File: :src:`orderbook/01_place_order.py`
 
 This script:
 
@@ -131,7 +131,7 @@ Step 2: Signature-Based Orderbook Service
 
 In this step, we remove session-based login and introduce **stateless authentication using Ethereum-style signatures**. Users now sign order messages off-chain using their wallet's private key. The backend verifies the signature and uses the recovered address as the sender.
 
-📄 File: `02_signature_based_orderbook_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/02_signature_based_orderbook_service.py>`_
+📄 File: :src:`orderbook/02_signature_based_orderbook_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -188,7 +188,7 @@ Order Request Format
 Testing with Script
 ~~~~~~~~~~~~~~~~~~~
 
-📄 `02_place_order.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/02_place_order.py>`_
+📄 File: :src:`orderbook/02_place_order.py`
 
 This script:
 
@@ -219,7 +219,7 @@ In this step, we replicate the orderbook across a network of nodes using the **Z
 
 Each node independently pulls the ordered sequence of operations and applies them locally, ensuring that the **orderbook and balances remain consistent** across all nodes.
 
-📄 File: `03_replicated_orderbook_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/03_replicated_orderbook_service.py>`_
+📄 File: :src:`orderbook/03_replicated_orderbook_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
@@ -287,7 +287,7 @@ Step 4: Verifiable Balance Reads
 
 In this step, we enhance the orderbook service by making **balance queries verifiable**. When a client queries `/balance`, the response is signed using the node’s BLS private key.
 
-📄 File: `04_verifiable_orderbook_service.py <https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/orderbook/04_verifiable_orderbook_service.py>`_
+📄 File: :src:`orderbook/04_verifiable_orderbook_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
