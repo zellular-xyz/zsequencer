@@ -3,27 +3,11 @@ from typing import Any
 
 import aiohttp
 
+from common.batch import BatchRecord
 from common.batch import stateful_batch_to_batch_record
 from common.db import zdb
-from common.batch import BatchRecord
 from common.logger import zlogger
 from config import zconfig
-
-
-def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
-    """
-    Synchronous wrapper to find the last finalized batch record.
-    For async contexts, use find_all_nodes_last_finalized_batch_record_async instead.
-    """
-    try:
-        return asyncio.run(_find_all_nodes_last_finalized_batch_record_core(app_name))
-    except Exception as e:
-        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
-        # Return local record as ultimate fallback
-        return zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
 
 
 async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> BatchRecord:

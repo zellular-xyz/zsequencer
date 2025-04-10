@@ -5,25 +5,24 @@ dispute handling, and switching sequencers.
 
 import asyncio
 import json
+import random
 import threading
 import time
 from typing import Any
 from typing import List
-import random
+
 import aiohttp
 import requests
 from eigensdk.crypto.bls import attestation
 
 from common import bls, utils
-from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
-from node.rate_limit import try_acquire_rate_limit_of_self_node
 from common.logger import zlogger
 from config import zconfig
+from node.node_queries_task import find_all_nodes_last_finalized_batch_record_async
 from node.rate_limit import get_remaining_capacity_kb_of_self_node
-from node.node_queries_task import find_all_nodes_last_finalized_batch_record, \
-    find_all_nodes_last_finalized_batch_record_async
+from node.rate_limit import try_acquire_rate_limit_of_self_node
 
 switch_lock: threading.Lock = threading.Lock()
 
