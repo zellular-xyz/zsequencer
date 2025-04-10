@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
+from node import switch
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
@@ -120,7 +121,7 @@ def post_switch_sequencer() -> Response:
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
     def run_switch_sequencer():
-        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
+        switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
     zlogger.info(f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.")
     threading.Thread(target=run_switch_sequencer).start()
