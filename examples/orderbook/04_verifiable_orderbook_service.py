@@ -88,7 +88,7 @@ def place_order(order: OrderRequest):
     return JSONResponse({"message": "Order sent to consensus layer"})
 
 # Core order processing
-def __place_order(order: dict[str, Any]) -> None:
+def apply_order(order: dict[str, Any]) -> None:
     user = order["user"]
     order_type = order["order_type"]
     base_token = order["base_token"]
@@ -209,7 +209,7 @@ def process_loop():
         try:
             txs = json.loads(batch)
             for tx in txs:
-                __place_order(tx)
+                apply_order(tx)
         except Exception as e:
             logger.error(f"Error processing batch #{index}: {e}")
 

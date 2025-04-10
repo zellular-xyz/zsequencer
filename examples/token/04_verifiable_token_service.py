@@ -66,7 +66,7 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     zellular.send(txs, blocking=False)
     return JSONResponse({"message": "Transfer sent"})
 
-def __transfer(data: dict[str, Any]) -> None:
+def apply_transfer(data: dict[str, Any]) -> None:
     """Executes a transfer after batch processing."""
     sender, receiver, amount, signature = (
         data["sender"], data["receiver"], data["amount"], data["signature"]
@@ -98,7 +98,7 @@ def process_loop() -> None:
     for batch, index in zellular.batches():
         txs = json.loads(batch)
         for tx in txs:
-            __transfer(tx)
+            apply_transfer(tx)
 
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()
