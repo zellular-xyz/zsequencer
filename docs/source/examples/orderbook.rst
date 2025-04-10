@@ -161,29 +161,20 @@ Backend Verification
 
 The server reconstructs the message and verifies the signature:
 
-.. code-block:: python
 
-   message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
-   encoded = encode_defunct(text=message)
-   recovered = Account.recover_message(encoded, signature=order.signature)
+.. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
+   :language: python
+   :lines: 142-148
 
-   if recovered.lower() != order.sender.lower():
-       raise HTTPException(status_code=401, detail="Invalid signature")
 
-Order Request Format
-~~~~~~~~~~~~~~~~~~~~
+.. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
+   :language: python
+   :lines: 27-34
 
-.. code-block:: json
+.. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
+   :language: python
+   :lines: 46-50
 
-   {
-     "sender": "0xYourAddress",
-     "order_type": "buy",
-     "base_token": "ETH",
-     "quote_token": "USDT",
-     "quantity": 1.5,
-     "price": 2000,
-     "signature": "0x..."
-   }
 
 Testing with Script
 ~~~~~~~~~~~~~~~~~~~
@@ -234,28 +225,9 @@ Order Submission
 
 Orders are received at the `/order` endpoint. After signature verification and basic balance check, they are submitted to the sequencer:
 
-.. code-block:: python
-
-	@app.post("/order")
-	def place_order(order: OrderRequest):
-	    message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
-	    if not verify_signature(order.sender, message, order.signature):
-	        raise HTTPException(status_code=401, detail="Invalid signature")
-
-	    order_payload = {
-	        "id": str(uuid4()),
-	        "user": order.sender,
-	        "order_type": order.order_type,
-	        "base_token": order.base_token,
-	        "quote_token": order.quote_token,
-	        "quantity": order.quantity,
-	        "price": order.price,
-	        "signature": order.signature
-	    }
-
-	    # Send to Zellular for consensus-based processing
-	    zellular.send([order_payload], blocking=False)
-	    return JSONResponse({"message": "Order sent to consensus layer"})
+.. literalinclude:: ../../../examples/orderbook/03_replicated_orderbook_service.py
+   :language: python
+   :lines: 56-75
 
 This means the order will be processed once it appears in a sequenced batch.
 
@@ -264,11 +236,10 @@ Order Processing Loop
 
 Each node runs a background thread to pull and apply new batches from Zellular:
 
-.. code-block:: python
 
-   for batch, _ in zellular.batches():
-       for order in json.loads(batch):
-           __place_order(order)
+.. literalinclude:: ../../../examples/orderbook/03_replicated_orderbook_service.py
+   :language: python
+   :lines: 194-201
 
 This ensures that all replicas receive and apply the same operations in the same order.
 
@@ -309,18 +280,10 @@ Balance Endpoint
 
 The `/balance` endpoint now accepts both an address and token:
 
-.. code-block:: python
 
-   @app.get("/balance")
-   def get_balance(address: str, token: str):
-       balance = balances.get(address, {}).get(token, 0)
-       message = f"Address: {address}, Balance: {balance}".encode("utf-8")
-       signature = PopSchemeMPL.sign(sk, message)
-       return {
-           "address": address,
-           "balance": balance,
-           "signature": str(signature)
-       }
+.. literalinclude:: ../../../examples/orderbook/04_verifiable_orderbook_service.py
+   :language: python
+   :lines: 57-63
 
 The message is signed using the BLS POP (Proof of Possession) scheme from the blspy library and the resulting signature is included in the API response.
 

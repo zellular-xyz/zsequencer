@@ -74,18 +74,17 @@ This implementation uses the **EigenLayer-style BLS verification model**, where 
 
 When a subset of nodes fail to sign (or return invalid responses), their public keys are effectively **subtracted** from the aggregated key — not by using subtraction directly (which `blspy` doesn't support), but by **adding the negation** of each missing key:
 
-.. code-block:: python
-
-   node_pubkey = G1Element.from_bytes(bytes.fromhex(pubkey)).negate()
-   aggregated_pubkey += node_pubkey  # Equivalent to subtraction
+.. literalinclude:: ../../../examples/verification/verify_aggregated_signature.py
+   :language: python
+   :lines: 39-41
 
 This adjusted public key reflects only the nodes that signed.
 
 The final verification step looks like:
 
-.. code-block:: python
-
-   PopSchemeMPL.verify(adjusted_pubkey, message, aggregated_signature)
+.. literalinclude:: ../../../examples/verification/verify_aggregated_signature.py
+   :language: python
+   :lines: 49
 
 This verifies that a quorum of nodes cryptographically agreed on the result.
 

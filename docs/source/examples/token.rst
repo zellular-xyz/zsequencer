@@ -104,50 +104,18 @@ For example:
 Client-Side Signing (Python Example)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
-
-   from eth_account import Account
-   from eth_account.messages import encode_defunct
-
-   private_key = "0x..."
-   message = f"Transfer {amount} to {receiver}"
-   encoded = encode_defunct(text=message)
-   signed = Account.sign_message(encoded, private_key=private_key)
-
-   signature = signed.signature.hex()
-   sender = Account.from_key(private_key).address
+.. literalinclude:: ../../../examples/token/transfer.py
+   :language: python
+   :lines: 12-15
 
 Backend Verification
 ~~~~~~~~~~~~~~~~~~~~
 
 On the server:
 
-.. code-block:: python
-
-   message = f"Transfer {amount} to {receiver}"
-   encoded = encode_defunct(text=message)
-   recovered = Account.recover_message(encoded, signature=signature)
-
-   if recovered.lower() != sender.lower():
-       raise HTTPException(status_code=401, detail="Invalid signature")
-
-   if balances.get(sender, 0) < amount:
-       raise HTTPException(status_code=400, detail="Insufficient balance")
-
-   balances[sender] -= amount
-   balances[receiver] = balances.get(receiver, 0) + amount
-
-Request Format
-~~~~~~~~~~~~~~
-
-.. code-block:: json
-
-   {
-     "sender": "0xYourAddress",
-     "receiver": "0xRecipientAddress",
-     "amount": 10,
-     "signature": "0x..."
-   }
+.. literalinclude:: ../../../examples/token/02_signature_based_token_service.py
+   :language: python
+   :lines: 13-41
 
 Test Script
 ~~~~~~~~~~~
@@ -221,15 +189,9 @@ Transfer Submission
 
 Transfers are submitted via the `/transfer` route, verified as before, and then sent to the Zellular Sequencer:
 
-.. code-block:: python
-
-   txs = [{
-       "sender": data.sender,
-       "receiver": data.receiver,
-       "amount": data.amount,
-       "signature": data.signature
-   }]
-   zellular.send(txs, blocking=False)
+.. literalinclude:: ../../../examples/token/03_replicated_token_service.py
+   :language: python
+   :lines: 50-57
 
 This appends the transfer to the global sequence shared by all replicas.
 
@@ -238,14 +200,11 @@ Processing Batches from Zellular
 
 Each replica runs a background loop using the SDK to process batches:
 
-.. code-block:: python
+.. literalinclude:: ../../../examples/token/03_replicated_token_service.py
+   :language: python
+   :lines: 84-89
 
-   for batch, index in zellular.batches():
-       txs = json.loads(batch)
-       for tx in txs:
-           __transfer(tx)
-
-The `__transfer(tx)` function:
+The `apply_transfer(tx)` function:
 
 1. Reconstructs the signed message
 2. Verifies the signature
@@ -257,22 +216,9 @@ This ensures all replicas apply transfers **in the same order** and reach the sa
 Full Transfer Verification Logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
-
-   def __transfer(data: Dict[str, Any]) -> None:
-       sender, receiver, amount, signature = (
-           data["sender"], data["receiver"], data["amount"], data["signature"]
-       )
-       message = f"Transfer {amount} to {receiver}"
-       if not verify_signature(sender, message, signature):
-           logger.error(f"Invalid signature: {data}")
-           return
-       if balances.get(sender, 0) < amount:
-           logger.error(f"Insufficient balance: {data}")
-           return
-       balances[sender] -= amount
-       balances[receiver] = balances.get(receiver, 0) + amount
-       logger.info(f"Transfer successful: {data}")
+.. literalinclude:: ../../../examples/token/03_replicated_token_service.py
+   :language: python
+   :lines: 60-77
 
 Why This Matters
 ~~~~~~~~~~~~~~~~
@@ -317,20 +263,10 @@ Balance Endpoint
 
 The `/balance` endpoint signs the message before returning it:
 
-.. code-block:: python
 
-   from blspy import PopSchemeMPL
-
-   @app.get("/balance")
-   async def balance(address: str) -> Dict[str, Any]:
-       balance = balances.get(address, 0)
-       message = f"Address: {address}, Balance: {balance}".encode("utf-8")
-       signature = PopSchemeMPL.sign(sk, message)
-       return {
-           "address": address,
-           "balance": balance,
-           "signature": str(signature)
-       }
+.. literalinclude:: ../../../examples/token/04_verifiable_token_service.py
+   :language: python
+   :lines: 88-94
 
 The message is signed using the BLS POP (Proof of Possession) scheme from the `blspy` library and the resulting `signature` is included in the API response.
 
