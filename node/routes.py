@@ -6,6 +6,7 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
+from node import switch
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
@@ -120,7 +121,7 @@ def post_switch_sequencer() -> Response:
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
     def run_switch_sequencer():
-        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
+        switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
     zlogger.info(f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.")
     threading.Thread(target=run_switch_sequencer).start()
@@ -167,6 +168,21 @@ def get_last_finalized_batch(app_name: str) -> Response:
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
     return success_response(
         data=batch_record_to_stateful_batch(last_finalized_batch_record)
+    )
+
+
+@node_blueprint.route("/batches/finalized/last", methods=["POST"])
+@utils.validate_version
+def get_last_finalized_batches_in_bulk_mode() -> Response:
+    """Get the last finalized batch record for a given app."""
+    apps = request.get_json()
+    valid_apps = [app_name for app_name in apps if app_name in set(zconfig.APPS)]
+    last_finalized_batch_records = {
+        app_name: batch_record_to_stateful_batch(zdb.get_last_operational_batch_record_or_empty(app_name, "finalized"))
+        for app_name in valid_apps
+    }
+    return success_response(
+        data=last_finalized_batch_records
     )
 
 
