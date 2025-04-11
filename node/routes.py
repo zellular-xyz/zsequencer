@@ -171,6 +171,21 @@ def get_last_finalized_batch(app_name: str) -> Response:
     )
 
 
+@node_blueprint.route("/batches/finalized/last", methods=["POST"])
+@utils.validate_version
+def get_last_finalized_batches_in_bulk_mode() -> Response:
+    """Get the last finalized batch record for a given app."""
+    apps = request.get_json()
+    valid_apps = [app_name for app_name in apps if app_name in set(zconfig.APPS)]
+    last_finalized_batch_records = {
+        app_name: batch_record_to_stateful_batch(zdb.get_last_operational_batch_record_or_empty(app_name, "finalized"))
+        for app_name in valid_apps
+    }
+    return success_response(
+        data=last_finalized_batch_records
+    )
+
+
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
 @utils.validate_version
 def get_batches(app_name: str, state: str) -> Response:
