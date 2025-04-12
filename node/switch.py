@@ -95,10 +95,13 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
                 timeout=aiohttp.ClientTimeout(total=10)
         ) as response:
             if response.status != 200:
+                error_text = await response.text()
+                zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {error_text}")
                 return {}
 
             data = await response.json()
             if data.get("status") == "error":
+                zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {data}")
                 return {}
 
             return {
@@ -106,7 +109,7 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
                 for app_name, batch_data in data["data"].items()
             }
     except Exception as e:
-        zlogger.warning(f"Failed to fetch from node {node['id']}: {str(e)}")
+        zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {e}")
         return {}
 
 
