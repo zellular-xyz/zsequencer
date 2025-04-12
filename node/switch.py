@@ -136,7 +136,7 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
         for app_name in apps
     }
 
-    highest_records = local_records.copy()
+    highest_records = local_records
     highest_indices = {
         app_name: record.get("index", 0)
         for app_name, record in local_records.items()
