@@ -1,7 +1,7 @@
 """This module defines the Flask blueprint for node-related routes."""
 
-import time
 import threading
+import time
 from typing import Any
 
 from flask import Blueprint, Response, request
@@ -14,6 +14,7 @@ from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
 from settings import MODE_PROD
+
 from . import tasks
 
 node_blueprint = Blueprint("node", __name__)
@@ -35,7 +36,7 @@ def put_bulk_batches() -> Response:
 
     for app_name, batches in filtered_batches_mapping.items():
         zlogger.info(
-            f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}."
+            f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.",
         )
         zdb.init_batches(app_name, [str(item) for item in list(batches)])
 
@@ -63,7 +64,7 @@ def put_batches(app_name: str) -> Response:
 @utils.not_sequencer
 @utils.is_synced
 @utils.validate_body_keys(
-    required_keys=["app_name", "state", "index", "hash", "chaining_hash"]
+    required_keys=["app_name", "state", "index", "hash", "chaining_hash"],
 )
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
@@ -84,7 +85,7 @@ def post_sign_sync_point() -> Response:
         "apps_missed_batches",
         "is_sequencer_down",
         "timestamp",
-    ]
+    ],
 )
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
@@ -126,7 +127,7 @@ def post_switch_sequencer() -> Response:
         tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
     zlogger.info(
-        f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
+        f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.",
     )
     threading.Thread(target=run_switch_sequencer).start()
 
@@ -135,7 +136,7 @@ def post_switch_sequencer() -> Response:
 
 @node_blueprint.route("/state", methods=["GET"])
 @utils.conditional_decorator(
-    condition=lambda: (zconfig.get_mode() == MODE_PROD), decorator=utils.not_sequencer
+    condition=lambda: (zconfig.get_mode() == MODE_PROD), decorator=utils.not_sequencer,
 )
 def get_state() -> Response:
     """Get the state of the node and its apps."""
@@ -151,27 +152,27 @@ def get_state() -> Response:
 
     for app_name in list(zconfig.APPS.keys()):
         last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
-            app_name, "sequenced"
+            app_name, "sequenced",
         )
         last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
-            app_name, "locked"
+            app_name, "locked",
         )
         last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-            app_name, "finalized"
+            app_name, "finalized",
         )
 
         data["apps"][app_name] = {
             "last_sequenced_index": last_sequenced_batch_record.get("index", 0),
             "last_sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "hash", ""
+                "hash", "",
             ),
             "last_locked_index": last_locked_batch_record.get("index", 0),
             "last_locked_hash": last_locked_batch_record.get("batch", {}).get(
-                "hash", ""
+                "hash", "",
             ),
             "last_finalized_index": last_finalized_batch_record.get("index", 0),
             "last_finalized_hash": last_finalized_batch_record.get("batch", {}).get(
-                "hash", ""
+                "hash", "",
             ),
         }
     return success_response(data=data)
@@ -184,10 +185,10 @@ def get_last_finalized_batch(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "finalized"
+        app_name, "finalized",
     )
     return success_response(
-        data=batch_record_to_stateful_batch(last_finalized_batch_record)
+        data=batch_record_to_stateful_batch(last_finalized_batch_record),
     )
 
 
@@ -235,5 +236,5 @@ def get_batches(app_name: str, state: str) -> Response:
             "batches": [batch["body"] for batch in batch_sequence.batches()],
             "first_chaining_hash": first_chaining_hash,
             "finalized": finalized,
-        }
+        },
     )

@@ -1,22 +1,23 @@
 from __future__ import annotations
+
 import gzip
+import itertools
 import json
 import math
 import os
 import threading
 import time
-from typing import Any
-from threading import Thread
-from config import zconfig
-from utils import get_file_content
-from common import utils
-from common.logger import zlogger
-import itertools
-from typing import TypedDict
 from collections.abc import Iterable
-from common.state import OperationalState
+from threading import Thread
+from typing import Any, TypedDict
+
+from common import utils
 from common.batch import Batch, BatchRecord
 from common.batch_sequence import BatchSequence
+from common.logger import zlogger
+from common.state import OperationalState
+from config import zconfig
+from utils import get_file_content
 
 
 class App(TypedDict, total=False):
@@ -53,7 +54,7 @@ class InMemoryDB:
         self.is_sequencer_down = False
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
-            target=self._fetch_apps_and_network_state_periodically
+            target=self._fetch_apps_and_network_state_periodically,
         )
         self._fetching_thread.start()
 
@@ -78,7 +79,7 @@ class InMemoryDB:
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
             snapshot_path = os.path.join(
-                zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name
+                zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name,
             )
             os.makedirs(snapshot_path, exist_ok=True)
 
@@ -87,14 +88,14 @@ class InMemoryDB:
         while True:
             try:
                 self._fetch_apps()
-            except:
+            except Exception:
                 zlogger.error("An unexpected error occurred while fetching apps data.")
 
             try:
                 zconfig.fetch_network_state()
-            except:
+            except Exception:
                 zlogger.error(
-                    "An unexpected error occurred while fetching network state."
+                    "An unexpected error occurred while fetching network state.",
                 )
 
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
@@ -112,27 +113,16 @@ class InMemoryDB:
                 "initialized_batch_map": {},
                 "operational_batch_sequence": finalized_batch_sequence,
                 "operational_batch_hash_index_map": cls._generate_batch_hash_index_map(
-                    finalized_batch_sequence
+                    finalized_batch_sequence,
                 ),
                 "missed_batch_map": {},
             }
 
         return result
 
-    # TODO: Remove the unused method.
-    @staticmethod
-    def _load_keys() -> dict[str, Any]:
-        """Load keys from the snapshot file."""
-        keys_path = os.path.join(zconfig.SNAPSHOT_PATH, "keys.json.gz")
-        try:
-            with gzip.open(keys_path, "rt", encoding="UTF-8") as file:
-                return json.load(file)
-        except (OSError, IOError, json.JSONDecodeError):
-            return {}
-
     @classmethod
     def _load_finalized_batch_sequence(
-        cls, app_name: str, index: int | None = None
+        cls, app_name: str, index: int | None = None,
     ) -> BatchSequence:
         """Load finalized batches for a given app from the snapshot file."""
         snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
@@ -160,7 +150,7 @@ class InMemoryDB:
                 return BatchSequence.from_mapping(json.load(file))
         except (FileNotFoundError, EOFError):
             pass
-        except (OSError, IOError, json.JSONDecodeError) as error:
+        except (OSError, json.JSONDecodeError):
             zlogger.error(
                 "An error occurred while loading finalized batches for %s: %s",
                 app_name,
@@ -168,7 +158,7 @@ class InMemoryDB:
         return BatchSequence()
 
     def _save_finalized_chunk_then_prune(
-        self, app_name: str, snapshot_index: int
+        self, app_name: str, snapshot_index: int,
     ) -> None:
         try:
             snapshot_border_index = max(
@@ -186,7 +176,7 @@ class InMemoryDB:
                 BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
             )
             self._prune_old_finalized_batches(app_name, remove_border_index)
-        except Exception as error:
+        except Exception:
             zlogger.error(
                 "An error occurred while saving snapshot for %s at index %d: %s",
                 app_name,
@@ -194,11 +184,11 @@ class InMemoryDB:
             )
 
     def _save_finalized_batches_chunk_to_file(
-        self, app_name: str, border_index: int, end_index: int
+        self, app_name: str, border_index: int, end_index: int,
     ) -> None:
         snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
         with gzip.open(
-            snapshot_dir + f"/{str(end_index).zfill(7)}.json.gz", "wt", encoding="UTF-8"
+            snapshot_dir + f"/{str(end_index).zfill(7)}.json.gz", "wt", encoding="UTF-8",
         ) as file:
             json.dump(
                 self.apps[app_name]["operational_batch_sequence"]
@@ -213,7 +203,7 @@ class InMemoryDB:
         ].filter(start_exclusive=border_index)
         self.apps[app_name]["operational_batch_hash_index_map"] = (
             self._generate_batch_hash_index_map(
-                self.apps[app_name]["operational_batch_sequence"]
+                self.apps[app_name]["operational_batch_sequence"],
             )
         )
 
@@ -234,18 +224,18 @@ class InMemoryDB:
 
         current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
         next_chunk = math.ceil(
-            (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK
+            (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK,
         )
         finalized_chunk = math.ceil(
             self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default(
-                "finalized"
+                "finalized",
             )
-            / zconfig.SNAPSHOT_CHUNK
+            / zconfig.SNAPSHOT_CHUNK,
         )
 
         if current_chunk < finalized_chunk:
             loaded_finalized_batches = self._load_finalized_batch_sequence(
-                app_name, after + 1
+                app_name, after + 1,
             )
             self._append_unique_batches_after_index(
                 loaded_finalized_batches,
@@ -260,7 +250,7 @@ class InMemoryDB:
             and next_chunk < finalized_chunk
         ):
             loaded_finalized_batches = self._load_finalized_batch_sequence(
-                app_name, after + 1 + len(batch_sequence)
+                app_name, after + 1 + len(batch_sequence),
             )
             self._append_unique_batches_after_index(
                 loaded_finalized_batches,
@@ -282,7 +272,7 @@ class InMemoryDB:
         return batch_sequence
 
     def get_batch_record_by_hash_or_empty(
-        self, app_name: str, batch_hash: str
+        self, app_name: str, batch_hash: str,
     ) -> BatchRecord:
         """Get a batch by its hash."""
         if batch_hash in self.apps[app_name]["initialized_batch_map"]:
@@ -291,10 +281,9 @@ class InMemoryDB:
                 "index": BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
                 "state": "initialized",
             }
-        else:
-            return self._get_operational_batch_record_by_hash_or_empty(
-                app_name, batch_hash
-            )
+        return self._get_operational_batch_record_by_hash_or_empty(
+            app_name, batch_hash,
+        )
 
     def get_still_sequenced_batches(self, app_name: str) -> list[Batch]:
         """Get batches that are not finalized based on the finalization time border."""
@@ -325,15 +314,15 @@ class InMemoryDB:
                 }
 
     def get_last_operational_batch_record_or_empty(
-        self, app_name: str, state: OperationalState
+        self, app_name: str, state: OperationalState,
     ) -> BatchRecord:
         """Get the last batch view for a given state."""
         return self.apps[app_name]["operational_batch_sequence"].get_last_or_empty(
-            state
+            state,
         )
 
     def sequencer_init_batches(
-        self, app_name: str, initializing_batches: list[Batch]
+        self, app_name: str, initializing_batches: list[Batch],
     ) -> None:
         """Initialize and sequence batches."""
         if not initializing_batches:
@@ -353,7 +342,7 @@ class InMemoryDB:
             batch_hash = utils.gen_hash(batch["body"])
             if batch["hash"] != batch_hash:
                 zlogger.warning(
-                    f"Invalid batch hash: expected {batch_hash} got {batch['hash']}"
+                    f"Invalid batch hash: expected {batch_hash} got {batch['hash']}",
                 )
                 continue
 
@@ -361,11 +350,11 @@ class InMemoryDB:
             batch.update(
                 {
                     "chaining_hash": chaining_hash,
-                }
+                },
             )
 
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
-                batch
+                batch,
             )
             self.apps[app_name]["operational_batch_hash_index_map"][batch_hash] = (
                 batch_index
@@ -391,7 +380,7 @@ class InMemoryDB:
             chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             if batch["chaining_hash"] != chaining_hash:
                 zlogger.warning(
-                    f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}"
+                    f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}",
                 )
                 return
 
@@ -399,7 +388,7 @@ class InMemoryDB:
 
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
-                batch
+                batch,
             )
             self.apps[app_name]["operational_batch_hash_index_map"][batch["hash"]] = (
                 batch_index
@@ -410,7 +399,7 @@ class InMemoryDB:
         if signature_data["index"] <= self.apps[app_name][
             "operational_batch_sequence"
         ].get_last_index_or_default(
-            "locked", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+            "locked", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
         ):
             return
 
@@ -420,28 +409,28 @@ class InMemoryDB:
         ):
             zlogger.warning(
                 f"The locking {signature_data=} hash couldn't be found in the "
-                "operational batches."
+                "operational batches.",
             )
             return
 
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
-            app_name, signature_data["hash"]
+            app_name, signature_data["hash"],
         ).get("batch", {})
         target_batch["lock_signature"] = signature_data["signature"]
         target_batch["locked_nonsigners"] = signature_data["nonsigners"]
         target_batch["locked_tag"] = signature_data["tag"]
         self.apps[app_name]["operational_batch_sequence"].promote(
-            last_index=signature_data["index"], target_state="locked"
+            last_index=signature_data["index"], target_state="locked",
         )
 
     def finalize_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """Update batches to 'finalized' state up to a specified index and save snapshots."""
         if signature_data.get(
-            "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+            "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
         ) <= self.apps[app_name][
             "operational_batch_sequence"
         ].get_last_index_or_default(
-            "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+            "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
         ):
             return
 
@@ -451,7 +440,7 @@ class InMemoryDB:
         ):
             zlogger.warning(
                 f"The finalizing {signature_data=} hash couldn't be found in the "
-                "operational batches."
+                "operational batches.",
             )
             return
 
@@ -465,13 +454,13 @@ class InMemoryDB:
                 snapshot_indexes.append(index)
 
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
-            app_name, signature_data["hash"]
+            app_name, signature_data["hash"],
         ).get("batch", {})
         target_batch["finalization_signature"] = signature_data["signature"]
         target_batch["finalized_nonsigners"] = signature_data["nonsigners"]
         target_batch["finalized_tag"] = signature_data["tag"]
         self.apps[app_name]["operational_batch_sequence"].promote(
-            last_index=signature_data["index"], target_state="finalized"
+            last_index=signature_data["index"], target_state="finalized",
         )
 
         for snapshot_index in snapshot_indexes:
@@ -501,7 +490,7 @@ class InMemoryDB:
         ]
 
     def upsert_locked_sync_point(
-        self, app_name: str, signature_data: SignatureData
+        self, app_name: str, signature_data: SignatureData,
     ) -> None:
         """Upsert the locked sync point for an app."""
         self.apps[app_name]["nodes_state"]["locked_sync_point"] = {
@@ -514,7 +503,7 @@ class InMemoryDB:
         }
 
     def upsert_finalized_sync_point(
-        self, app_name: str, signature_data: SignatureData
+        self, app_name: str, signature_data: SignatureData,
     ) -> None:
         """Upsert the finalized sync point for an app."""
         self.apps[app_name]["nodes_state"]["finalized_sync_point"] = {
@@ -535,19 +524,19 @@ class InMemoryDB:
         return self.apps[app_name]["nodes_state"].get("finalized_sync_point", {})
 
     def add_missed_batches(
-        self, app_name: str, missed_batches: Iterable[Batch]
+        self, app_name: str, missed_batches: Iterable[Batch],
     ) -> None:
         """Add missed batches."""
         self.apps[app_name]["missed_batch_map"].update(
-            self._generate_batch_map(missed_batches)
+            self._generate_batch_map(missed_batches),
         )
 
     def set_missed_batches(
-        self, app_name: str, missed_batches: Iterable[Batch]
+        self, app_name: str, missed_batches: Iterable[Batch],
     ) -> None:
-        """set missed batches."""
+        """Set missed batches."""
         self.apps[app_name]["missed_batch_map"] = self._generate_batch_map(
-            missed_batches
+            missed_batches,
         )
 
     def clear_missed_batches(self, app_name: str) -> None:
@@ -615,7 +604,7 @@ class InMemoryDB:
 
         if zconfig.NODE["id"] == new_sequencer_id:
             zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s", zconfig.NODE["id"]
+                "This node is acting as the SEQUENCER. ID: %s", zconfig.NODE["id"],
             )
             self._resequence_batches(
                 app_name,
@@ -623,7 +612,7 @@ class InMemoryDB:
             )
         else:
             self._reinitialize_batches(
-                app_name, all_nodes_last_finalized_batch_record["index"]
+                app_name, all_nodes_last_finalized_batch_record["index"],
             )
 
         self.apps[app_name]["nodes_state"] = {}
@@ -636,7 +625,7 @@ class InMemoryDB:
     ) -> None:
         """Resequence batches after a switch in the sequencer."""
         chaining_hash = all_nodes_last_finalized_batch_record.get("batch", {}).get(
-            "chaining_hash", ""
+            "chaining_hash", "",
         )
         resequencing_batches = itertools.chain(
             self.apps[app_name]["operational_batch_sequence"]
@@ -645,7 +634,7 @@ class InMemoryDB:
                 # the last finalized batch across all nodes instead of all locally
                 # non-finalized batches, as the fully finalized batch across all nodes
                 # may differ from the local last finalized batch.
-                exclude_state="finalized"
+                exclude_state="finalized",
             )
             .batches(),
             self.apps[app_name]["initialized_batch_map"].values(),
@@ -666,18 +655,18 @@ class InMemoryDB:
         self.apps[app_name]["initialized_batch_map"] = {}
         self.apps[app_name]["operational_batch_sequence"] = (
             self.apps[app_name]["operational_batch_sequence"].filter(
-                target_state="finalized"
+                target_state="finalized",
             )
             + resequenced_batches_list
         )
         self.apps[app_name]["operational_batch_hash_index_map"] = (
             self._generate_batch_hash_index_map(
-                self.apps[app_name]["operational_batch_sequence"]
+                self.apps[app_name]["operational_batch_sequence"],
             )
         )
 
     def _reinitialize_batches(
-        self, app_name: str, all_nodes_last_finalized_batch_index: int
+        self, app_name: str, all_nodes_last_finalized_batch_index: int,
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
         for batch in (
@@ -725,11 +714,11 @@ class InMemoryDB:
             target_batches_hash_set.add(batch["hash"])
 
     def _get_operational_batch_record_by_hash_or_empty(
-        self, app_name: str, batch_hash: str
+        self, app_name: str, batch_hash: str,
     ) -> BatchRecord:
         return self.apps[app_name]["operational_batch_sequence"].get_or_empty(
             self.apps[app_name]["operational_batch_hash_index_map"].get(
-                batch_hash, BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+                batch_hash, BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
             ),
         )
 

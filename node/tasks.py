@@ -1,5 +1,4 @@
-"""
-This module handles node tasks like sending batches of transactions, synchronization with the sequencer,
+"""This module handles node tasks like sending batches of transactions, synchronization with the sequencer,
 dispute handling, and switching sequencers.
 """
 
@@ -8,7 +7,6 @@ import json
 import threading
 import time
 from typing import Any
-from typing import List
 
 import aiohttp
 import requests
@@ -28,7 +26,7 @@ def check_finalization() -> None:
     """Check and add not finalized batches to missed batches."""
     for app_name in list(zconfig.APPS.keys()):
         not_finalized_batches: list[dict[str, Any]] = zdb.get_still_sequenced_batches(
-            app_name
+            app_name,
         )
         if not_finalized_batches:
             zdb.add_missed_batches(app_name, not_finalized_batches)
@@ -60,7 +58,7 @@ def send_app_batches_iteration(app_name):
     finish_condition = (
         not sequencer_last_finalized_hash
         or zdb.get_batch_record_by_hash_or_empty(
-            app_name, sequencer_last_finalized_hash
+            app_name, sequencer_last_finalized_hash,
         )
     )
     return finish_condition
@@ -71,10 +69,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     initialized_batches: dict[str, Any] = zdb.get_batch_map(app_name=app_name)
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="sequenced"
+        app_name=app_name, state="sequenced",
     )
     last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="locked"
+        app_name=app_name, state="locked",
     )
 
     concat_hash: str = "".join(initialized_batches.keys())
@@ -87,18 +85,18 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             "signature": concat_sig,
             "sequenced_index": last_sequenced_batch_record.get("index", 0),
             "sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "hash", ""
+                "hash", "",
             ),
             "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "chaining_hash", ""
+                "chaining_hash", "",
             ),
             "locked_index": last_locked_batch_record.get("index", 0),
             "locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
             "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get(
-                "chaining_hash", ""
+                "chaining_hash", "",
             ),
             "timestamp": int(time.time()),
-        }
+        },
     )
 
     url: str = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
@@ -127,14 +125,14 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             zdb.clear_missed_batches(app_name)
 
             seq_tag = max(
-                sequencer_resp["locked"]["tag"], sequencer_resp["finalized"]["tag"]
+                sequencer_resp["locked"]["tag"], sequencer_resp["finalized"]["tag"],
             )
             if seq_tag != 0:
                 zconfig.NETWORK_STATUS_TAG = seq_tag
 
     except Exception:
         zlogger.error(
-            "An unexpected error occurred, while sending batches to sequencer"
+            "An unexpected error occurred, while sending batches to sequencer",
         )
         zdb.add_missed_batches(app_name, initialized_batches.values())
         zdb.is_sequencer_down = True
@@ -150,10 +148,10 @@ def sync_with_sequencer(
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(
-        app_name=app_name, batches=sequencer_response["batches"]
+        app_name=app_name, batches=sequencer_response["batches"],
     )
     last_locked_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "locked"
+        app_name, "locked",
     ).get("index", 0)
     if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
@@ -174,7 +172,7 @@ def sync_with_sequencer(
             zlogger.error("Invalid locking signature received from sequencer")
 
     last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "finalized"
+        app_name, "finalized",
     ).get("index", 0)
     if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
@@ -231,9 +229,9 @@ def check_censorship(
 
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
-    """confirm and sign the sync point"""
+    """Confirm and sign the sync point"""
     batch_record = zdb.get_batch_record_by_hash_or_empty(
-        sync_point["app_name"], sync_point["hash"]
+        sync_point["app_name"], sync_point["hash"],
     )
     batch = batch_record.get("batch", {})
     if (
@@ -256,7 +254,7 @@ def _validate_nonsigners_stake(nonsigners_stake: int, total_stake: int):
 
 
 def compute_signature_public_key(
-    nodes_info, agg_pub_key, non_signers: List[str]
+    nodes_info, agg_pub_key, non_signers: list[str],
 ) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = agg_pub_key
     for node_id in non_signers:
@@ -274,8 +272,7 @@ def is_sync_point_signature_verified(
     signature_hex: str,
     nonsigners: list[str],
 ) -> bool:
-    """
-    Should first load the state of network nodes info using signature tag
+    """Should first load the state of network nodes info using signature tag
 
     Verify the BLS signature of a synchronization point.
     """
@@ -283,15 +280,15 @@ def is_sync_point_signature_verified(
     nodes_info = network_state.nodes
 
     nonsigners_stake = sum(
-        [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners]
+        [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners],
     )
     agg_pub_key = compute_signature_public_key(
-        nodes_info, network_state.aggregated_public_key, nonsigners
+        nodes_info, network_state.aggregated_public_key, nonsigners,
     )
 
     if not _validate_nonsigners_stake(nonsigners_stake, network_state.total_stake):
         zlogger.error(
-            f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}"
+            f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}",
         )
         return False
 
@@ -307,10 +304,10 @@ def is_sync_point_signature_verified(
     )
     message: str = utils.gen_hash(data)
     zlogger.info(
-        f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}"
+        f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}",
     )
     return bls.is_bls_sig_verified(
-        signature_hex=signature_hex, message=message, public_key=agg_pub_key
+        signature_hex=signature_hex, message=message, public_key=agg_pub_key,
     )
 
 
@@ -331,7 +328,7 @@ async def gather_disputes() -> dict[str, Any] | None:
     )
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(
-            pending_tasks, return_when=asyncio.FIRST_COMPLETED
+            pending_tasks, return_when=asyncio.FIRST_COMPLETED,
         )
         for task in done:
             if not task.result() or not utils.is_dispute_approved(task.result()):
@@ -344,7 +341,6 @@ async def gather_disputes() -> dict[str, Any] | None:
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
-
     is_not_synced = not zconfig.get_synced_flag()
     no_missed_batches = not zdb.has_missed_batches()
     sequencer_up = not zdb.is_sequencer_down
@@ -355,7 +351,7 @@ async def send_dispute_requests() -> None:
 
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
-        old_sequencer_id=zconfig.SEQUENCER["id"]
+        old_sequencer_id=zconfig.SEQUENCER["id"],
     )
     proofs: list[dict[str, Any]] = []
     proofs.append(
@@ -365,21 +361,21 @@ async def send_dispute_requests() -> None:
             "new_sequencer_id": new_sequencer_id,
             "timestamp": timestamp,
             "signature": utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
-        }
+        },
     )
 
     try:
         responses, stake_percent = await asyncio.wait_for(
-            gather_disputes(), timeout=zconfig.AGGREGATION_TIMEOUT
+            gather_disputes(), timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         zlogger.warning(
-            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds."
+            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return
     except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
-        return None
+        return
 
     if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
         return
@@ -391,7 +387,7 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-    node: dict[str, Any], is_sequencer_down: bool
+    node: dict[str, Any], is_sequencer_down: bool,
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
@@ -401,13 +397,13 @@ async def send_dispute_request(
             "apps_missed_batches": zdb.get_apps_missed_batches(),
             "is_sequencer_down": is_sequencer_down,
             "timestamp": timestamp,
-        }
+        },
     )
     url: str = f"{node['socket']}/node/dispute"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=url, data=data, headers=zconfig.HEADERS
+                url=url, data=data, headers=zconfig.HEADERS,
             ) as response:
                 response_json: dict[str, Any] = await response.json()
                 if response_json["status"] == "success":
@@ -422,14 +418,14 @@ async def send_switch_request(session, node, proofs):
         {
             "proofs": proofs,
             "timestamp": int(time.time()),
-        }
+        },
     )
     url = f"{node['socket']}/node/switch"
 
     try:
         async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
             await response.text()  # Consume the response
-    except Exception as error:
+    except Exception:
         zlogger.error(f"Error occurred while sending switch request to {node['id']}")
 
 
@@ -460,11 +456,11 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
 
         for app_name in list(zconfig.APPS.keys()):
             highest_finalized_batch_record = find_all_nodes_last_finalized_batch_record(
-                app_name
+                app_name,
             )
             if highest_finalized_batch_record:
                 zdb.reinitialize(
-                    app_name, new_sequencer_id, highest_finalized_batch_record
+                    app_name, new_sequencer_id, highest_finalized_batch_record,
                 )
             zdb.reset_not_finalized_batches_timestamps(app_name)
 
@@ -477,7 +473,7 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
 def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
     """Find the last finalized batch record from all nodes."""
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="finalized"
+        app_name=app_name, state="finalized",
     )
 
     for node in list(zconfig.NODES.values()):
@@ -487,21 +483,21 @@ def find_all_nodes_last_finalized_batch_record(app_name: str) -> BatchRecord:
         url: str = f"{node['socket']}/node/{app_name}/batches/finalized/last"
         try:
             response: dict[str, Any] = requests.get(
-                url=url, headers=zconfig.HEADERS
+                url=url, headers=zconfig.HEADERS,
             ).json()
             if response["status"] == "error":
                 continue
             batch_record: dict[str, Any] = stateful_batch_to_batch_record(
-                response["data"]
+                response["data"],
             )
             if batch_record.get("index", 0) > last_finalized_batch_record.get(
-                "index", 0
+                "index", 0,
             ):
                 last_finalized_batch_record = batch_record
         except Exception:
             zlogger.error(
                 f"An unexpected error occurred while querying node {node['id']} "
-                f"for the last finalized batch at {url}"
+                f"for the last finalized batch at {url}",
             )
 
     return last_finalized_batch_record

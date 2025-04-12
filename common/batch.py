@@ -1,4 +1,5 @@
 from typing import TypedDict, cast
+
 from common.state import State
 
 
@@ -42,7 +43,7 @@ class StatefulBatch(TypedDict, total=False):
 
 def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
     return cast(
-        StatefulBatch,
+        "StatefulBatch",
         {
             key: value
             for key, value in {
@@ -56,7 +57,7 @@ def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
 
 def stateful_batch_to_batch_record(stateful_batch: StatefulBatch) -> BatchRecord:
     return cast(
-        BatchRecord,
+        "BatchRecord",
         {
             "batch": {
                 key: value

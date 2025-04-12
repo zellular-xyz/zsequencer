@@ -4,13 +4,12 @@ from collections import defaultdict, deque
 from urllib.parse import urljoin
 
 import httpx
-
-from configs import ProxyConfig, NodeConfig
+from configs import NodeConfig, ProxyConfig
 
 
 class BatchBuffer:
     def __init__(
-        self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger
+        self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger,
     ):
         """Initialize the buffer manager with the provided configuration."""
         self._logger = logger
@@ -62,7 +61,7 @@ class BatchBuffer:
 
         if len(self._buffer_queue) >= self._flush_volume:
             self._logger.info(
-                f"Buffer size {len(self._buffer_queue)} reached threshold {self._flush_volume}, flushing."
+                f"Buffer size {len(self._buffer_queue)} reached threshold {self._flush_volume}, flushing.",
             )
             await self.flush()
 

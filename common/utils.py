@@ -2,17 +2,19 @@
 
 import time
 from collections import Counter
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Callable, TypeVar, Any, List
+from typing import Any, TypeVar
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import request, Response
+from flask import Response, request
 from web3 import Account
 
 from config import zconfig
 from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
+
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
@@ -33,10 +35,9 @@ def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
 
 
 def conditional_decorator(
-    condition: bool | Callable[[], bool], decorator: Callable[[F], F]
+    condition: bool | Callable[[], bool], decorator: Callable[[F], F],
 ) -> Callable[[F], F]:
-    """
-    A decorator that applies another decorator only if a condition is True.
+    """A decorator that applies another decorator only if a condition is True.
 
     Args:
         condition: A boolean or a callable that returns a boolean.
@@ -44,6 +45,7 @@ def conditional_decorator(
 
     Returns:
         A decorator that conditionally applies the provided decorator.
+
     """
 
     def decorator_factory(func: F) -> F:
@@ -94,14 +96,14 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
         version = request.headers.get("Version", "")
 
         if (not version or version != zconfig.VERSION) and request.endpoint.startswith(
-            "sequencer"
+            "sequencer",
         ):
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_NODE_VERSION,
                 errors.ErrorMessages.INVALID_NODE_VERSION,
             )
         if (version and version != zconfig.VERSION) and request.endpoint.startswith(
-            "node"
+            "node",
         ):
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_NODE_VERSION,
@@ -121,7 +123,7 @@ def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
     def wrapper(*args: Any, **kwargs: Any) -> Response:
         if not zconfig.get_synced_flag():
             return response_utils.error_response(
-                errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED
+                errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED,
             )
 
         return func(*args, **kwargs)
@@ -130,7 +132,7 @@ def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
 
 
 def validate_body_keys(
-    required_keys: List[str],
+    required_keys: list[str],
 ) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
     """Decorator to validate required keys in the request JSON body."""
 
@@ -157,7 +159,7 @@ def validate_body_keys(
             missing_keys = [key for key in required_keys if key not in req_data]
             message = "Required keys are missing: " + ", ".join(missing_keys)
             return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST, message
+                errors.ErrorCodes.INVALID_REQUEST, message,
             )
 
         return wrapper
@@ -170,7 +172,7 @@ def eth_sign(message: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=message)
     account_instance: Account = Account()
     return account_instance.sign_message(
-        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"]
+        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"],
     ).signature.hex()
 
 
@@ -180,7 +182,7 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         msg_encoded: SignableMessage = encode_defunct(text=message)
         account_instance: Account = Account()
         recovered_address: str = account_instance.recover_message(
-            signable_message=msg_encoded, signature=signature
+            signable_message=msg_encoded, signature=signature,
         )
         return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:

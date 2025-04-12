@@ -1,10 +1,10 @@
-"""
-This module defines the Flask blueprint for sequencer-related routes.
+"""This module defines the Flask blueprint for sequencer-related routes.
 """
 
 from typing import Any
 
 from flask import Blueprint, Response, request
+
 from common import utils
 from common.db import zdb
 from common.errors import ErrorCodes
@@ -31,7 +31,7 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
         "locked_hash",
         "locked_chaining_hash",
         "timestamp",
-    ]
+    ],
 )
 @utils.sequencer_only
 def put_batches() -> Response:
@@ -59,7 +59,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the batches data."""
     with zdb.sequencer_put_batches_lock:
         zdb.sequencer_init_batches(
-            app_name=req_data["app_name"], initializing_batches=req_data["batches"]
+            app_name=req_data["app_name"], initializing_batches=req_data["batches"],
         )
 
     batch_sequence = zdb.get_global_operational_batch_sequence(
@@ -67,10 +67,10 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         after=req_data["sequenced_index"],
     )
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=req_data["app_name"], state="finalized"
+        app_name=req_data["app_name"], state="finalized",
     )
     last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=req_data["app_name"], state="locked"
+        app_name=req_data["app_name"], state="locked",
     )
     if batch_sequence:
         if batch_sequence.get_last_or_empty()[
@@ -85,7 +85,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
                 {},
             )
         if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get(
-            "index", 0
+            "index", 0,
         ):
             last_locked_batch_record = next(
                 (

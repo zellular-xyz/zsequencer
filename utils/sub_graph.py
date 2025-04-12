@@ -1,4 +1,4 @@
-from typing import Dict
+
 import requests
 
 default_nodes_list = {
@@ -9,7 +9,7 @@ default_nodes_list = {
 }
 
 
-def get_stake(operator: Dict) -> int:
+def get_stake(operator: dict) -> int:
     stake: float = int(operator.get("stake", 0)) / (10**18)
     return stake if operator.get("id") in default_nodes_list else min(stake, 1)
 
@@ -26,7 +26,7 @@ def get_eigen_network_info(sub_graph_socket: str, block_number: int):
         pubkeyG2_Y
     }}
 }}
-"""
+""",
     }
 
     response = requests.post(

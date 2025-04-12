@@ -1,5 +1,4 @@
-"""
-Configuration functions for the ZSequencer.
+"""Configuration functions for the ZSequencer.
 """
 
 import cProfile
@@ -10,7 +9,7 @@ import pstats
 import sys
 import time
 from random import randbytes
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -21,8 +20,7 @@ from web3 import Account
 
 import utils
 from common.logger import zlogger
-from schema import NetworkState, NodeSource
-from schema import get_node_source
+from schema import NetworkState, NodeSource, get_node_source
 from settings import NodeConfig
 
 
@@ -31,7 +29,7 @@ class Config:
 
     def __init__(self, node_config: NodeConfig):
         self.node_config = node_config
-        self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
+        self.HISTORICAL_NETWORK_STATE: dict[int, NetworkState] = {}
         self.NODE = {}
 
         self.APPS = {}
@@ -102,17 +100,17 @@ class Config:
         if tag != 0 and (tag in self.HISTORICAL_NETWORK_STATE):
             return self.HISTORICAL_NETWORK_STATE[tag]
 
-        nodes_data: Dict[str, Dict[str, Any]] = {}
+        nodes_data: dict[str, dict[str, Any]] = {}
         if self.NODE_SOURCE == NodeSource.FILE:
             nodes_data = utils.get_file_content(self.NODES_FILE)
         elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             nodes_data = utils.get_eigen_network_info(
-                sub_graph_socket=self.SUBGRAPH_URL, block_number=tag
+                sub_graph_socket=self.SUBGRAPH_URL, block_number=tag,
             )
 
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
-                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag
+                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag,
             )
 
         for address, node_data in nodes_data.items():
@@ -138,16 +136,16 @@ class Config:
     def fetch_tag(self):
         if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             return utils.fetch_eigen_layer_last_block_number(
-                sub_graph_socket=self.SUBGRAPH_URL
+                sub_graph_socket=self.SUBGRAPH_URL,
             )
-        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
+        if self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             return utils.get_nodes_registry_last_tag()
-        elif self.NODE_SOURCE == NodeSource.FILE:
+        if self.NODE_SOURCE == NodeSource.FILE:
             return 0
 
     def fetch_network_state(self):
         """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
-        # Todo: properly handle exception on fetching tag and corresponding network state
+        # TODO: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
         self.NETWORK_STATUS_TAG = tag
@@ -185,9 +183,7 @@ class Config:
         ].nodes
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
-        sequencers_stake: dict[str, Any] = {
-            node_id: 0 for node_id in list(current_network_nodes.keys())
-        }
+        sequencers_stake: dict[str, Any] = dict.fromkeys(list(current_network_nodes.keys()), 0)
         for node_id in list(current_network_nodes.keys()):
             if node_id == self.NODE["id"]:
                 continue
@@ -214,13 +210,13 @@ class Config:
 
     def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
-            self.BLS_KEY_STORE_PATH, self.BLS_KEY_PASSWORD
+            self.BLS_KEY_STORE_PATH, self.BLS_KEY_PASSWORD,
         )
 
-        with open(self.ECDSA_KEY_STORE_PATH, "r") as f:
+        with open(self.ECDSA_KEY_STORE_PATH) as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(
-            encrypted_json, self.ECDSA_KEY_PASSWORD
+            encrypted_json, self.ECDSA_KEY_PASSWORD,
         )
         self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
@@ -232,7 +228,7 @@ class Config:
             ]
             public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode("utf-8")
             public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode(
-                "utf-8"
+                "utf-8",
             )
             error_msg = "the bls key pair public key does not match public of the node in the nodes list"
             assert public_key_g2 == public_key_g2_from_private, error_msg
@@ -244,14 +240,14 @@ class Config:
             sys.exit()
 
         self.NODE.update(
-            {"ecdsa_private_key": ecdsa_private_key, "bls_key_pair": bls_key_pair}
+            {"ecdsa_private_key": ecdsa_private_key, "bls_key_pair": bls_key_pair},
         )
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
         if urlparse(self.NODE["socket"]).port != self.PORT:
             zlogger.warning(
-                f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}."
+                f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.",
             )
             sys.exit()
 
@@ -259,7 +255,7 @@ class Config:
 
         if self.is_sequencer:
             zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s", self.NODE["id"]
+                "This node is acting as the SEQUENCER. ID: %s", self.NODE["id"],
             )
 
         self.APPS = utils.get_file_content(self.APPS_FILE)

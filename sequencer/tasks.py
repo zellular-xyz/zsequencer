@@ -1,11 +1,10 @@
-"""
-This module handles synchronization processes for locked and finalized batches.
+"""This module handles synchronization processes for locked and finalized batches.
 """
 
 from typing import Any
 
 from common import bls
-from common.db import zdb, SignatureData
+from common.db import SignatureData, zdb
 from config import zconfig
 
 
@@ -40,7 +39,7 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
     """Find the finalized sync point for a given app."""
     nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
     finalized_index: int = zdb.get_finalized_sync_point_or_empty(app_name).get(
-        "index", 0
+        "index", 0,
     )
     if not any(s["locked_index"] > finalized_index for s in nodes_state):
         return None
@@ -89,7 +88,7 @@ async def sync_app(app_name: str) -> None:
         lock_signature: (
             dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
-            data=locked_data, node_ids=locked_sync_point["party"]
+            data=locked_data, node_ids=locked_sync_point["party"],
         )
 
         if lock_signature:
@@ -122,7 +121,7 @@ async def sync_app(app_name: str) -> None:
         finalization_signature: (
             dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
-            data=finalized_data, node_ids=finalized_sync_point["party"]
+            data=finalized_data, node_ids=finalized_sync_point["party"],
         )
         if finalization_signature:
             finalized_data.update(finalization_signature)
@@ -132,7 +131,7 @@ async def sync_app(app_name: str) -> None:
                 if key in SignatureData.__annotations__
             }
             zdb.upsert_finalized_sync_point(
-                app_name=app_name, signature_data=finalized_data
+                app_name=app_name, signature_data=finalized_data,
             )
             zdb.finalize_batches(
                 app_name=app_name,

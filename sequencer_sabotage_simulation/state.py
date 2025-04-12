@@ -1,7 +1,8 @@
-from config import zconfig
-from settings import SequencerSabotageSimulation
 import threading
 import time
+
+from config import zconfig
+from settings import SequencerSabotageSimulation
 
 
 class SequencerSabotageSimulationState:
@@ -50,5 +51,5 @@ class SequencerSabotageSimulationState:
 
 
 sequencer_sabotage_simulation_state = SequencerSabotageSimulationState.get_instance(
-    conf=SequencerSabotageSimulation()
+    conf=SequencerSabotageSimulation(),
 )

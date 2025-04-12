@@ -1,14 +1,14 @@
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel
 
 
-# Todo: handle aggregated_public_key type
+# TODO: handle aggregated_public_key type
 class NetworkState(BaseModel):
     tag: int
     timestamp: int
-    nodes: Dict
+    nodes: dict
     aggregated_public_key: Any
     total_stake: float
 

@@ -1,21 +1,20 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
-
 from batch_buffer import BatchBuffer
-from configs import ProxyConfig, NodeConfig
+from configs import NodeConfig, ProxyConfig
+from fastapi import FastAPI, HTTPException, Request
 
 proxy_config = ProxyConfig()
 node_config = NodeConfig()
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 buffer_manager = BatchBuffer(
-    proxy_config=proxy_config, node_config=node_config, logger=logger
+    proxy_config=proxy_config, node_config=node_config, logger=logger,
 )
 
 
@@ -33,7 +32,6 @@ app = FastAPI(lifespan=lifespan)
 @app.put("/node/{app_name}/batches")
 async def put_batch(app_name: str, request: Request):
     """Handles batch processing with an app_name."""
-
     # FIXME: batch aggregator should reject accepting batches with invalid app_name
     if not app_name:
         raise HTTPException(status_code=400, detail="app_name is required")

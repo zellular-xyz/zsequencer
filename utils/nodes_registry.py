@@ -1,6 +1,5 @@
 import time
-from typing import Dict
-from typing import Optional, Any
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -15,7 +14,7 @@ class NodeInfo(BaseModel):
     stake: int
 
 
-SnapShotType = Dict[str, NodeInfo]
+SnapShotType = dict[str, NodeInfo]
 
 
 class NodesRegistryClient:
@@ -33,7 +32,7 @@ class NodesRegistryClient:
         }
         try:
             response = requests.post(
-                urljoin(self.base_url, "/snapshot/"), json=nodes_info_snapshot_dict
+                urljoin(self.base_url, "/snapshot/"), json=nodes_info_snapshot_dict,
             )
             response.raise_for_status()
             return response.json()
@@ -46,7 +45,7 @@ class NodesRegistryClient:
     def add_node_info(self, node_info: NodeInfo):
         try:
             response = requests.post(
-                urljoin(self.base_url, "/nodeInfo/"), json=node_info.dict()
+                urljoin(self.base_url, "/nodeInfo/"), json=node_info.dict(),
             )
             response.raise_for_status()
             return response.json()
@@ -56,7 +55,7 @@ class NodesRegistryClient:
         except Exception as err:
             print(f"An error occurred: {err}")  # General error details
 
-    def get_network_snapshot(self, timestamp: Optional[int]) -> SnapShotType:
+    def get_network_snapshot(self, timestamp: int | None) -> SnapShotType:
         try:
             if timestamp is None:
                 response = requests.get(urljoin(self.base_url, "/snapshot/"))
@@ -78,10 +77,10 @@ class NodesRegistryClient:
 
 
 def fetch_historical_nodes_registry_data(
-    nodes_registry_socket: str, timestamp: Optional[int]
-) -> Dict[str, Any]:
+    nodes_registry_socket: str, timestamp: int | None,
+) -> dict[str, Any]:
     snapshot = NodesRegistryClient(nodes_registry_socket).get_network_snapshot(
-        timestamp=timestamp
+        timestamp=timestamp,
     )
     snapshot_data = {
         address: node_info.dict() for address, node_info in snapshot.items()

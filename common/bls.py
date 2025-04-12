@@ -1,16 +1,15 @@
-"""
-Module for handling BLS signatures and related operations.
+"""Module for handling BLS signatures and related operations.
 """
 
 import asyncio
 import json
-from typing import Any, Dict, Set, Optional
+from typing import Any
 
 import aiohttp
-import requests
 from eigensdk.crypto.bls import attestation
 
 from config import zconfig
+
 from . import utils
 from .logger import zlogger
 
@@ -18,13 +17,13 @@ from .logger import zlogger
 def bls_sign(message: str) -> str:
     """Sign a message using BLS."""
     signature: attestation.Signature = zconfig.NODE["bls_key_pair"].sign_message(
-        message.encode("utf-8")
+        message.encode("utf-8"),
     )
     return signature.getStr(10).decode("utf-8")
 
 
 def get_signers_aggregated_public_key(
-    nonsigners: list[str], aggregated_public_key: attestation.G2Point
+    nonsigners: list[str], aggregated_public_key: attestation.G2Point,
 ) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     for nonsigner in nonsigners:
@@ -36,7 +35,7 @@ def get_signers_aggregated_public_key(
 
 
 def is_bls_sig_verified(
-    signature_hex: str, message: str, public_key: attestation.G2Point
+    signature_hex: str, message: str, public_key: attestation.G2Point,
 ) -> bool:
     """Verify a BLS signature."""
     signature: attestation.Signature = attestation.new_zero_signature()
@@ -54,7 +53,7 @@ async def gather_signatures(
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending_tasks = await asyncio.wait(
-                pending_tasks, return_when=asyncio.FIRST_COMPLETED
+                pending_tasks, return_when=asyncio.FIRST_COMPLETED,
             )
             for task in done:
                 if not task.result():
@@ -72,10 +71,9 @@ async def gather_signatures(
 
 
 async def gather_and_aggregate_signatures(
-    data: dict[str, Any], node_ids: set[str]
+    data: dict[str, Any], node_ids: set[str],
 ) -> dict[str, Any] | None:
-    """
-    Gather and aggregate signatures from nodes.
+    """Gather and aggregate signatures from nodes.
     Lock NODES and TAG and other zconfig
     """
     tag = zconfig.NETWORK_STATUS_TAG
@@ -105,17 +103,17 @@ async def gather_and_aggregate_signatures(
                 data=data,
                 message=message,
                 timeout=120,
-            )
+            ),
         ): node_id
         for node_id in node_ids
     }
     try:
         signatures, stake_percent = await asyncio.wait_for(
-            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT
+            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         zlogger.exception(
-            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds."
+            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return None
 
@@ -137,13 +135,13 @@ async def gather_and_aggregate_signatures(
 
 
 async def request_signature(
-    node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120
+    node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
-                url, json=data, timeout=timeout, headers=zconfig.HEADERS
+                url, json=data, timeout=timeout, headers=zconfig.HEADERS,
             ) as response:
                 response_json = await response.json()
                 if response_json.get("status") != "success":
@@ -158,11 +156,11 @@ async def request_signature(
                     return None
                 return response_json["data"]
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             zlogger.warning(f"Requesting signature from {node_id} timeout.")
-        except Exception as e:
+        except Exception:
             zlogger.exception(
-                f"An unexpected error occurred requesting signature from {node_id}:"
+                f"An unexpected error occurred requesting signature from {node_id}:",
             )
         return None
 
