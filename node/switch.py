@@ -26,7 +26,7 @@ async def send_switch_request(session, node, proofs):
         async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
             await response.text()  # Consume the response
     except Exception as e:
-        zlogger.error(f"Error occurred while sending switch request to {node['id']}: {str(e)}")
+        zlogger.warning(f"Error occurred while sending switch request to {node['id']}: {e}")
 
 
 async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
@@ -60,7 +60,8 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     Used by both sync and async switch functions.
     """
     if old_sequencer_id != zconfig.SEQUENCER["id"]:
-        zlogger.warning(f"Sequencer switch rejected: old_sequencer_id {old_sequencer_id} does not match current sequencer {zconfig.SEQUENCER['id']}")
+        old_sequencer_node = zconfig.NODES[old_sequencer_id]
+        zlogger.warning(f"Sequencer switch rejected: old sequencer {old_sequencer_node['socket']} does not match current sequencer {zconfig.SEQUENCER['socket']}")
         return
 
     async with switch_lock:
@@ -96,12 +97,12 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
         ) as response:
             if response.status != 200:
                 error_text = await response.text()
-                zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {error_text}")
+                zlogger.warning(f"Failed to fetch last finalized record from node {node['socket']}: {error_text}")
                 return {}
 
             data = await response.json()
             if data.get("status") == "error":
-                zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {data}")
+                zlogger.warning(f"Failed to fetch last finalized record from node {node['socket']}: {data}")
                 return {}
 
             return {
@@ -109,7 +110,7 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
                 for app_name, batch_data in data["data"].items()
             }
     except Exception as e:
-        zlogger.warning(f"Failed to fetch last finalized record from node {node['id']}: {e}")
+        zlogger.warning(f"Failed to fetch last finalized record from node {node['socket']}: {e}")
         return {}
 
 
