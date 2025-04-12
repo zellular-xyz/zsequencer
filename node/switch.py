@@ -83,8 +83,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
 
 async def _fetch_node_last_finalized_batch_records_or_empty(
         session: aiohttp.ClientSession,
-        node: dict[str, Any],
-        apps: list[str]
+        node: dict[str, Any]
 ) -> dict[str, BatchRecord]:
     """Fetch last finalized batches for all apps from a single node asynchronously."""
     url = f'{node["socket"]}/node/batches/finalized/last'
@@ -153,7 +152,7 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
     # Query all nodes concurrently
     async with aiohttp.ClientSession() as session:
         tasks = [
-            _fetch_node_last_finalized_batch_records_or_empty(session, node, apps)
+            _fetch_node_last_finalized_batch_records_or_empty(session, node)
             for node in nodes_to_query
         ]
         results = await asyncio.gather(*tasks)
