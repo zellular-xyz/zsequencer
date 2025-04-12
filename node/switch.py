@@ -91,7 +91,7 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
         return {}
 
 
-async def find_all_nodes_last_finalized_batch_records_async() -> dict[str, BatchRecord]:
+async def find_all_nodes_last_finalized_batch_records_async_with_fallback() -> dict[str, BatchRecord]:
     """
     Async wrapper to find the last finalized batch records of network for all apps.
     Can be called from async contexts.
@@ -173,7 +173,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     try:
         zconfig.update_sequencer(new_sequencer_id)
 
-        all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async()
+        all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async_with_fallback()
 
         for app_name, batch_record in all_nodes_last_finalized_batch_records.items():
             if batch_record:
