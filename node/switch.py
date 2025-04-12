@@ -60,6 +60,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     Used by both sync and async switch functions.
     """
     if old_sequencer_id != zconfig.SEQUENCER["id"]:
+        zlogger.warning(f"Sequencer switch rejected: old_sequencer_id {old_sequencer_id} does not match current sequencer {zconfig.SEQUENCER['id']}")
         return
 
     async with switch_lock:
