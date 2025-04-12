@@ -89,9 +89,8 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
     """Fetch last finalized batches for all apps from a single node asynchronously."""
     url = f'{node["socket"]}/node/batches/finalized/last'
     try:
-        async with session.post(
+        async with session.get(
                 url,
-                json=apps,
                 headers=zconfig.HEADERS,
                 timeout=aiohttp.ClientTimeout(total=10)
         ) as response:
