@@ -1,6 +1,5 @@
 import asyncio
 import json
-import threading
 import time
 from typing import Any
 
@@ -27,7 +26,7 @@ async def send_switch_request(session, node, proofs):
         async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
             await response.text()  # Consume the response
     except Exception as e:
-        zlogger.error(f"Error occurred while sending switch request to {node['id']}: : {str(e)}")
+        zlogger.error(f"Error occurred while sending switch request to {node['id']}: {str(e)}")
 
 
 async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
@@ -73,7 +72,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
         try:
             zconfig.update_sequencer(new_sequencer_id)
 
-            all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async_with_fallback()
+            all_nodes_last_finalized_batch_records = await get_network_last_finalized_batch_records()
 
             for app_name, batch_record in all_nodes_last_finalized_batch_records.items():
                 if batch_record:
@@ -116,24 +115,16 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
         return {}
 
 
-async def find_all_nodes_last_finalized_batch_records_async_with_fallback() -> dict[str, BatchRecord]:
+async def get_network_last_finalized_batch_records() -> dict[str, BatchRecord]:
     """
-    Async wrapper to find the last finalized batch records of network for all apps.
+    Retrieves the last finalized batch records from all network nodes.
     Can be called from async contexts.
     """
     try:
-        # Get the result asynchronously
         return await _find_all_nodes_last_finalized_batch_records_core()
     except Exception as e:
         zlogger.error(f"Critical error while fetching network finalized batch records: {str(e)}")
-        # Return local records as ultimate fallback
-        return {
-            app_name: zdb.get_last_operational_batch_record_or_empty(
-                app_name=app_name,
-                state="finalized"
-            )
-            for app_name in list(zconfig.APPS.keys())
-        }
+        raise
 
 
 async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, BatchRecord]:
