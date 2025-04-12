@@ -12,7 +12,7 @@ from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
 
-switch_lock: threading.Lock = threading.Lock()
+switch_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def send_switch_request(session, node, proofs):
@@ -49,16 +49,41 @@ def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """
     Synchronous wrapper for sequencer switching.
     """
-    with switch_lock:
-        asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
+    asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
 
 
 async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
     """
     Asynchronous version of sequencer switching.
     """
-    with switch_lock:
-        await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
+    await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
+
+
+async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
+    """
+    Core implementation of sequencer switching logic.
+    Used by both sync and async switch functions.
+    """
+    if not verify_switch_sequencer(old_sequencer_id):
+        return
+
+    async with switch_lock:
+        zdb.pause_node.set()
+
+        try:
+            zconfig.update_sequencer(new_sequencer_id)
+
+            all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async_with_fallback()
+
+            for app_name, batch_record in all_nodes_last_finalized_batch_records.items():
+                if batch_record:
+                    zdb.reinitialize(app_name, new_sequencer_id, batch_record)
+                zdb.reset_not_finalized_batches_timestamps(app_name)
+
+            if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
+                await asyncio.sleep(10)
+        finally:
+            zdb.pause_node.clear()
 
 
 async def _fetch_node_last_finalized_batch_records_or_empty(
@@ -158,29 +183,3 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
                     highest_records[app_name] = record
 
     return highest_records
-
-
-async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
-    """
-    Core implementation of sequencer switching logic.
-    Used by both sync and async switch functions.
-    """
-    if not verify_switch_sequencer(old_sequencer_id):
-        return
-
-    zdb.pause_node.set()
-
-    try:
-        zconfig.update_sequencer(new_sequencer_id)
-
-        all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async_with_fallback()
-
-        for app_name, batch_record in all_nodes_last_finalized_batch_records.items():
-            if batch_record:
-                zdb.reinitialize(app_name, new_sequencer_id, batch_record)
-            zdb.reset_not_finalized_batches_timestamps(app_name)
-
-        if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
-            await asyncio.sleep(10)
-    finally:
-        zdb.pause_node.clear()
