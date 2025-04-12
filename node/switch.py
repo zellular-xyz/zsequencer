@@ -106,8 +106,9 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
                 return {}
 
             return {
-                app_name: stateful_batch_to_batch_record(batch_data)
-                for app_name, batch_data in data["data"].items()
+                app_name: stateful_batch_to_batch_record(data["data"][app_name])
+                for app_name in zconfig.APPS
+                if app_name in data["data"]
             }
     except Exception as e:
         zlogger.warning(f"Failed to fetch last finalized record from node {node['socket']}: {e}")
