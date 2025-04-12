@@ -159,14 +159,14 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
         ]
         results = await asyncio.gather(*tasks)
 
-        # Process results and find last finalized index for each app
-        for node_records in results:
-            if not node_records:  # Skip empty or error results
-                continue
-            for app_name, record in node_records.items():
-                record_index = record.get("index", 0)
-                if record_index > highest_indices[app_name]:
-                    highest_indices[app_name] = record_index
-                    highest_records[app_name] = record
+    # Process results and find last finalized index for each app
+    for node_records in results:
+        if not node_records:  # Skip empty or error results
+            continue
+        for app_name, record in node_records.items():
+            record_index = record.get("index", 0)
+            if record_index > highest_indices[app_name]:
+                highest_indices[app_name] = record_index
+                highest_records[app_name] = record
 
     return highest_records
