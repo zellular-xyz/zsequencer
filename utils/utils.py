@@ -9,16 +9,18 @@ from schema import NodeSource
 
 def get_file_content(source: str) -> str:
     """Get the json contents of a file"""
-    if source.startswith('http://') or source.startswith('https://'):
+    if source.startswith("http://") or source.startswith("https://"):
         response = requests.get(source)
         response.raise_for_status()
         return response.json()
     elif os.path.isfile(source):
-        with open(source, 'r', encoding='utf-8') as file:
+        with open(source, "r", encoding="utf-8") as file:
             content = json.loads(file.read())
         return content
     else:
-        raise ValueError("The source provided is neither a valid URL nor a valid file path.")
+        raise ValueError(
+            "The source provided is neither a valid URL nor a valid file path."
+        )
 
 
 def validate_env_variables(source: NodeSource):
@@ -40,13 +42,13 @@ def validate_env_variables(source: NodeSource):
         "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT",
         "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL",
         "ZSEQUENCER_INIT_SEQUENCER_ID",
-        "ZSEQUENCER_NODES_SOURCE"
+        "ZSEQUENCER_NODES_SOURCE",
     ]
     eigenlayer_vars: list[str] = [
         "ZSEQUENCER_SUBGRAPH_URL",
         "ZSEQUENCER_RPC_NODE",
         "ZSEQUENCER_REGISTRY_COORDINATOR",
-        "ZSEQUENCER_OPERATOR_STATE_RETRIEVER"
+        "ZSEQUENCER_OPERATOR_STATE_RETRIEVER",
     ]
     historical_nodes_snapshot_server_vars: List[str] = [
         "ZSEQUENCER_HISTORICAL_NODES_REGISTRY"

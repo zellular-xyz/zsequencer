@@ -10,11 +10,13 @@ proxy_config = ProxyConfig()
 node_config = NodeConfig()
 
 logger = logging.getLogger("batch_buffer")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-buffer_manager = BatchBuffer(proxy_config=proxy_config,
-                             node_config=node_config,
-                             logger=logger)
+buffer_manager = BatchBuffer(
+    proxy_config=proxy_config, node_config=node_config, logger=logger
+)
 
 
 @asynccontextmanager
@@ -35,7 +37,7 @@ async def put_batch(app_name: str, request: Request):
     # FIXME: batch aggregator should reject accepting batches with invalid app_name
     if not app_name:
         raise HTTPException(status_code=400, detail="app_name is required")
-    batch = (await request.body()).decode('utf-8')
+    batch = (await request.body()).decode("utf-8")
     # Log and process the batch asynchronously
     await buffer_manager.add_batch(app_name=app_name, batch=batch)
     logger.info(f"Received batch for app: {app_name}, data length: {len(batch)}.")

@@ -9,7 +9,9 @@ from configs import ProxyConfig, NodeConfig
 
 
 class BatchBuffer:
-    def __init__(self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger):
+    def __init__(
+        self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger
+    ):
         """Initialize the buffer manager with the provided configuration."""
         self._logger = logger
         self._node_base_url = f"http://{node_config.host}:{node_config.port}"
@@ -42,7 +44,11 @@ class BatchBuffer:
 
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.put(url, json=batches_mapping, headers={"Content-Type": "application/json"})
+                response = await client.put(
+                    url,
+                    json=batches_mapping,
+                    headers={"Content-Type": "application/json"},
+                )
                 response.raise_for_status()
             except httpx.RequestError as e:
                 self._logger.error(f"Error sending batches: {e}")
@@ -56,7 +62,8 @@ class BatchBuffer:
 
         if len(self._buffer_queue) >= self._flush_volume:
             self._logger.info(
-                f"Buffer size {len(self._buffer_queue)} reached threshold {self._flush_volume}, flushing.")
+                f"Buffer size {len(self._buffer_queue)} reached threshold {self._flush_volume}, flushing."
+            )
             await self.flush()
 
     async def start(self):

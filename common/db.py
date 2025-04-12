@@ -367,9 +367,9 @@ class InMemoryDB:
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
                 batch
             )
-            self.apps[app_name]["operational_batch_hash_index_map"][
-                batch_hash
-            ] = batch_index
+            self.apps[app_name]["operational_batch_hash_index_map"][batch_hash] = (
+                batch_index
+            )
 
     def upsert_sequenced_batches(
         self,
@@ -401,9 +401,9 @@ class InMemoryDB:
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
                 batch
             )
-            self.apps[app_name]["operational_batch_hash_index_map"][
-                batch["hash"]
-            ] = batch_index
+            self.apps[app_name]["operational_batch_hash_index_map"][batch["hash"]] = (
+                batch_index
+            )
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """Update batches to 'locked' state up to a specified index."""
@@ -614,7 +614,9 @@ class InMemoryDB:
         )
 
         if zconfig.NODE["id"] == new_sequencer_id:
-            zlogger.info("This node is acting as the SEQUENCER. ID: %s", zconfig.NODE["id"])
+            zlogger.info(
+                "This node is acting as the SEQUENCER. ID: %s", zconfig.NODE["id"]
+            )
             self._resequence_batches(
                 app_name,
                 all_nodes_last_finalized_batch_record,
@@ -690,9 +692,9 @@ class InMemoryDB:
                 "hash": batch["hash"],
                 "body": batch["body"],
             }
-            self.apps[app_name]["initialized_batch_map"][
-                batch["hash"]
-            ] = reinitialized_batch
+            self.apps[app_name]["initialized_batch_map"][batch["hash"]] = (
+                reinitialized_batch
+            )
             self.apps[app_name]["operational_batch_hash_index_map"].pop(batch["hash"])
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][

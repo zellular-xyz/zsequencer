@@ -16,21 +16,25 @@ from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 from . import errors, response_utils
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
     @wraps(func)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if sequencer_sabotage_simulation_state.out_of_reach:
-            return response_utils.error_response(error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
-                                                 error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH)
+            return response_utils.error_response(
+                error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
+                error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH,
+            )
         return func(*args, **kwargs)
 
     return decorated_function
 
 
-def conditional_decorator(condition: bool | Callable[[], bool], decorator: Callable[[F], F]) -> Callable[[F], F]:
+def conditional_decorator(
+    condition: bool | Callable[[], bool], decorator: Callable[[F], F]
+) -> Callable[[F], F]:
     """
     A decorator that applies another decorator only if a condition is True.
 
@@ -89,14 +93,20 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
         # Get version from headers (default to empty string if missing)
         version = request.headers.get("Version", "")
 
-        if (not version or version != zconfig.VERSION) and \
-                request.endpoint.startswith("sequencer"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
-                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
-        if (version and version != zconfig.VERSION) and \
-                request.endpoint.startswith("node"):
-            return response_utils.error_response(errors.ErrorCodes.INVALID_NODE_VERSION,
-                                                 errors.ErrorMessages.INVALID_NODE_VERSION)
+        if (not version or version != zconfig.VERSION) and request.endpoint.startswith(
+            "sequencer"
+        ):
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_NODE_VERSION,
+                errors.ErrorMessages.INVALID_NODE_VERSION,
+            )
+        if (version and version != zconfig.VERSION) and request.endpoint.startswith(
+            "node"
+        ):
+            return response_utils.error_response(
+                errors.ErrorCodes.INVALID_NODE_VERSION,
+                errors.ErrorMessages.INVALID_NODE_VERSION,
+            )
 
         # Proceed to the original function
         return func(*args, **kwargs)
@@ -110,14 +120,18 @@ def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Response:
         if not zconfig.get_synced_flag():
-            return response_utils.error_response(errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED)
+            return response_utils.error_response(
+                errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED
+            )
 
         return func(*args, **kwargs)
 
     return wrapper
 
 
-def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
+def validate_body_keys(
+    required_keys: List[str],
+) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
     """Decorator to validate required keys in the request JSON body."""
 
     def decorator(func: Callable[..., Response]) -> Callable[..., Response]:
@@ -128,12 +142,12 @@ def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Resp
                 if not isinstance(req_data, dict):
                     return response_utils.error_response(
                         errors.ErrorCodes.INVALID_REQUEST,
-                        "Request body must be a JSON object"
+                        "Request body must be a JSON object",
                     )
             except Exception:
                 return response_utils.error_response(
                     errors.ErrorCodes.INVALID_REQUEST,
-                    "Failed to parse JSON request body"
+                    "Failed to parse JSON request body",
                 )
 
             if all(key in req_data for key in required_keys):
@@ -143,8 +157,7 @@ def validate_body_keys(required_keys: List[str]) -> Callable[[Callable[..., Resp
             missing_keys = [key for key in required_keys if key not in req_data]
             message = "Required keys are missing: " + ", ".join(missing_keys)
             return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST,
-                message
+                errors.ErrorCodes.INVALID_REQUEST, message
             )
 
         return wrapper
@@ -198,8 +211,8 @@ def get_next_sequencer_id(old_sequencer_id: str) -> str:
 
 def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
     """Check if the switch to a new sequencer is approved."""
-    node_ids = [proof['node_id'] for proof in proofs if is_dispute_approved(proof)]
-    stake = sum([zconfig.NODES[node_id]['stake'] for node_id in node_ids])
+    node_ids = [proof["node_id"] for proof in proofs if is_dispute_approved(proof)]
+    stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
     return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
 
 
@@ -217,8 +230,8 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
 
     new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
     if (
-            proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
-            or proof["new_sequencer_id"] != new_sequencer_id
+        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
+        or proof["new_sequencer_id"] != new_sequencer_id
     ):
         return False
 
@@ -227,9 +240,9 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
         return False
 
     if not is_eth_sig_verified(
-            signature=proof["signature"],
-            node_id=proof["node_id"],
-            message=f'{zconfig.SEQUENCER["id"]}{proof["timestamp"]}',
+        signature=proof["signature"],
+        node_id=proof["node_id"],
+        message=f"{zconfig.SEQUENCER['id']}{proof['timestamp']}",
     ):
         return False
 
@@ -237,7 +250,7 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
 
 
 def get_switch_parameter_from_proofs(
-        proofs: list[dict[str, Any]],
+    proofs: list[dict[str, Any]],
 ) -> tuple[str | None, str | None]:
     """Get the switch parameters from proofs."""
     sequencer_counts: Counter = Counter()

@@ -18,20 +18,21 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 @utils.sequencer_only
 @utils.sequencer_simulation_malfunction
 @utils.validate_version
-@utils.validate_body_keys(required_keys=[
-    "app_name",
-    "batches",
-    "node_id",
-    "signature",
-    "sequenced_index",
-    "sequenced_hash",
-    "sequenced_chaining_hash",
-    "locked_index",
-    "locked_hash",
-    "locked_chaining_hash",
-    "timestamp",
-])
-
+@utils.validate_body_keys(
+    required_keys=[
+        "app_name",
+        "batches",
+        "node_id",
+        "signature",
+        "sequenced_index",
+        "sequenced_hash",
+        "sequenced_chaining_hash",
+        "locked_index",
+        "locked_hash",
+        "locked_chaining_hash",
+        "timestamp",
+    ]
+)
 @utils.sequencer_only
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
@@ -44,9 +45,9 @@ def put_batches() -> Response:
         message=concat_hash,
     )
     if (
-            not is_eth_sig_verified
-            or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
-            or req_data["app_name"] not in list(zconfig.APPS.keys())
+        not is_eth_sig_verified
+        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
+        or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
@@ -57,7 +58,9 @@ def put_batches() -> Response:
 def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     """Process the batches data."""
     with zdb.sequencer_put_batches_lock:
-        zdb.sequencer_init_batches(app_name=req_data["app_name"], initializing_batches=req_data["batches"])
+        zdb.sequencer_init_batches(
+            app_name=req_data["app_name"], initializing_batches=req_data["batches"]
+        )
 
     batch_sequence = zdb.get_global_operational_batch_sequence(
         app_name=req_data["app_name"],
@@ -70,13 +73,27 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         app_name=req_data["app_name"], state="locked"
     )
     if batch_sequence:
-        if batch_sequence.get_last_or_empty()["index"] < last_finalized_batch_record.get("index", 0):
+        if batch_sequence.get_last_or_empty()[
+            "index"
+        ] < last_finalized_batch_record.get("index", 0):
             last_finalized_batch_record = next(
-                (d for d in batch_sequence.records(reverse=True) if "finalization_signature" in d["batch"]), {}
+                (
+                    d
+                    for d in batch_sequence.records(reverse=True)
+                    if "finalization_signature" in d["batch"]
+                ),
+                {},
             )
-        if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get("index", 0):
+        if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get(
+            "index", 0
+        ):
             last_locked_batch_record = next(
-                (d for d in batch_sequence.records(reverse=True) if "lock_signature" in d["batch"]), {}
+                (
+                    d
+                    for d in batch_sequence.records(reverse=True)
+                    if "lock_signature" in d["batch"]
+                ),
+                {},
             )
 
     zdb.upsert_node_state(

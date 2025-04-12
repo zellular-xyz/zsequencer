@@ -34,7 +34,9 @@ def put_bulk_batches() -> Response:
     }
 
     for app_name, batches in filtered_batches_mapping.items():
-        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
+        zlogger.info(
+            f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}."
+        )
         zdb.init_batches(app_name, [str(item) for item in list(batches)])
 
     return success_response(data={}, message="The batch is received successfully.")
@@ -50,7 +52,7 @@ def put_batches(app_name: str) -> Response:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    data = request.data.decode('latin-1')
+    data = request.data.decode("latin-1")
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The batch is received successfully.")
@@ -60,7 +62,9 @@ def put_batches(app_name: str) -> Response:
 @utils.validate_version
 @utils.not_sequencer
 @utils.is_synced
-@utils.validate_body_keys(required_keys=["app_name", "state", "index", "hash", "chaining_hash"])
+@utils.validate_body_keys(
+    required_keys=["app_name", "state", "index", "hash", "chaining_hash"]
+)
 def post_sign_sync_point() -> Response:
     """Sign a batch."""
     # TODO: only the sequencer should be able to call this route
@@ -74,7 +78,14 @@ def post_sign_sync_point() -> Response:
 @utils.validate_version
 @utils.not_sequencer
 @utils.is_synced
-@utils.validate_body_keys(required_keys=["sequencer_id", "apps_missed_batches", "is_sequencer_down", "timestamp"])
+@utils.validate_body_keys(
+    required_keys=[
+        "sequencer_id",
+        "apps_missed_batches",
+        "is_sequencer_down",
+        "timestamp",
+    ]
+)
 def post_dispute() -> Response:
     """Handle a dispute by initializing batches if required."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
@@ -88,7 +99,7 @@ def post_dispute() -> Response:
             "old_sequencer_id": zconfig.SEQUENCER["id"],
             "new_sequencer_id": utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
             "timestamp": timestamp,
-            "signature": utils.eth_sign(f'{zconfig.SEQUENCER["id"]}{timestamp}'),
+            "signature": utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
         }
         return success_response(data=data)
 
@@ -114,14 +125,18 @@ def post_switch_sequencer() -> Response:
     def run_switch_sequencer():
         tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
-    zlogger.info(f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.")
+    zlogger.info(
+        f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
+    )
     threading.Thread(target=run_switch_sequencer).start()
 
     return success_response(data={})
 
 
 @node_blueprint.route("/state", methods=["GET"])
-@utils.conditional_decorator(condition=lambda: (zconfig.get_mode() == MODE_PROD), decorator=utils.not_sequencer)
+@utils.conditional_decorator(
+    condition=lambda: (zconfig.get_mode() == MODE_PROD), decorator=utils.not_sequencer
+)
 def get_state() -> Response:
     """Get the state of the node and its apps."""
     data: dict[str, Any] = {
@@ -129,23 +144,35 @@ def get_state() -> Response:
         "version": zconfig.VERSION,
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
-        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode('utf-8'),
+        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode("utf-8"),
         "address": zconfig.NODE["address"],
         "apps": {},
     }
 
     for app_name in list(zconfig.APPS.keys()):
-        last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "sequenced")
-        last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "locked")
-        last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
+        last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
+            app_name, "sequenced"
+        )
+        last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
+            app_name, "locked"
+        )
+        last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+            app_name, "finalized"
+        )
 
-        data['apps'][app_name] = {
+        data["apps"][app_name] = {
             "last_sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "last_sequenced_hash": last_sequenced_batch_record.get("batch", {}).get("hash", ""),
+            "last_sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
+                "hash", ""
+            ),
             "last_locked_index": last_locked_batch_record.get("index", 0),
-            "last_locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
+            "last_locked_hash": last_locked_batch_record.get("batch", {}).get(
+                "hash", ""
+            ),
             "last_finalized_index": last_finalized_batch_record.get("index", 0),
-            "last_finalized_hash": last_finalized_batch_record.get("batch", {}).get("hash", ""),
+            "last_finalized_hash": last_finalized_batch_record.get("batch", {}).get(
+                "hash", ""
+            ),
         }
     return success_response(data=data)
 
@@ -156,7 +183,9 @@ def get_last_finalized_batch(app_name: str) -> Response:
     """Get the last finalized batch record for a given app."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name, "finalized"
+    )
     return success_response(
         data=batch_record_to_stateful_batch(last_finalized_batch_record)
     )
@@ -178,15 +207,18 @@ def get_batches(app_name: str, state: str) -> Response:
         return success_response(data=None)
 
     for i, batch_record in enumerate(batch_sequence.records()):
-        assert batch_record["index"] == after + i + 1, \
-            f'error in getting batches: {batch_record["index"]} != {after + i + 1}, {i}, {[batch_record["index"] for batch_record in batch_sequence.records()]}\n{zdb.apps[app_name]["operational_batch_sequence"]}'
+        assert batch_record["index"] == after + i + 1, (
+            f"error in getting batches: {batch_record['index']} != {after + i + 1}, {i}, {[batch_record['index'] for batch_record in batch_sequence.records()]}\n{zdb.apps[app_name]['operational_batch_sequence']}"
+        )
 
     first_chaining_hash = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
 
     finalized = next(
         (
             {
-                "finalization_signature": batch_record["batch"]["finalization_signature"],
+                "finalization_signature": batch_record["batch"][
+                    "finalization_signature"
+                ],
                 "hash": batch_record["batch"]["hash"],
                 "chaining_hash": batch_record["batch"]["chaining_hash"],
                 "nonsigners": batch_record["batch"]["finalized_nonsigners"],
@@ -195,7 +227,7 @@ def get_batches(app_name: str, state: str) -> Response:
             for batch_record in batch_sequence.records(reverse=True)
             if "finalization_signature" in batch_record["batch"]
         ),
-        {}
+        {},
     )
 
     return success_response(
