@@ -100,7 +100,7 @@ async def find_all_nodes_last_finalized_batch_records_async_with_fallback() -> d
         # Get the result asynchronously
         return await _find_all_nodes_last_finalized_batch_records_core()
     except Exception as e:
-        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_records: {str(e)}")
+        zlogger.error(f"Critical error while fetching network finalized batch records: {str(e)}")
         # Return local records as ultimate fallback
         return {
             app_name: zdb.get_last_operational_batch_record_or_empty(
