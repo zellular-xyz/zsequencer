@@ -26,8 +26,8 @@ async def send_switch_request(session, node, proofs):
     try:
         async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
             await response.text()  # Consume the response
-    except Exception as error:
-        zlogger.error(f"Error occurred while sending switch request to {node['id']}")
+    except Exception as e:
+        zlogger.error(f"Error occurred while sending switch request to {node['id']}: : {str(e)}")
 
 
 async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
