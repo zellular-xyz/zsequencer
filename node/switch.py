@@ -15,88 +15,6 @@ from config import zconfig
 switch_lock: threading.Lock = threading.Lock()
 
 
-async def find_all_nodes_last_finalized_batch_record_async(app_name: str) -> BatchRecord:
-    """
-    Async wrapper to find the last finalized batch record of network.
-    Can be called from async contexts.
-    """
-    try:
-        # Get the result asynchronously
-        return await _find_all_nodes_last_finalized_batch_record_core(app_name)
-    except Exception as e:
-        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_record: {str(e)}")
-        # Return local record as ultimate fallback
-        return zdb.get_last_operational_batch_record_or_empty(
-            app_name=app_name,
-            state="finalized"
-        )
-
-
-async def _fetch_node_last_finalized_batch_record_or_empty(
-        session: aiohttp.ClientSession,
-        node: dict[str, Any],
-        app_name: str
-) -> BatchRecord:
-    """Fetch last finalized batch from a single node asynchronously."""
-    url = f'{node["socket"]}/node/{app_name}/batches/finalized/last'
-    try:
-        async with session.get(
-                url,
-                headers=zconfig.HEADERS,
-                timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status != 200:
-                return {}
-
-            data = await response.json()
-            if data.get("status") == "error":
-                return {}
-
-            return stateful_batch_to_batch_record(data["data"])
-    except Exception as e:
-        zlogger.warning(f"Failed to fetch from node {node['id']}: {str(e)}")
-        return {}
-
-
-async def _find_all_nodes_last_finalized_batch_record_core(app_name: str) -> BatchRecord:
-    """Core async implementation to find all nodes last finalized batch record."""
-    # Get local record first
-    local_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name,
-        state="finalized"
-    )
-    highest_record = local_record
-    highest_index = local_record.get("index", 0)
-
-    # Filter nodes to exclude self
-    nodes_to_query = [
-        node for node in zconfig.NODES.values()
-        if node["id"] != zconfig.NODE["id"]
-    ]
-
-    if not nodes_to_query:
-        return highest_record
-
-        # Query all nodes concurrently
-    async with aiohttp.ClientSession() as session:
-        tasks = [
-            _fetch_node_last_finalized_batch_record_or_empty(session, node, app_name)
-            for node in nodes_to_query
-        ]
-        results = await asyncio.gather(*tasks)
-
-        # Process results and find last finalized index
-        for record in results:
-            if not record:  # Skip empty or error results
-                continue
-            record_index = record.get("index", 0)
-            if record_index > highest_index:
-                highest_index = record_index
-                highest_record = record
-
-    return highest_record
-
-
 async def send_switch_request(session, node, proofs):
     """Send a single switch request to a node."""
     data = json.dumps({
@@ -143,6 +61,105 @@ async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
         await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
 
 
+async def _fetch_node_last_finalized_batch_records_or_empty(
+        session: aiohttp.ClientSession,
+        node: dict[str, Any],
+        apps: list[str]
+) -> dict[str, BatchRecord]:
+    """Fetch last finalized batches for all apps from a single node asynchronously."""
+    url = f'{node["socket"]}/node/batches/finalized/last'
+    try:
+        async with session.post(
+                url,
+                json=apps,
+                headers=zconfig.HEADERS,
+                timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status != 200:
+                return {}
+
+            data = await response.json()
+            if data.get("status") == "error":
+                return {}
+
+            return {
+                app_name: stateful_batch_to_batch_record(batch_data)
+                for app_name, batch_data in data["data"].items()
+            }
+    except Exception as e:
+        zlogger.warning(f"Failed to fetch from node {node['id']}: {str(e)}")
+        return {}
+
+
+async def find_all_nodes_last_finalized_batch_records_async() -> dict[str, BatchRecord]:
+    """
+    Async wrapper to find the last finalized batch records of network for all apps.
+    Can be called from async contexts.
+    """
+    try:
+        # Get the result asynchronously
+        return await _find_all_nodes_last_finalized_batch_records_core()
+    except Exception as e:
+        zlogger.error(f"Critical error in find_all_nodes_last_finalized_batch_records: {str(e)}")
+        # Return local records as ultimate fallback
+        return {
+            app_name: zdb.get_last_operational_batch_record_or_empty(
+                app_name=app_name,
+                state="finalized"
+            )
+            for app_name in list(zconfig.APPS.keys())
+        }
+
+
+async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, BatchRecord]:
+    """Core async implementation to find all nodes last finalized batch records for all apps."""
+    apps = list(zconfig.APPS.keys())
+
+    # Get local records first
+    local_records = {
+        app_name: zdb.get_last_operational_batch_record_or_empty(
+            app_name=app_name,
+            state="finalized"
+        )
+        for app_name in apps
+    }
+
+    highest_records = local_records.copy()
+    highest_indices = {
+        app_name: record.get("index", 0)
+        for app_name, record in local_records.items()
+    }
+
+    # Filter nodes to exclude self
+    nodes_to_query = [
+        node for node in zconfig.NODES.values()
+        if node["id"] != zconfig.NODE["id"]
+    ]
+
+    if not nodes_to_query:
+        return highest_records
+
+    # Query all nodes concurrently
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            _fetch_node_last_finalized_batch_records_or_empty(session, node, apps)
+            for node in nodes_to_query
+        ]
+        results = await asyncio.gather(*tasks)
+
+        # Process results and find last finalized index for each app
+        for node_records in results:
+            if not node_records:  # Skip empty or error results
+                continue
+            for app_name, record in node_records.items():
+                record_index = record.get("index", 0)
+                if record_index > highest_indices[app_name]:
+                    highest_indices[app_name] = record_index
+                    highest_records[app_name] = record
+
+    return highest_records
+
+
 async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     """
     Core implementation of sequencer switching logic.
@@ -156,28 +173,14 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     try:
         zconfig.update_sequencer(new_sequencer_id)
 
-        tasks = [
-            sync_app_finalized_state(app_name, new_sequencer_id)
-            for app_name in list(zconfig.APPS.keys())
-        ]
-        await asyncio.gather(*tasks)
+        all_nodes_last_finalized_batch_records = await find_all_nodes_last_finalized_batch_records_async()
+
+        for app_name, batch_record in all_nodes_last_finalized_batch_records.items():
+            if batch_record:
+                zdb.reinitialize(app_name, new_sequencer_id, batch_record)
+            zdb.reset_not_finalized_batches_timestamps(app_name)
 
         if zconfig.NODE['id'] != zconfig.SEQUENCER['id']:
             await asyncio.sleep(10)
     finally:
         zdb.pause_node.clear()
-
-
-async def sync_app_finalized_state(app_name: str, new_sequencer_id: str):
-    """
-    Process a single app during sequencer switch by updating its finalized batch records
-    and resetting batch timestamps.
-
-    Args:
-        app_name: Name of the app to process
-        new_sequencer_id: ID of the new sequencer
-    """
-    all_nodes_last_finalized_batch_record = await find_all_nodes_last_finalized_batch_record_async(app_name)
-    if all_nodes_last_finalized_batch_record:
-        zdb.reinitialize(app_name, new_sequencer_id, all_nodes_last_finalized_batch_record)
-    zdb.reset_not_finalized_batches_timestamps(app_name)
