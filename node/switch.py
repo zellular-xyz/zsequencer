@@ -130,7 +130,7 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
     apps = list(zconfig.APPS.keys())
 
     # Get local records first
-    local_records = {
+    highest_records = {
         app_name: zdb.get_last_operational_batch_record_or_empty(
             app_name=app_name,
             state="finalized"
@@ -138,10 +138,9 @@ async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, Batch
         for app_name in apps
     }
 
-    highest_records = local_records
     highest_indices = {
         app_name: record.get("index", 0)
-        for app_name, record in local_records.items()
+        for app_name, record in highest_records.items()
     }
 
     # Filter nodes to exclude self
