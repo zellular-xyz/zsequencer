@@ -40,10 +40,6 @@ async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
         await asyncio.gather(*tasks)
 
 
-def verify_switch_sequencer(old_sequencer_id: str) -> bool:
-    return old_sequencer_id == zconfig.SEQUENCER["id"]
-
-
 def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """
     Synchronous wrapper for sequencer switching.
@@ -63,7 +59,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
     Core implementation of sequencer switching logic.
     Used by both sync and async switch functions.
     """
-    if not verify_switch_sequencer(old_sequencer_id):
+    if old_sequencer_id != zconfig.SEQUENCER["id"]:
         return
 
     async with switch_lock:
