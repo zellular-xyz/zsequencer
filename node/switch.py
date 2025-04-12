@@ -116,19 +116,7 @@ async def _fetch_node_last_finalized_batch_records_or_empty(
 
 
 async def get_network_last_finalized_batch_records() -> dict[str, BatchRecord]:
-    """
-    Retrieves the last finalized batch records from all network nodes.
-    Can be called from async contexts.
-    """
-    try:
-        return await _find_all_nodes_last_finalized_batch_records_core()
-    except Exception as e:
-        zlogger.error(f"Critical error while fetching network finalized batch records: {str(e)}")
-        raise
-
-
-async def _find_all_nodes_last_finalized_batch_records_core() -> dict[str, BatchRecord]:
-    """Core async implementation to find all nodes last finalized batch records for all apps."""
+    """Retrieves the last finalized batch records from all network nodes."""
     apps = list(zconfig.APPS.keys())
 
     # Get local records first
