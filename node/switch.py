@@ -14,7 +14,7 @@ from config import zconfig
 switch_lock: asyncio.Lock = asyncio.Lock()
 
 
-async def send_switch_request(session, node, proofs):
+async def _send_switch_request(session, node, proofs):
     """Send a single switch request to a node."""
     data = json.dumps({
         "proofs": proofs,
@@ -34,7 +34,7 @@ async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
     zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:
         tasks = [
-            send_switch_request(session, node, proofs)
+            _send_switch_request(session, node, proofs)
             for node in zconfig.NODES.values() if node["id"] != zconfig.NODE["id"]
         ]
         await asyncio.gather(*tasks)
