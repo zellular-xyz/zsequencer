@@ -36,9 +36,11 @@ if actual_signers < required_signers:
     raise ValueError(f"Not enough valid signatures! Required: {required_signers}, Got: {actual_signers}")
 
 # --- Subtract non-signing public keys from aggregate ---
+# -- start: subtracting nonsigners --
 for node_id in non_signing_nodes:
     node_pubkey: G1Element = G1Element.from_bytes(bytes.fromhex(NODE_CONFIG[node_id]["pubkey"])).negate()
     aggregated_pubkey += node_pubkey  # Equivalent to subtraction
+# -- end: subtracting nonsigners --
 
 # --- Verify Aggregated Signature ---
 aggregated_signature: G2Element = G2Element.from_bytes(
@@ -46,7 +48,9 @@ aggregated_signature: G2Element = G2Element.from_bytes(
 )
 message: bytes = SIGNATURE_AGGREGATOR_RESULT["message"]
 
+# -- start: verifying signature --
 is_valid: bool = PopSchemeMPL.verify(aggregated_pubkey, message, aggregated_signature)
+# -- end: verifying signature --
 
 # --- Output ---
 print("Signature Valid:", is_valid)

@@ -53,6 +53,7 @@ def get_balance(address: str, token: str):
 def get_orders():
     return [w.order for w in order_book_wrapped]
 
+# -- start: submitting order to zellular --
 @app.post("/order")
 def place_order(order: OrderRequest):
     message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
@@ -73,6 +74,7 @@ def place_order(order: OrderRequest):
     # Send to Zellular for consensus-based processing
     zellular.send([order_payload], blocking=False)
     return JSONResponse({"message": "Order sent to consensus layer"})
+# -- end: submitting order to zellular --
 
 # Core order processing
 def apply_order(order: dict[str, Any]) -> None:
@@ -191,6 +193,7 @@ def verify_signature(sender: str, message: str, signature: str) -> bool:
         return False
 
 # Zellular replication loop
+# -- start: processing loop --
 def process_loop():
     for batch, index in zellular.batches():
         try:
@@ -199,6 +202,7 @@ def process_loop():
                 apply_order(tx)
         except Exception as e:
             logger.error(f"Error processing batch #{index}: {e}")
+# -- end: processing loop --
 
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()

@@ -85,6 +85,7 @@ def apply_transfer(data: dict[str, Any]) -> None:
     balances[receiver] = balances.get(receiver, 0) + amount
     logger.info(f"Transfer successful: {data}")
 
+# -- start: checking balance --
 @app.get("/balance")
 async def balance(address: str) -> dict[str, Any]:
     """Retrieves the balance of a given address and returns a BLS-signed message."""
@@ -92,6 +93,7 @@ async def balance(address: str) -> dict[str, Any]:
     message = f"Address: {address}, Balance: {balance}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
     return {"address": address, "balance": balance, "signature": str(signature)}
+# -- end: checking balance --
 
 def process_loop() -> None:
     """Continuously processes incoming batches from Zellular."""

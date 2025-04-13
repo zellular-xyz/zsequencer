@@ -47,6 +47,7 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     if balances.get(data.sender, 0) < data.amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
+    # -- start: submitting transfer to zellular --
     txs = [{
         "sender": data.sender,
         "receiver": data.receiver,
@@ -55,8 +56,11 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     }]
 
     zellular.send(txs, blocking=False)
+    # -- end: submitting transfer to zellular --
+
     return JSONResponse({"message": "Transfer sent"})
 
+# -- start: applying transfer --
 def apply_transfer(data: dict[str, Any]) -> None:
     """Executes a transfer after batch processing."""
     sender, receiver, amount, signature = (
@@ -75,18 +79,21 @@ def apply_transfer(data: dict[str, Any]) -> None:
     balances[sender] -= amount
     balances[receiver] = balances.get(receiver, 0) + amount
     logger.info(f"Transfer successful: {data}")
+# -- end: applying transfer --
 
 @app.get("/balance")
 async def balance(address: str) -> dict[str, Any]:
     """Retrieves the balance of a given address."""
     return {"address": address, "balance": balances.get(address, 0)}
 
+# -- start: processing loop --
 def process_loop() -> None:
     """Continuously processes incoming batches from Zellular."""
     for batch, index in zellular.batches():
         txs = json.loads(batch)
         for tx in txs:
             apply_transfer(tx)
+# -- end: processing loop --
 
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()

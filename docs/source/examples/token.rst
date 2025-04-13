@@ -106,7 +106,8 @@ Client-Side Signing (Python Example)
 
 .. literalinclude:: ../../../examples/token/transfer.py
    :language: python
-   :lines: 12-15
+   :start-after: -- start: signing transfer --
+   :end-before: -- end: signing transfer --
 
 Backend Verification
 ~~~~~~~~~~~~~~~~~~~~
@@ -115,7 +116,8 @@ On the server:
 
 .. literalinclude:: ../../../examples/token/02_signature_based_token_service.py
    :language: python
-   :lines: 13-41
+   :start-after: -- start: verifying signature before transfer --
+   :end-before: -- end: verifying signature before transfer --
 
 Test Script
 ~~~~~~~~~~~
@@ -191,7 +193,9 @@ Transfers are submitted via the `/transfer` route, verified as before, and then 
 
 .. literalinclude:: ../../../examples/token/03_replicated_token_service.py
    :language: python
-   :lines: 50-57
+   :start-after: -- start: submitting transfer to zellular --
+   :end-before: -- end: submitting transfer to zellular --
+
 
 This appends the transfer to the global sequence shared by all replicas.
 
@@ -202,7 +206,8 @@ Each replica runs a background loop using the SDK to process batches:
 
 .. literalinclude:: ../../../examples/token/03_replicated_token_service.py
    :language: python
-   :lines: 84-89
+   :start-after: -- start: processing loop --
+   :end-before: -- end: processing loop --
 
 The `apply_transfer(tx)` function:
 
@@ -218,7 +223,8 @@ Full Transfer Verification Logic
 
 .. literalinclude:: ../../../examples/token/03_replicated_token_service.py
    :language: python
-   :lines: 60-77
+   :start-after: -- start: applying transfer --
+   :end-before: -- end: applying transfer --
 
 Why This Matters
 ~~~~~~~~~~~~~~~~
@@ -266,7 +272,9 @@ The `/balance` endpoint signs the message before returning it:
 
 .. literalinclude:: ../../../examples/token/04_verifiable_token_service.py
    :language: python
-   :lines: 88-94
+   :start-after: -- start: checking balance --
+   :end-before: -- end: checking balance --
+
 
 The message is signed using the BLS POP (Proof of Possession) scheme from the `blspy` library and the resulting `signature` is included in the API response.
 

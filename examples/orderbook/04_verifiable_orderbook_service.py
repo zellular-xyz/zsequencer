@@ -54,6 +54,7 @@ class OrderRequest(BaseModel):
 
 # --- Routes ---
 
+# -- start: checking balance --
 @app.get("/balance")
 def get_balance(address: str, token: str):
     """Retrieves the balance of a given token for given address and returns a BLS-signed message."""
@@ -61,6 +62,7 @@ def get_balance(address: str, token: str):
     message = f"Address: {address}, Balance: {balance}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
     return {"address": address, "balance": balance, "signature": str(signature)}
+# -- end: checking balance --
 
 @app.get("/orders")
 def get_orders():

@@ -24,6 +24,7 @@ class OrderWrapper:
 order_book_wrapped: list[OrderWrapper] = []
 
 # Order request schema
+# -- start: order request schema --
 class OrderRequest(BaseModel):
     sender: str
     order_type: str  # 'buy' or 'sell'
@@ -32,6 +33,7 @@ class OrderRequest(BaseModel):
     quantity: float
     price: float
     signature: str
+# -- end: order request schema --
 
 # --- Routes ---
 
@@ -43,11 +45,13 @@ def get_balance(address: str, token: str):
 def get_orders():
     return [w.order for w in order_book_wrapped]
 
+# -- start: verifying when placing order --
 @app.post("/order")
 def place_order(order: OrderRequest):
     message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
     if not verify_signature(order.sender, message, order.signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
+# -- end: verifying when placing order --
 
     user_bal = balances.get(order.sender, {})
     cost = order.quantity * order.price
@@ -138,7 +142,9 @@ def update_balances(order1: dict, order2: dict, qty: float):
     balances[buyer["user"]][base_token] = balances[buyer["user"]].get(base_token, 0.0) + qty
     balances[seller["user"]][quote_token] = balances[seller["user"]].get(quote_token, 0.0) + total_price
 
+
 # Signature verification
+# -- start: verifying signature --
 def verify_signature(sender: str, message: str, signature: str) -> bool:
     try:
         message_hash = encode_defunct(text=message)
@@ -146,6 +152,7 @@ def verify_signature(sender: str, message: str, signature: str) -> bool:
         return recovered.lower() == sender.lower()
     except Exception:
         return False
+# -- end: verifying signature --
 
 if __name__ == "__main__":
     import uvicorn

@@ -10,6 +10,7 @@ app = FastAPI()
 # Simulated Balances
 balances: dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
 
+# -- start: verifying signature before transfer --
 def verify_signature(sender: str, message: str, signature: str) -> bool:
     """Verifies if the provided signature is valid for the given sender address."""
     try:
@@ -39,6 +40,7 @@ async def transfer(data: TransferRequest) -> JSONResponse:
     balances[data.sender] -= data.amount
     balances[data.receiver] = balances.get(data.receiver, 0) + data.amount
     return JSONResponse({"message": "Transfer successful"})
+# -- end: verifying signature before transfer --
 
 @app.get("/balance")
 async def balance(address: str) -> dict[str, Any]:

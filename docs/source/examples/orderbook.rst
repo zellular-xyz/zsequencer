@@ -161,19 +161,20 @@ Backend Verification
 
 The server reconstructs the message and verifies the signature:
 
+.. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
+   :language: python
+   :start-after: -- start: verifying signature --
+   :end-before: -- end: verifying signature --
 
 .. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
    :language: python
-   :lines: 142-148
-
-
-.. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
-   :language: python
-   :lines: 27-34
+   :start-after: -- start: order request schema --
+   :end-before: -- end: order request schema --
 
 .. literalinclude:: ../../../examples/orderbook/02_signature_based_orderbook_service.py
    :language: python
-   :lines: 46-50
+   :start-after: -- start: verifying when placing order --
+   :end-before: -- end: verifying when placing order --
 
 
 Testing with Script
@@ -227,7 +228,8 @@ Orders are received at the `/order` endpoint. After signature verification and b
 
 .. literalinclude:: ../../../examples/orderbook/03_replicated_orderbook_service.py
    :language: python
-   :lines: 56-75
+   :start-after: -- start: submitting order to zellular --
+   :end-before: -- end: submitting order to zellular --
 
 This means the order will be processed once it appears in a sequenced batch.
 
@@ -239,7 +241,8 @@ Each node runs a background thread to pull and apply new batches from Zellular:
 
 .. literalinclude:: ../../../examples/orderbook/03_replicated_orderbook_service.py
    :language: python
-   :lines: 194-201
+   :start-after: -- start: processing loop --
+   :end-before: -- end: processing loop --
 
 This ensures that all replicas receive and apply the same operations in the same order.
 
@@ -283,7 +286,8 @@ The `/balance` endpoint now accepts both an address and token:
 
 .. literalinclude:: ../../../examples/orderbook/04_verifiable_orderbook_service.py
    :language: python
-   :lines: 57-63
+   :start-after: -- start: checking balance --
+   :end-before: -- end: checking balance --
 
 The message is signed using the BLS POP (Proof of Possession) scheme from the blspy library and the resulting signature is included in the API response.
 

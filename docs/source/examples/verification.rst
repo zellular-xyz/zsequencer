@@ -76,7 +76,8 @@ When a subset of nodes fail to sign (or return invalid responses), their public 
 
 .. literalinclude:: ../../../examples/verification/verify_aggregated_signature.py
    :language: python
-   :lines: 39-41
+   :start-after: -- start: subtracting nonsigners --
+   :end-before: -- end: subtracting nonsigners --
 
 This adjusted public key reflects only the nodes that signed.
 
@@ -84,7 +85,8 @@ The final verification step looks like:
 
 .. literalinclude:: ../../../examples/verification/verify_aggregated_signature.py
    :language: python
-   :lines: 49
+   :start-after: -- start: verifying signature --
+   :end-before: -- end: verifying signature --
 
 This verifies that a quorum of nodes cryptographically agreed on the result.
 
