@@ -40,11 +40,8 @@ def create_app() -> Flask:
 def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
-        time.sleep(zconfig.SEND_BATCH_INTERVAL)
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
-            continue
-
-        if zdb.pause_node.is_set():
+        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
+            time.sleep(0.1)
             continue
 
         node_tasks.send_batches()
@@ -81,7 +78,7 @@ def run_flask_app(app: Flask) -> None:
         host="0.0.0.0",
         port=zconfig.PORT,
         debug=False,
-        threaded=True,
+        threaded=False,
         use_reloader=False,
     )
 

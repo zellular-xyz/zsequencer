@@ -6,10 +6,11 @@ from typing import Any
 
 from flask import Blueprint, Response, request
 
+from node import switch
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
-from common.errors import ErrorCodes
+from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from common.response_utils import error_response, success_response
 from config import zconfig
@@ -34,8 +35,12 @@ def put_bulk_batches() -> Response:
     }
 
     for app_name, batches in filtered_batches_mapping.items():
-        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(batches)}.")
-        zdb.init_batches(app_name, [str(item) for item in list(batches)])
+        valid_batches = [
+            str(item) for item in list(batches)
+            if utils.get_utf8_size_kb(str(item)) <= zconfig.MAX_BATCH_SIZE_KB
+        ]
+        zlogger.info(f"The batches are going to be initialized. app: {app_name}, number of batches: {len(valid_batches)}.")
+        zdb.init_batches(app_name, valid_batches)
 
     return success_response(data={}, message="The batch is received successfully.")
 
@@ -51,6 +56,10 @@ def put_batches(app_name: str) -> Response:
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
     data = request.data.decode('latin-1')
+    if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
+        return error_response(error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
+                              error_message=ErrorMessages.BATCH_SIZE_EXCEEDED)
+
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
     return success_response(data={}, message="The batch is received successfully.")
@@ -112,7 +121,7 @@ def post_switch_sequencer() -> Response:
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
     def run_switch_sequencer():
-        tasks.switch_sequencer(old_sequencer_id, new_sequencer_id)
+        switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
     zlogger.info(f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}.")
     threading.Thread(target=run_switch_sequencer).start()
@@ -159,6 +168,19 @@ def get_last_finalized_batch(app_name: str) -> Response:
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
     return success_response(
         data=batch_record_to_stateful_batch(last_finalized_batch_record)
+    )
+
+
+@node_blueprint.route("/batches/finalized/last", methods=["GET"])
+@utils.validate_version
+def get_last_finalized_batches_in_bulk_mode() -> Response:
+    """Get the last finalized batch record for all apps."""
+    last_finalized_batch_records = {
+        app_name: batch_record_to_stateful_batch(zdb.get_last_operational_batch_record_or_empty(app_name, "finalized"))
+        for app_name in zconfig.APPS
+    }
+    return success_response(
+        data=last_finalized_batch_records
     )
 
 

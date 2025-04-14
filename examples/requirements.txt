@@ -1,0 +1,7 @@
+eigensdk>=0.0.3,<1
+fastapi>=0.115.11,<1
+itsdangerous>=2.2.0,<3
+uvicorn>=0.34.0,<1
+zellular>=0.1.8,<1
+blspy>=2.0.3,<3
+httpx>=0.28.1,<1
