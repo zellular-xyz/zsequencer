@@ -179,3 +179,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# This file is used in project management tools such as uv and pdm to specify the
+# Python version used in local development.
+.python-version
