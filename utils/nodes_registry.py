@@ -32,7 +32,8 @@ class NodesRegistryClient:
         }
         try:
             response = requests.post(
-                urljoin(self.base_url, "/snapshot/"), json=nodes_info_snapshot_dict,
+                urljoin(self.base_url, "/snapshot/"),
+                json=nodes_info_snapshot_dict,
             )
             response.raise_for_status()
             return response.json()
@@ -45,7 +46,8 @@ class NodesRegistryClient:
     def add_node_info(self, node_info: NodeInfo):
         try:
             response = requests.post(
-                urljoin(self.base_url, "/nodeInfo/"), json=node_info.dict(),
+                urljoin(self.base_url, "/nodeInfo/"),
+                json=node_info.dict(),
             )
             response.raise_for_status()
             return response.json()
@@ -77,7 +79,8 @@ class NodesRegistryClient:
 
 
 def fetch_historical_nodes_registry_data(
-    nodes_registry_socket: str, timestamp: int | None,
+    nodes_registry_socket: str,
+    timestamp: int | None,
 ) -> dict[str, Any]:
     snapshot = NodesRegistryClient(nodes_registry_socket).get_network_snapshot(
         timestamp=timestamp,

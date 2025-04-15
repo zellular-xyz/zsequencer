@@ -10,11 +10,14 @@ node_config = NodeConfig()
 
 logger = logging.getLogger("batch_buffer")
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 buffer_manager = BatchBuffer(
-    proxy_config=proxy_config, node_config=node_config, logger=logger,
+    proxy_config=proxy_config,
+    node_config=node_config,
+    logger=logger,
 )
 
 

@@ -35,7 +35,8 @@ def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
 
 
 def conditional_decorator(
-    condition: bool | Callable[[], bool], decorator: Callable[[F], F],
+    condition: bool | Callable[[], bool],
+    decorator: Callable[[F], F],
 ) -> Callable[[F], F]:
     """A decorator that applies another decorator only if a condition is True.
 
@@ -123,7 +124,8 @@ def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
     def wrapper(*args: Any, **kwargs: Any) -> Response:
         if not zconfig.get_synced_flag():
             return response_utils.error_response(
-                errors.ErrorCodes.NOT_SYNCED, errors.ErrorMessages.NOT_SYNCED,
+                errors.ErrorCodes.NOT_SYNCED,
+                errors.ErrorMessages.NOT_SYNCED,
             )
 
         return func(*args, **kwargs)
@@ -159,7 +161,8 @@ def validate_body_keys(
             missing_keys = [key for key in required_keys if key not in req_data]
             message = "Required keys are missing: " + ", ".join(missing_keys)
             return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST, message,
+                errors.ErrorCodes.INVALID_REQUEST,
+                message,
             )
 
         return wrapper
@@ -172,7 +175,8 @@ def eth_sign(message: str) -> str:
     message_encoded: SignableMessage = encode_defunct(text=message)
     account_instance: Account = Account()
     return account_instance.sign_message(
-        signable_message=message_encoded, private_key=zconfig.NODE["ecdsa_private_key"],
+        signable_message=message_encoded,
+        private_key=zconfig.NODE["ecdsa_private_key"],
     ).signature.hex()
 
 
@@ -182,7 +186,8 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         msg_encoded: SignableMessage = encode_defunct(text=message)
         account_instance: Account = Account()
         recovered_address: str = account_instance.recover_message(
-            signable_message=msg_encoded, signature=signature,
+            signable_message=msg_encoded,
+            signature=signature,
         )
         return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:

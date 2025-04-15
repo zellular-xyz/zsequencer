@@ -1,5 +1,4 @@
-"""Main script to run Zellular Node and Sequencer tasks.
-"""
+"""Main script to run Zellular Node and Sequencer tasks."""
 
 import asyncio
 import logging

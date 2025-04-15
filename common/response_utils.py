@@ -8,7 +8,9 @@ from .errors import ErrorMessages, HttpErrorCodes
 
 
 def success_response(
-    data: Any, message: str = "Operation successful", status: int = 200,
+    data: Any,
+    message: str = "Operation successful",
+    status: int = 200,
 ) -> Response:
     """Generate a successful HTTP response."""
     return make_response(

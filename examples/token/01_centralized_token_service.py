@@ -1,24 +1,30 @@
-from fastapi import FastAPI, Request, HTTPException
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import JSONResponse
-from pydantic import BaseModel
 from typing import Any
 
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import JSONResponse
+
 app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="supersecretkey")  # Use a strong secret key
+app.add_middleware(
+    SessionMiddleware, secret_key="supersecretkey"
+)  # Use a strong secret key
 
 # Simulated user database
 users = {"user1": "pass1"}
 balances = {"user1": 100}
+
 
 # Define request models
 class LoginRequest(BaseModel):
     username: str
     password: str
 
+
 class TransferRequest(BaseModel):
     receiver: str
     amount: int
+
 
 @app.post("/login")
 async def login(request: Request, data: LoginRequest):
@@ -28,6 +34,7 @@ async def login(request: Request, data: LoginRequest):
 
     request.session["username"] = data.username  # Store username in session
     return JSONResponse({"message": "Login successful"})
+
 
 @app.post("/transfer")
 async def transfer(request: Request, data: TransferRequest):
@@ -43,11 +50,14 @@ async def transfer(request: Request, data: TransferRequest):
     balances[data.receiver] = balances.get(data.receiver, 0) + data.amount
     return JSONResponse({"message": "Transfer successful"})
 
+
 @app.get("/balance")
 async def balance(username: str) -> dict[str, Any]:
     """Retrieve user balance."""
     return {"username": username, "balance": balances.get(username, 0)}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, port=5001)

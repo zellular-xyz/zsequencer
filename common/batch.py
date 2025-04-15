@@ -1,7 +1,7 @@
 from typing import TypedDict, cast
 
 from common.state import State
-from common.utils import get_utf8_size_kb, get_utf8_size_bytes
+from common.utils import get_utf8_size_bytes, get_utf8_size_kb
 
 
 class Batch(TypedDict, total=False):
@@ -55,9 +55,9 @@ def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
         {
             key: value
             for key, value in {
-            **batch_record,
-            **batch_record.get("batch", {}),
-        }.items()
+                **batch_record,
+                **batch_record.get("batch", {}),
+            }.items()
             if key in StatefulBatch.__annotations__
         },
     )

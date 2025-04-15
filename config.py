@@ -1,5 +1,4 @@
-"""Configuration functions for the ZSequencer.
-"""
+"""Configuration functions for the ZSequencer."""
 
 import cProfile
 import functools
@@ -41,7 +40,7 @@ class Config:
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
         self.INIT_SEQUENCER_ID = node_config.init_sequencer_id
-        self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
+        self.SEQUENCER = {"id": self.INIT_SEQUENCER_ID}
         self.BANDWIDTH_KB_PER_WINDOW = node_config.bandwidth_kb_per_window
         self.PUSH_RATE_LIMIT_WINDOW_SECONDS = node_config.push_rate_limit_window_seconds
         self.MAX_BATCH_SIZE_KB = node_config.max_batch_size_kb
@@ -74,7 +73,10 @@ class Config:
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
         self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
-        self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
+        self.HEADERS = {
+            "Content-Type": "application/json",
+            "Version": node_config.version,
+        }
         # Init node encryption and networks configurations
         self._init_node()
 
@@ -106,12 +108,14 @@ class Config:
             nodes_data = utils.get_file_content(self.NODES_FILE)
         elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
             nodes_data = utils.get_eigen_network_info(
-                sub_graph_socket=self.SUBGRAPH_URL, block_number=tag,
+                sub_graph_socket=self.SUBGRAPH_URL,
+                block_number=tag,
             )
 
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
-                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag,
+                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY,
+                timestamp=tag,
             )
 
         for address, node_data in nodes_data.items():
@@ -184,7 +188,9 @@ class Config:
         ].nodes
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
-        sequencers_stake: dict[str, Any] = dict.fromkeys(list(current_network_nodes.keys()), 0)
+        sequencers_stake: dict[str, Any] = dict.fromkeys(
+            list(current_network_nodes.keys()), 0
+        )
         for node_id in list(current_network_nodes.keys()):
             if node_id == self.NODE["id"]:
                 continue
@@ -211,13 +217,15 @@ class Config:
 
     def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
-            self.BLS_KEY_STORE_PATH, self.BLS_KEY_PASSWORD,
+            self.BLS_KEY_STORE_PATH,
+            self.BLS_KEY_PASSWORD,
         )
 
         with open(self.ECDSA_KEY_STORE_PATH) as f:
             encrypted_json: str = json.loads(f.read())
         ecdsa_private_key: str = Account.decrypt(
-            encrypted_json, self.ECDSA_KEY_PASSWORD,
+            encrypted_json,
+            self.ECDSA_KEY_PASSWORD,
         )
         self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
@@ -256,7 +264,8 @@ class Config:
 
         if self.is_sequencer:
             zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s", self.NODE["id"],
+                "This node is acting as the SEQUENCER. ID: %s",
+                self.NODE["id"],
             )
 
         self.APPS = utils.get_file_content(self.APPS_FILE)

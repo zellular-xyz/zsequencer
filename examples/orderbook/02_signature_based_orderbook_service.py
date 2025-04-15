@@ -1,27 +1,31 @@
+from bisect import insort
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from uuid import uuid4
-from dataclasses import dataclass, field
-from bisect import insort
-from eth_account import Account
-from eth_account.messages import encode_defunct
 
 app = FastAPI()
 
 # In-memory balances
 balances: dict[str, dict[str, float]] = {
     "0xc66F8Fba940064B5bA8d437d6fF829E60134230E": {"USDT": 1000.0},
-    "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0}
+    "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0},
 }
+
 
 @dataclass(order=True)
 class OrderWrapper:
     sort_index: float
     order: dict = field(compare=False)
 
+
 # Order book
 order_book_wrapped: list[OrderWrapper] = []
+
 
 # Order request schema
 # -- start: order request schema --
@@ -33,17 +37,22 @@ class OrderRequest(BaseModel):
     quantity: float
     price: float
     signature: str
+
+
 # -- end: order request schema --
 
 # --- Routes ---
+
 
 @app.get("/balance")
 def get_balance(address: str, token: str):
     return balances.get(address, {}).get(token, 0)
 
+
 @app.get("/orders")
 def get_orders():
     return [w.order for w in order_book_wrapped]
+
 
 # -- start: verifying when placing order --
 @app.post("/order")
@@ -51,18 +60,22 @@ def place_order(order: OrderRequest):
     message = f"Order {order.order_type} {order.quantity} {order.base_token} at {order.price} {order.quote_token}"
     if not verify_signature(order.sender, message, order.signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
-# -- end: verifying when placing order --
+    # -- end: verifying when placing order --
 
     user_bal = balances.get(order.sender, {})
     cost = order.quantity * order.price
 
-    if order.order_type == 'buy':
+    if order.order_type == "buy":
         if user_bal.get(order.quote_token, 0.0) < cost:
-            raise HTTPException(status_code=403, detail="Insufficient quote token balance")
+            raise HTTPException(
+                status_code=403, detail="Insufficient quote token balance"
+            )
         user_bal[order.quote_token] -= cost
-    elif order.order_type == 'sell':
+    elif order.order_type == "sell":
         if user_bal.get(order.base_token, 0.0) < order.quantity:
-            raise HTTPException(status_code=403, detail="Insufficient base token balance")
+            raise HTTPException(
+                status_code=403, detail="Insufficient base token balance"
+            )
         user_bal[order.base_token] -= order.quantity
     else:
         raise HTTPException(status_code=400, detail="Invalid order type")
@@ -74,18 +87,23 @@ def place_order(order: OrderRequest):
         "base_token": order.base_token,
         "quote_token": order.quote_token,
         "quantity": order.quantity,
-        "price": order.price
+        "price": order.price,
     }
 
     match_order(new_order)
 
     # Only insert unmatched portion of the order
     if new_order["quantity"] > 0:
-        sort_price = -new_order["price"] if new_order["order_type"] == "buy" else new_order["price"]
+        sort_price = (
+            -new_order["price"]
+            if new_order["order_type"] == "buy"
+            else new_order["price"]
+        )
         wrapped = OrderWrapper(sort_index=sort_price, order=new_order)
         insort(order_book_wrapped, wrapped)
 
     return {"message": "Order placed", "order_id": new_order["id"]}
+
 
 # Matching engine
 def match_order(new_order: dict):
@@ -95,10 +113,10 @@ def match_order(new_order: dict):
 
         # Skip if the order is not compatible for matching
         if (
-            existing["user"] == new_order["user"] or
-            existing["base_token"] != new_order["base_token"] or
-            existing["quote_token"] != new_order["quote_token"] or
-            existing["order_type"] == new_order["order_type"]
+            existing["user"] == new_order["user"]
+            or existing["base_token"] != new_order["base_token"]
+            or existing["quote_token"] != new_order["quote_token"]
+            or existing["order_type"] == new_order["order_type"]
         ):
             i += 1
             continue
@@ -107,7 +125,8 @@ def match_order(new_order: dict):
         price_ok = (
             new_order["order_type"] == "buy" and existing["price"] <= new_order["price"]
         ) or (
-            new_order["order_type"] == "sell" and existing["price"] >= new_order["price"]
+            new_order["order_type"] == "sell"
+            and existing["price"] >= new_order["price"]
         )
 
         if not price_ok:
@@ -130,6 +149,7 @@ def match_order(new_order: dict):
         if new_order["quantity"] == 0:
             break
 
+
 # Balance update
 def update_balances(order1: dict, order2: dict, qty: float):
     buyer = order1 if order1["order_type"] == "buy" else order2
@@ -139,8 +159,12 @@ def update_balances(order1: dict, order2: dict, qty: float):
     base_token = buyer["base_token"]
     total_price = qty * buyer["price"]
 
-    balances[buyer["user"]][base_token] = balances[buyer["user"]].get(base_token, 0.0) + qty
-    balances[seller["user"]][quote_token] = balances[seller["user"]].get(quote_token, 0.0) + total_price
+    balances[buyer["user"]][base_token] = (
+        balances[buyer["user"]].get(base_token, 0.0) + qty
+    )
+    balances[seller["user"]][quote_token] = (
+        balances[seller["user"]].get(quote_token, 0.0) + total_price
+    )
 
 
 # Signature verification
@@ -152,8 +176,11 @@ def verify_signature(sender: str, message: str, signature: str) -> bool:
         return recovered.lower() == sender.lower()
     except Exception:
         return False
+
+
 # -- end: verifying signature --
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, port=5001)

@@ -9,7 +9,10 @@ from configs import NodeConfig, ProxyConfig
 
 class BatchBuffer:
     def __init__(
-        self, proxy_config: ProxyConfig, node_config: NodeConfig, logger: logging.Logger,
+        self,
+        proxy_config: ProxyConfig,
+        node_config: NodeConfig,
+        logger: logging.Logger,
     ):
         """Initialize the buffer manager with the provided configuration."""
         self._logger = logger

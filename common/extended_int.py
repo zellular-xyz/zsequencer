@@ -18,7 +18,9 @@ class ExtendedInt:
 
     @classmethod
     def from_optional_int(
-        self, value: int | None, none_as: Literal["inf", "-inf"],
+        self,
+        value: int | None,
+        none_as: Literal["inf", "-inf"],
     ) -> ExtendedInt:
         return ExtendedInt(value if value is not None else none_as)
 

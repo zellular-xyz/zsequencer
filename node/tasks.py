@@ -17,8 +17,10 @@ from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
-from node.rate_limit import get_remaining_capacity_kb_of_self_node
-from node.rate_limit import try_acquire_rate_limit_of_self_node
+from node.rate_limit import (
+    get_remaining_capacity_kb_of_self_node,
+    try_acquire_rate_limit_of_self_node,
+)
 from node.switch import send_switch_requests, switch_sequencer_async
 
 
@@ -62,7 +64,8 @@ def send_app_batches_iteration(app_name: str) -> bool:
     finish_condition = (
         not sequencer_last_finalized_hash
         or zdb.get_batch_record_by_hash_or_empty(
-            app_name, sequencer_last_finalized_hash,
+            app_name,
+            sequencer_last_finalized_hash,
         )
     )
     return finish_condition
@@ -71,15 +74,18 @@ def send_app_batches_iteration(app_name: str) -> bool:
 def send_app_batches(app_name: str) -> dict[str, Any]:
     """Send batches for a specific app."""
     max_size_kb = get_remaining_capacity_kb_of_self_node()
-    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(app_name=app_name,
-                                                                                max_size_kb=max_size_kb)
+    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(
+        app_name=app_name, max_size_kb=max_size_kb
+    )
     batches = list(initialized_batches.values())
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="sequenced",
+        app_name=app_name,
+        state="sequenced",
     )
     last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=app_name, state="locked",
+        app_name=app_name,
+        state="locked",
     )
 
     concat_hash: str = "".join(initialized_batches.keys())
@@ -92,15 +98,18 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             "signature": concat_sig,
             "sequenced_index": last_sequenced_batch_record.get("index", 0),
             "sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "hash", "",
+                "hash",
+                "",
             ),
             "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "chaining_hash", "",
+                "chaining_hash",
+                "",
             ),
             "locked_index": last_locked_batch_record.get("index", 0),
             "locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
             "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get(
-                "chaining_hash", "",
+                "chaining_hash",
+                "",
             ),
             "timestamp": int(time.time()),
         },
@@ -136,7 +145,8 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             zdb.clear_missed_batches(app_name)
 
             seq_tag = max(
-                sequencer_resp["locked"]["tag"], sequencer_resp["finalized"]["tag"],
+                sequencer_resp["locked"]["tag"],
+                sequencer_resp["finalized"]["tag"],
             )
             if seq_tag != 0:
                 zconfig.NETWORK_STATUS_TAG = seq_tag
@@ -159,10 +169,12 @@ def sync_with_sequencer(
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(
-        app_name=app_name, batches=sequencer_response["batches"],
+        app_name=app_name,
+        batches=sequencer_response["batches"],
     )
     last_locked_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "locked",
+        app_name,
+        "locked",
     ).get("index", 0)
     if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
@@ -183,7 +195,8 @@ def sync_with_sequencer(
             zlogger.error("Invalid locking signature received from sequencer")
 
     last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "finalized",
+        app_name,
+        "finalized",
     ).get("index", 0)
     if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
@@ -242,7 +255,8 @@ def check_censorship(
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """Confirm and sign the sync point"""
     batch_record = zdb.get_batch_record_by_hash_or_empty(
-        sync_point["app_name"], sync_point["hash"],
+        sync_point["app_name"],
+        sync_point["hash"],
     )
     batch = batch_record.get("batch", {})
     if (
@@ -265,7 +279,9 @@ def _validate_nonsigners_stake(nonsigners_stake: int, total_stake: int):
 
 
 def compute_signature_public_key(
-    nodes_info, agg_pub_key, non_signers: list[str],
+    nodes_info,
+    agg_pub_key,
+    non_signers: list[str],
 ) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = agg_pub_key
     for node_id in non_signers:
@@ -294,7 +310,9 @@ def is_sync_point_signature_verified(
         [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners],
     )
     agg_pub_key = compute_signature_public_key(
-        nodes_info, network_state.aggregated_public_key, nonsigners,
+        nodes_info,
+        network_state.aggregated_public_key,
+        nonsigners,
     )
 
     if not _validate_nonsigners_stake(nonsigners_stake, network_state.total_stake):
@@ -318,7 +336,9 @@ def is_sync_point_signature_verified(
         f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}",
     )
     return bls.is_bls_sig_verified(
-        signature_hex=signature_hex, message=message, public_key=agg_pub_key,
+        signature_hex=signature_hex,
+        message=message,
+        public_key=agg_pub_key,
     )
 
 
@@ -339,7 +359,8 @@ async def gather_disputes() -> dict[str, Any] | None:
     )
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(
-            pending_tasks, return_when=asyncio.FIRST_COMPLETED,
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
         )
         for task in done:
             if not task.result() or not utils.is_dispute_approved(task.result()):
@@ -361,7 +382,8 @@ async def send_dispute_requests() -> None:
         return
 
     zlogger.warning(
-        f"Sending dispute is_not_synced: {is_not_synced}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}")
+        f"Sending dispute is_not_synced: {is_not_synced}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
+    )
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"],
@@ -379,7 +401,8 @@ async def send_dispute_requests() -> None:
 
     try:
         responses, stake_percent = await asyncio.wait_for(
-            gather_disputes(), timeout=zconfig.AGGREGATION_TIMEOUT,
+            gather_disputes(),
+            timeout=zconfig.AGGREGATION_TIMEOUT,
         )
     except TimeoutError:
         zlogger.warning(
@@ -391,7 +414,9 @@ async def send_dispute_requests() -> None:
         return
 
     if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
-        zlogger.warning(f"Not enough stake for dispute, stake_percent : {stake_percent}")
+        zlogger.warning(
+            f"Not enough stake for dispute, stake_percent : {stake_percent}"
+        )
         return
     proofs.extend(responses)
 
@@ -401,7 +426,8 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-    node: dict[str, Any], is_sequencer_down: bool,
+    node: dict[str, Any],
+    is_sequencer_down: bool,
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
@@ -417,7 +443,9 @@ async def send_dispute_request(
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=url, data=data, headers=zconfig.HEADERS,
+                url=url,
+                data=data,
+                headers=zconfig.HEADERS,
             ) as response:
                 response_json: dict[str, Any] = await response.json()
                 if response_json["status"] == "success":

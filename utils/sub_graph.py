@@ -1,4 +1,3 @@
-
 import requests
 
 default_nodes_list = {

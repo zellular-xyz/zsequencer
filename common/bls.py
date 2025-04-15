@@ -1,5 +1,4 @@
-"""Module for handling BLS signatures and related operations.
-"""
+"""Module for handling BLS signatures and related operations."""
 
 import asyncio
 import json
@@ -23,7 +22,8 @@ def bls_sign(message: str) -> str:
 
 
 def get_signers_aggregated_public_key(
-    nonsigners: list[str], aggregated_public_key: attestation.G2Point,
+    nonsigners: list[str],
+    aggregated_public_key: attestation.G2Point,
 ) -> attestation.G2Point:
     """Generate aggregated public key of the signers."""
     for nonsigner in nonsigners:
@@ -35,7 +35,9 @@ def get_signers_aggregated_public_key(
 
 
 def is_bls_sig_verified(
-    signature_hex: str, message: str, public_key: attestation.G2Point,
+    signature_hex: str,
+    message: str,
+    public_key: attestation.G2Point,
 ) -> bool:
     """Verify a BLS signature."""
     signature: attestation.Signature = attestation.new_zero_signature()
@@ -53,7 +55,8 @@ async def gather_signatures(
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending_tasks = await asyncio.wait(
-                pending_tasks, return_when=asyncio.FIRST_COMPLETED,
+                pending_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
             )
             for task in done:
                 if not task.result():
@@ -71,7 +74,8 @@ async def gather_signatures(
 
 
 async def gather_and_aggregate_signatures(
-    data: dict[str, Any], node_ids: set[str],
+    data: dict[str, Any],
+    node_ids: set[str],
 ) -> dict[str, Any] | None:
     """Gather and aggregate signatures from nodes.
     Lock NODES and TAG and other zconfig
@@ -109,7 +113,8 @@ async def gather_and_aggregate_signatures(
     }
     try:
         signatures, stake_percent = await asyncio.wait_for(
-            gather_signatures(sign_tasks), timeout=zconfig.AGGREGATION_TIMEOUT,
+            gather_signatures(sign_tasks),
+            timeout=zconfig.AGGREGATION_TIMEOUT,
         )
     except TimeoutError:
         zlogger.exception(
@@ -135,13 +140,20 @@ async def gather_and_aggregate_signatures(
 
 
 async def request_signature(
-    node_id: str, url: str, data: dict[str, Any], message: str, timeout: int = 120,
+    node_id: str,
+    url: str,
+    data: dict[str, Any],
+    message: str,
+    timeout: int = 120,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
-                url, json=data, timeout=timeout, headers=zconfig.HEADERS,
+                url,
+                json=data,
+                timeout=timeout,
+                headers=zconfig.HEADERS,
             ) as response:
                 response_json = await response.json()
                 if response_json.get("status") != "success":
@@ -159,7 +171,9 @@ async def request_signature(
         except TimeoutError:
             zlogger.warning(f"Requesting signature from {node_id} timeout.")
         except Exception as e:
-            zlogger.warning(f"An unexpected error occurred requesting signature from {node_id}: {e}")
+            zlogger.warning(
+                f"An unexpected error occurred requesting signature from {node_id}: {e}"
+            )
         return None
 
 
