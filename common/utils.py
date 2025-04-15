@@ -285,3 +285,11 @@ def multi_gen_hash(strings: list[str]) -> list[str]:
             index = futures[future]
             results[index] = future.result()
     return results
+
+
+def get_utf8_size_bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def get_utf8_size_kb(text: str) -> float:
+    return get_utf8_size_bytes(text) / 1024

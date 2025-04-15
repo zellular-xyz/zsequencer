@@ -1,0 +1,14 @@
+{
+    "Node1": {
+        "url": "http://localhost:5001/balance",
+        "pubkey": "986eb0c1d372e53c77263cae70cbb16c14028e7b56d48e40567bb042f5eecc9baddef91955b244b9088419adf7947b44"
+    },
+    "Node2": {
+        "url": "http://localhost:5002/balance",
+        "pubkey": "a4876f50063fb6f47111841845ae4df6db9f79dfedded654adf72b87b5e6b72da1c161eb825f3c62a54edde0100edeb7"
+    },
+    "Node3": {
+        "url": "http://localhost:5003/balance",
+        "pubkey": "aaa150fb808bbcc88d459783c171ecb20b8526e6668cf3b6170a612f9c1bc39165dd5f5819278c677bd22c2f49cd7c74"
+    }
+}

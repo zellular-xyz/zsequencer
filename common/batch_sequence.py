@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from typing import Any, Tuple
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -11,6 +11,9 @@ from common.state import (
     OperationalState,
     is_state_before_or_equal,
 )
+from common.batch import Batch, BatchRecord, get_batch_size_kb
+from common.logger import zlogger
+from common.extended_int import ExtendedInt
 
 
 class BatchSequence:
@@ -38,6 +41,11 @@ class BatchSequence:
         self._index_offset = index_offset
         self._batches = list(batches)
         self._each_state_last_index = dict(each_state_last_index)
+        self._size_kb = sum(get_batch_size_kb(batch) for batch in self._batches)
+
+    @property
+    def size_kb(self) -> float:
+        return self._size_kb
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> BatchSequence:
@@ -114,7 +122,52 @@ class BatchSequence:
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
+        self._size_kb += get_batch_size_kb(batch)
         return self.get_last_index_or_default()
+
+    def _includes_only_finalized_batches(self) -> bool:
+        """
+        Check if all batches in the sequence are in finalized state.
+        Returns True if all batches are finalized, False otherwise.
+        Empty sequence returns True as it has no non-finalized batches.
+        """
+        if not self._batches:
+            return True
+
+        last_finalized_index = self.get_last_index_or_default(
+            state="finalized",
+            default=self.BEFORE_GLOBAL_INDEX_OFFSET
+        )
+        last_index_of_sequence = self.get_last_index_or_default(default=self.BEFORE_GLOBAL_INDEX_OFFSET)
+
+        return last_index_of_sequence <= last_finalized_index
+
+    def extend(self, other: BatchSequence):
+        if not other or len(other._batches) == 0:
+            return
+
+        if not self._includes_only_finalized_batches():
+            raise ValueError("The sequence batches are not finalized yet!")
+
+        if len(self) == 0:
+            self._index_offset = other.index_offset
+            self._batches = list(other.batches())
+            self._each_state_last_index = dict(other._each_state_last_index)
+            self._size_kb = other._size_kb
+            return
+
+        # Ensure the first batch of the new sequence aligns with the last batch of the current sequence
+        expected_start_index = self.get_last_index_or_default() + 1
+        if other.index_offset != expected_start_index:
+            raise ValueError(
+                f"Batch sequence must start at {expected_start_index}, but got {other.index_offset}."
+            )
+
+        for batch in other.batches():
+            self.append(batch)
+
+        for state, index in other._each_state_last_index.items():
+            self.promote(index, state)
 
     def promote(self, last_index: int, target_state: OperationalState) -> None:
         feasible_last_index = min(
@@ -150,6 +203,32 @@ class BatchSequence:
                 for state, last_index in self._each_state_last_index.items()
             },
         }
+
+    def truncate_by_size(self, size_kb: float) -> BatchSequence:
+        """
+        Truncate the batch sequence up to a specified size in KB.
+
+        Args:
+            size_kb: Maximum size in KB for the truncated sequence
+        """
+        if size_kb <= 0 or not self:
+            return self._create_empty()
+
+        if size_kb >= self._size_kb:
+            return self
+
+        total_size = 0.0
+        end_index = self.before_index_offset
+
+        for record in self.records():
+            batch_size = get_batch_size_kb(record["batch"])
+            if total_size + batch_size > size_kb:
+                break
+
+            total_size += batch_size
+            end_index = record["index"]
+
+        return self.filter(end_inclusive=end_index) if end_index > self.before_index_offset else self._create_empty()
 
     def filter(
         self,

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import gzip
 import itertools
-import json
-import math
 import os
 import threading
 import time
 from collections.abc import Iterable
 from threading import Thread
-from typing import Any, TypedDict
+from typing import Any
+from typing import TypedDict
 
 from common import utils
-from common.batch import Batch, BatchRecord
+from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
+from common.snapshot_manager import SnapshotManager
 from common.state import OperationalState
 from config import zconfig
 from utils import get_file_content
@@ -50,8 +49,11 @@ class InMemoryDB:
         """Initialize the InMemoryDB instance."""
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
-        self._last_saved_index = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
         self.is_sequencer_down = False
+        self._snapshot_manager = SnapshotManager(base_path=zconfig.SNAPSHOT_PATH,
+                                                 version=zconfig.VERSION,
+                                                 max_chunk_size_kb=zconfig.SNAPSHOT_CHUNK_SIZE_KB,
+                                                 app_names=list(zconfig.APPS.keys()))
         self.apps = self._load_finalized_batches_for_all_apps()
         self._fetching_thread = Thread(
             target=self._fetch_apps_and_network_state_periodically,
@@ -74,7 +76,7 @@ class InMemoryDB:
                     "operational_batch_hash_index_map": {},
                     "missed_batch_map": {},
                 }
-
+                self._snapshot_manager.initialize_app_storage(app_name)
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
@@ -100,107 +102,49 @@ class InMemoryDB:
 
             time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
-    @classmethod
-    def _load_finalized_batches_for_all_apps(cls) -> dict[str, App]:
+    def _load_finalized_batches_for_all_apps(self) -> dict[str, App]:
         """Load and return the initial state from the snapshot files."""
         result: dict[str, App] = {}
 
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_batch_sequence = cls._load_finalized_batch_sequence(app_name)
+            finalized_batch_sequence = self._snapshot_manager.load_latest_chunks(
+                app_name=app_name,
+                latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
+            )
             result[app_name] = {
                 "nodes_state": {},
                 "initialized_batch_map": {},
                 "operational_batch_sequence": finalized_batch_sequence,
-                "operational_batch_hash_index_map": cls._generate_batch_hash_index_map(
-                    finalized_batch_sequence,
+                "operational_batch_hash_index_map": self._generate_batch_hash_index_map(
+                    finalized_batch_sequence
                 ),
                 "missed_batch_map": {},
             }
 
         return result
 
-    @classmethod
-    def _load_finalized_batch_sequence(
-        cls, app_name: str, index: int | None = None,
-    ) -> BatchSequence:
-        """Load finalized batches for a given app from the snapshot file."""
-        snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
-        if index is None:
-            effective_index = 0
-            snapshots = sorted(
-                file for file in os.listdir(snapshot_dir) if file.endswith(".json.gz")
-            )
-            if snapshots:
-                effective_index = int(snapshots[-1].split(".")[0])
-        else:
-            effective_index = (
-                math.ceil(index / zconfig.SNAPSHOT_CHUNK) * zconfig.SNAPSHOT_CHUNK
-            )
+    def get_limited_initialized_batch_map(self, app_name: str, max_size_kb: float) -> dict[str, Batch]:
+        initialized_batch_map = self.get_batch_map(app_name=app_name)
+        total_batches_size = 0.0
+        limited_batch_map = {}
+        for batch_hash, batch in initialized_batch_map.items():
+            batch_size = get_batch_size_kb(batch)
+            if total_batches_size + batch_size > max_size_kb:
+                break
+            limited_batch_map[batch_hash] = batch
+            total_batches_size += batch_size
+        return limited_batch_map
 
-        if effective_index <= 0:
-            return BatchSequence()
+    def _prune_old_finalized_batches(self, app_name: str) -> None:
+        remove_border_index = self._snapshot_manager.get_latest_chunks_start_index(
+            app_name=app_name,
+            latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
+        )
 
-        try:
-            with gzip.open(
-                snapshot_dir + f"/{str(effective_index).zfill(7)}.json.gz",
-                "rt",
-                encoding="UTF-8",
-            ) as file:
-                return BatchSequence.from_mapping(json.load(file))
-        except (FileNotFoundError, EOFError):
-            pass
-        except (OSError, json.JSONDecodeError):
-            zlogger.error(
-                "An error occurred while loading finalized batches for %s: %s",
-                app_name,
-            )
-        return BatchSequence()
-
-    def _save_finalized_chunk_then_prune(
-        self, app_name: str, snapshot_index: int,
-    ) -> None:
-        try:
-            snapshot_border_index = max(
-                snapshot_index - zconfig.SNAPSHOT_CHUNK,
-                BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-            )
-            self._save_finalized_batches_chunk_to_file(
-                app_name,
-                border_index=snapshot_border_index,
-                end_index=snapshot_index,
-            )
-
-            remove_border_index = max(
-                snapshot_index - zconfig.SNAPSHOT_CHUNK * zconfig.REMOVE_CHUNK_BORDER,
-                BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-            )
-            self._prune_old_finalized_batches(app_name, remove_border_index)
-        except Exception:
-            zlogger.error(
-                "An error occurred while saving snapshot for %s at index %d: %s",
-                app_name,
-                snapshot_index,
-            )
-
-    def _save_finalized_batches_chunk_to_file(
-        self, app_name: str, border_index: int, end_index: int,
-    ) -> None:
-        snapshot_dir = os.path.join(zconfig.SNAPSHOT_PATH, zconfig.VERSION, app_name)
-        with gzip.open(
-            snapshot_dir + f"/{str(end_index).zfill(7)}.json.gz", "wt", encoding="UTF-8",
-        ) as file:
-            json.dump(
-                self.apps[app_name]["operational_batch_sequence"]
-                .filter(start_exclusive=border_index, end_inclusive=end_index)
-                .to_mapping(),
-                file,
-            )
-
-    def _prune_old_finalized_batches(self, app_name: str, border_index: int) -> None:
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].filter(start_exclusive=border_index)
+        ].filter(start_exclusive=remove_border_index)
         self.apps[app_name]["operational_batch_hash_index_map"] = (
             self._generate_batch_hash_index_map(
                 self.apps[app_name]["operational_batch_sequence"],
@@ -212,64 +156,57 @@ class InMemoryDB:
         # without the fear of change in the middle of processing.
         return self.apps[app_name]["initialized_batch_map"].copy()
 
+    def _get_first_finalized_batch(self, app_name: str) -> int:
+        return self.apps[app_name]["operational_batch_sequence"].get_first_index_or_default("finalized")
+
     def get_global_operational_batch_sequence(
-        self,
-        app_name: str,
-        state: OperationalState = "sequenced",
-        after: int = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
+            self,
+            app_name: str,
+            state: OperationalState = "sequenced",
+            after: int = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
     ) -> BatchSequence:
-        """Get batches filtered by state and optionally by index."""
-        batch_sequence = BatchSequence(index_offset=after + 1)
-        batch_hash_set: set[str] = set()  # TODO: Check if this is necessary.
+        """
+        Get batches filtered by state and optionally by index, combining storage and memory data.
 
-        current_chunk = math.ceil((after + 1) / zconfig.SNAPSHOT_CHUNK)
-        next_chunk = math.ceil(
-            (after + 1 + zconfig.API_BATCHES_LIMIT) / zconfig.SNAPSHOT_CHUNK,
-        )
-        finalized_chunk = math.ceil(
-            self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default(
-                "finalized",
-            )
-            / zconfig.SNAPSHOT_CHUNK,
-        )
+        Args:
+            app_name: Name of the app to get batches for
+            state: Target operational state
+            after: Starting index (exclusive)
+        """
+        size_limit = zconfig.node_receive_limit_per_window_size_kb
+        remaining_size = size_limit
+        result = BatchSequence()
 
-        if current_chunk < finalized_chunk:
-            loaded_finalized_batches = self._load_finalized_batch_sequence(
-                app_name, after + 1,
-            )
-            self._append_unique_batches_after_index(
-                loaded_finalized_batches,
-                after,
-                batch_sequence,
-                batch_hash_set,
-            )
+        # Get batches from storage if needed
+        first_memory_index = self._get_first_finalized_batch(app_name)
+        while after + 1 < first_memory_index:
+            result.extend(self._snapshot_manager.load_batches(
+                app_name=app_name,
+                after=after,
+                retrieve_size_limit_kb=remaining_size
+            ))
+            # Return if result passes size_limit
+            if result.size_kb >= size_limit:
+                return result.truncate_by_size(
+                    size_kb=size_limit).filter(target_state=state)
 
-        if (
-            next_chunk != current_chunk
-            and len(batch_sequence) < zconfig.API_BATCHES_LIMIT
-            and next_chunk < finalized_chunk
-        ):
-            loaded_finalized_batches = self._load_finalized_batch_sequence(
-                app_name, after + 1 + len(batch_sequence),
-            )
-            self._append_unique_batches_after_index(
-                loaded_finalized_batches,
-                after,
-                batch_sequence,
-                batch_hash_set,
-            )
+            remaining_size = size_limit - result.size_kb
+            after = result.get_last_index_or_default()
+            first_memory_index = self._get_first_finalized_batch(app_name)
 
-        self._append_unique_batches_after_index(
-            self.apps[app_name]["operational_batch_sequence"].filter(
-                target_state=state,
-                start_exclusive=after,
-            ),
-            after,
-            batch_sequence,
-            batch_hash_set,
-        )
 
-        return batch_sequence
+        # Get in-memory batches
+        memory_sequence = (self.apps[app_name]["operational_batch_sequence"]
+                           .filter(start_exclusive=after, target_state=state)
+                           .truncate_by_size(size_kb=remaining_size))
+
+        # Combine sequences
+        if result:
+            result.extend(memory_sequence)
+        else:
+            result = memory_sequence
+
+        return result
 
     def get_batch_record_by_hash_or_empty(
         self, app_name: str, batch_hash: str,
@@ -424,50 +361,52 @@ class InMemoryDB:
         )
 
     def finalize_batches(self, app_name: str, signature_data: SignatureData) -> None:
-        """Update batches to 'finalized' state up to a specified index and save snapshots."""
-        if signature_data.get(
-            "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-        ) <= self.apps[app_name][
-            "operational_batch_sequence"
-        ].get_last_index_or_default(
-            "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-        ):
+        """
+        Update batches to 'finalized' state up to a specified index and save snapshots.
+        Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
+        """
+        signature_finalized_index = signature_data.get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+        last_finalized_index = self.apps[app_name]["operational_batch_sequence"] \
+            .get_last_index_or_default("finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+
+        # Skip if already finalized or batch not found
+        if signature_finalized_index <= last_finalized_index:
             return
 
-        if (
-            signature_data["hash"]
-            not in self.apps[app_name]["operational_batch_hash_index_map"]
-        ):
+        if signature_data["hash"] not in self.apps[app_name]["operational_batch_hash_index_map"]:
             zlogger.warning(
-                f"The finalizing {signature_data=} hash couldn't be found in the "
-                "operational batches.",
+                f"The finalizing {signature_data=} hash couldn't be found in the operational batches."
             )
             return
 
-        snapshot_indexes: list[int] = []
-        for index in (
-            self.apps[app_name]["operational_batch_sequence"]
-            .filter(exclude_state="finalized", end_inclusive=signature_data["index"])
-            .indices()
-        ):
-            if index % zconfig.SNAPSHOT_CHUNK == 0:
-                snapshot_indexes.append(index)
-
+        # Update target batch with finalization data
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
             app_name, signature_data["hash"],
         ).get("batch", {})
-        target_batch["finalization_signature"] = signature_data["signature"]
-        target_batch["finalized_nonsigners"] = signature_data["nonsigners"]
-        target_batch["finalized_tag"] = signature_data["tag"]
+        target_batch.update({
+            "finalization_signature": signature_data["signature"],
+            "finalized_nonsigners": signature_data["nonsigners"],
+            "finalized_tag": signature_data["tag"]
+        })
+
+        # Promote batches to finalized state
         self.apps[app_name]["operational_batch_sequence"].promote(
-            last_index=signature_data["index"], target_state="finalized",
+            last_index=signature_finalized_index,
+            target_state="finalized"
         )
 
-        for snapshot_index in snapshot_indexes:
-            if snapshot_index <= self._last_saved_index:
-                continue
-            self._last_saved_index = snapshot_index
-            self._save_finalized_chunk_then_prune(app_name, snapshot_index)
+        last_persisted_index = self._snapshot_manager.get_last_batch_index(app_name)
+        fresh_finalized_sequence = self.apps[app_name]["operational_batch_sequence"].filter(
+            start_exclusive=last_persisted_index,
+            end_inclusive=signature_finalized_index
+        )
+
+        if fresh_finalized_sequence.size_kb < zconfig.SNAPSHOT_CHUNK_SIZE_KB:
+            return
+
+        self._snapshot_manager.chunk_and_store_batch_sequence(app_name=app_name,
+                                                              batches=fresh_finalized_sequence)
+        self._prune_old_finalized_batches(app_name)
 
     def upsert_node_state(
         self,
@@ -691,29 +630,6 @@ class InMemoryDB:
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
         ].filter(end_inclusive=all_nodes_last_finalized_batch_index)
-
-    def _append_unique_batches_after_index(
-        self,
-        source_batch_sequence: BatchSequence,
-        after: int,
-        # TODO: In Python, it's very unusual to use parameters as the output of
-        # a function.
-        target_batch_sequence: BatchSequence,
-        target_batches_hash_set: set[str],
-    ) -> None:
-        """Filter and add batches to the result based on index."""
-        if not source_batch_sequence:
-            return
-
-        for batch in source_batch_sequence.filter(start_exclusive=after).batches():
-            if len(target_batch_sequence) >= zconfig.API_BATCHES_LIMIT:
-                break
-
-            if batch["hash"] in target_batches_hash_set:
-                continue
-
-            target_batch_sequence.append(batch)
-            target_batches_hash_set.add(batch["hash"])
 
     def _get_operational_batch_record_by_hash_or_empty(
         self, app_name: str, batch_hash: str,

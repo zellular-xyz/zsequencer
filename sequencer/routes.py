@@ -7,9 +7,11 @@ from flask import Blueprint, Response, request
 
 from common import utils
 from common.db import zdb
-from common.errors import ErrorCodes
+from common.batch import get_batch_size_kb
+from common.errors import ErrorCodes, ErrorMessages
 from common.response_utils import error_response, success_response
 from config import zconfig
+from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
 sequencer_blueprint = Blueprint("sequencer", __name__)
 
@@ -18,25 +20,32 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 @utils.sequencer_only
 @utils.sequencer_simulation_malfunction
 @utils.validate_version
-@utils.validate_body_keys(
-    required_keys=[
-        "app_name",
-        "batches",
-        "node_id",
-        "signature",
-        "sequenced_index",
-        "sequenced_hash",
-        "sequenced_chaining_hash",
-        "locked_index",
-        "locked_hash",
-        "locked_chaining_hash",
-        "timestamp",
-    ],
-)
-@utils.sequencer_only
+@utils.validate_body_keys(required_keys=[
+    "app_name",
+    "batches",
+    "node_id",
+    "signature",
+    "sequenced_index",
+    "sequenced_hash",
+    "sequenced_chaining_hash",
+    "locked_index",
+    "locked_hash",
+    "locked_chaining_hash",
+    "timestamp",
+])
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
+    initializing_batches = req_data["batches"]
+    if not try_acquire_rate_limit_of_other_nodes(node_id=req_data["node_id"],
+                                                 batches=initializing_batches):
+        return error_response(error_code=ErrorCodes.BATCHES_LIMIT_EXCEEDED,
+                              error_message=ErrorMessages.BATCHES_LIMIT_EXCEEDED)
+
+    for batch in initializing_batches:
+        if get_batch_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
+            return error_response(error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
+                                  error_message=ErrorMessages.BATCH_SIZE_EXCEEDED)
 
     concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified: bool = utils.is_eth_sig_verified(

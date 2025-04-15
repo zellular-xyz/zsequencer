@@ -14,13 +14,5 @@ High-throughput dApps need to manage a large volume of user interactions, such a
 
    This project is under active development and should not be used in production yet.
 
-Contents
---------
+.. include:: toc.rst
 
-.. toctree::
-
-   architecture
-   protocol
-   sdk
-   integration
-   
