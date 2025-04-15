@@ -33,7 +33,7 @@ COPY pyproject.toml /app/
 COPY uv.lock /app/
 
 # Install the Python dependencies
-RUN uv sync --compile-bytecode --frozen
+RUN uv sync --compile-bytecode --frozen --no-dev
 
 # Copy the required project files to the working directory
 COPY node /app/zsequencer/node
