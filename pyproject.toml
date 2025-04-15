@@ -32,15 +32,16 @@ default-groups = "all"
 # information, visit https://github.com/astral-sh/uv/issues/5903.
 # Usage example: uv run poe fmt
 [tool.poe.tasks]
+check = ["mypy"]
+lint = ["ruff-check", "ruff-format-check"]
+fmt = ["ruff-sort-imports", "ruff-format"]
+build-docs = "python docs/build.py"
+
 mypy = "mypy ."
-typecheck = ["mypy"]
-
 ruff-check = "ruff check"
-lint = ["ruff-check"]
-
+ruff-format-check = "ruff format --check ."
 ruff-sort-imports = "ruff check --select I --fix ."
 ruff-format = "ruff format ."
-fmt = ["ruff-sort-imports", "ruff-format"]
 
 [tool.mypy]
 exclude = [
@@ -90,8 +91,3 @@ module = [
     "eigensdk.*"
 ]
 ignore_missing_imports = true
-
-[tool.ruff]
-exclude = [
-    "docs",  # TODO: Should be removed once the errors have been fixed.
-]

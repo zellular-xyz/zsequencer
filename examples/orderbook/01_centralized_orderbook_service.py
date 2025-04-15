@@ -2,7 +2,7 @@ from bisect import insort
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware

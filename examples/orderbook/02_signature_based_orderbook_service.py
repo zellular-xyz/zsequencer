@@ -5,7 +5,6 @@ from uuid import uuid4
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI()

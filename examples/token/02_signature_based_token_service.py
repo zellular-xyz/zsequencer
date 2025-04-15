@@ -2,7 +2,7 @@ from typing import Any
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 

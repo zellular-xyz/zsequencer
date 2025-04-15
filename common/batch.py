@@ -1,7 +1,7 @@
 from typing import TypedDict, cast
 
 from common.state import State
-from common.utils import get_utf8_size_bytes, get_utf8_size_kb
+from common.utils import get_utf8_size_kb
 
 
 class Batch(TypedDict, total=False):

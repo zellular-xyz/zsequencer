@@ -6,7 +6,7 @@ from typing import Any
 from blspy import PopSchemeMPL, PrivateKey
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 from zellular import Zellular

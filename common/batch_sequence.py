@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, Tuple
+from typing import Any
 
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.extended_int import ExtendedInt
