@@ -1,7 +1,8 @@
-from config import zconfig
-from settings import SequencerSabotageSimulation
 import threading
 import time
+
+from config import zconfig
+from settings import SequencerSabotageSimulation
 
 
 class SequencerSabotageSimulationState:
@@ -15,7 +16,9 @@ class SequencerSabotageSimulationState:
     @staticmethod
     def get_instance(conf: SequencerSabotageSimulation):
         if not SequencerSabotageSimulationState._instance:
-            SequencerSabotageSimulationState._instance = SequencerSabotageSimulationState(conf=conf)
+            SequencerSabotageSimulationState._instance = (
+                SequencerSabotageSimulationState(conf=conf)
+            )
         SequencerSabotageSimulationState._instance.start_simulating()
         return SequencerSabotageSimulationState._instance
 
@@ -47,4 +50,6 @@ class SequencerSabotageSimulationState:
         return self._out_of_reach
 
 
-sequencer_sabotage_simulation_state = SequencerSabotageSimulationState.get_instance(conf=SequencerSabotageSimulation())
+sequencer_sabotage_simulation_state = SequencerSabotageSimulationState.get_instance(
+    conf=SequencerSabotageSimulation(),
+)

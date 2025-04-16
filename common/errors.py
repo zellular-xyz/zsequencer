@@ -38,7 +38,9 @@ class ErrorMessages:
     """Human-readable error messages corresponding to error codes."""
 
     INVALID_REQUEST: str = "The request is invalid."
-    INVALID_NODE_VERSION: str = "Invalid node version. Please get the latest version of node."
+    INVALID_NODE_VERSION: str = (
+        "Invalid node version. Please get the latest version of node."
+    )
     NOT_SYNCED: str = "The node is not synced with the sequencer."
     IS_SEQUENCER: str = "This node is the sequencer."
     IS_NOT_SEQUENCER: str = "This node is not the sequencer."

@@ -1,13 +1,13 @@
-import json
 import asyncio
+import json
+from dataclasses import dataclass
+from typing import Any
+
 import aiohttp
 from blspy import G1Element, G2Element, PopSchemeMPL
 
-from typing import Any
-from dataclasses import dataclass
-
 # --- Config and constants ---
-with open('nodes.json') as f:
+with open("nodes.json") as f:
     NODE_CONFIG: dict[str, dict[str, str]] = json.load(f)
 
 REQUEST_TIMEOUT: int = 3
@@ -15,22 +15,24 @@ SIGNATURE_THRESHOLD: float = 2 / 3
 
 # --- Structured response from each node ---
 
+
 @dataclass
 class BalanceResponse:
     node_id: str
     balance: int | None
     signature: str | None
 
+
 # --- Network logic ---
 
+
 async def fetch_signed_balance(
-    session: aiohttp.ClientSession,
-    node_id: str,
-    url: str,
-    address: str
+    session: aiohttp.ClientSession, node_id: str, url: str, address: str
 ) -> BalanceResponse:
     try:
-        async with session.get(url, params={'address': address}, timeout=REQUEST_TIMEOUT) as response:
+        async with session.get(
+            url, params={"address": address}, timeout=REQUEST_TIMEOUT
+        ) as response:
             data: dict[str, Any] = await response.json()
             return BalanceResponse(node_id, data.get("balance"), data.get("signature"))
     except (aiohttp.ClientError, asyncio.TimeoutError):
@@ -45,7 +47,9 @@ async def request_balances_from_nodes(address: str) -> list[BalanceResponse]:
         ]
         return await asyncio.gather(*tasks)
 
+
 # --- Signature aggregation ---
+
 
 async def aggregate_valid_signatures(address: str) -> dict[str, Any]:
     node_responses = await request_balances_from_nodes(address)
@@ -58,7 +62,7 @@ async def aggregate_valid_signatures(address: str) -> dict[str, Any]:
         raise ValueError("No valid balance responses received.")
 
     majority_balance: int = max(reported_balances, key=reported_balances.count)
-    message: bytes = f"Address: {address}, Balance: {majority_balance}".encode('utf-8')
+    message: bytes = f"Address: {address}, Balance: {majority_balance}".encode("utf-8")
 
     verified_signatures: list[G2Element] = []
     failed_nodes: list[str] = []
@@ -69,7 +73,9 @@ async def aggregate_valid_signatures(address: str) -> dict[str, Any]:
             continue
 
         try:
-            pubkey = G1Element.from_bytes(bytes.fromhex(NODE_CONFIG[res.node_id]["pubkey"]))
+            pubkey = G1Element.from_bytes(
+                bytes.fromhex(NODE_CONFIG[res.node_id]["pubkey"])
+            )
             signature = G2Element.from_bytes(bytes.fromhex(res.signature))
 
             if not PopSchemeMPL.verify(pubkey, message, signature):
@@ -91,8 +97,9 @@ async def aggregate_valid_signatures(address: str) -> dict[str, Any]:
     return {
         "message": message.decode(),
         "aggregated_signature": str(aggregated_signature),
-        "non_signing_nodes": failed_nodes
+        "non_signing_nodes": failed_nodes,
     }
+
 
 # --- Run it ---
 

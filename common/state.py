@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import Literal
-from collections.abc import Sequence
 
+from collections.abc import Sequence
+from typing import Literal
 
 # TODO: Replace with an enum when web schemas are supported.
 OperationalState = Literal["sequenced", "locked", "finalized"]

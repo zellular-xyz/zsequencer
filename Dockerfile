@@ -1,6 +1,9 @@
 # Use the official Ubuntu 24.04 image as the base image
 FROM ubuntu:24.04
 
+# Download the uv binaries
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
+
 # Set environment variables to avoid writing .pyc files and ensure stdout/stderr is flushed
 ENV PYTHONUNBUFFERED 1
 ENV PYTHONDONTWRITEBYTECODE 1
@@ -25,11 +28,12 @@ RUN wget https://github.com/herumi/mcl/archive/refs/tags/v1.93.zip && \
 # Create and set the working directory
 WORKDIR /app
 
-# Copy the requirements file to the working directory
-COPY requirements.txt /app/
+# Copy the requirements and lock files to the working directory
+COPY pyproject.toml /app/
+COPY uv.lock /app/
 
 # Install the Python dependencies
-RUN pip3 install --break-system-packages -r requirements.txt
+RUN uv sync --compile-bytecode --frozen --no-dev
 
 # Copy the required project files to the working directory
 COPY node /app/zsequencer/node
@@ -42,6 +46,5 @@ COPY config.py /app/zsequencer/config.py
 COPY settings.py /app/zsequencer/settings.py
 COPY run.py /app/zsequencer/run.py
 
-
 # Command to run the application
-CMD ["python3", "zsequencer/run.py"]
+CMD ["uv", "run", "python3", "zsequencer/run.py"]

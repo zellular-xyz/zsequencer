@@ -8,7 +8,9 @@ from .errors import ErrorMessages, HttpErrorCodes
 
 
 def success_response(
-    data: Any, message: str = "Operation successful", status: int = 200
+    data: Any,
+    message: str = "Operation successful",
+    status: int = 200,
 ) -> Response:
     """Generate a successful HTTP response."""
     return make_response(
@@ -17,7 +19,7 @@ def success_response(
                 "status": "success",
                 "message": message,
                 "data": data,
-            }
+            },
         ),
         status,
     )
@@ -37,7 +39,7 @@ def error_response(error_code: str, error_message: str = "") -> Response:
                     "message": error_message,
                 },
                 "data": None,
-            }
+            },
         ),
         http_status,
     )

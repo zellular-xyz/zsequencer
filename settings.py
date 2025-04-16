@@ -1,6 +1,7 @@
+from typing import Literal
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Literal
 
 MODE_DEV = "dev"
 MODE_PROD = "prod"

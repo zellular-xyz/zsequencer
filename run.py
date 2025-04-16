@@ -1,6 +1,4 @@
-"""
-Main script to run Zellular Node and Sequencer tasks.
-"""
+"""Main script to run Zellular Node and Sequencer tasks."""
 
 import asyncio
 import logging
@@ -15,7 +13,10 @@ from flask import Flask, redirect, url_for
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb, zconfig, zlogger
+
+from common.db import zdb
+from common.logger import zlogger
+from config import zconfig
 from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
