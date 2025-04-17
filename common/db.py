@@ -351,7 +351,6 @@ class InMemoryDB:
             .get("batch", {})
             .get("chaining_hash", "")
         )
-        now = int(time.time())
         for batch in batches:
             chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             if batch["chaining_hash"] != chaining_hash:
