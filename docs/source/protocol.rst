@@ -79,6 +79,8 @@ Switching
 
 * **State Synchronization:** All nodes query peers for their latest *finalized* and *locked* transactions and sync to the highest known state before connecting to the new Sequencer.
 
+* **Finalization Overrides Lock:** If a node discovers a *finalization signature* that conflicts with its current *locked* state, it must drop its lock and adopt the finalized sequence.
+
 Security Justifications
 -----------------------
 
@@ -155,3 +157,23 @@ If nodes discard their sequenced state during a switch and rely solely on the ne
 As a result, both views are locked but incompatible — and **no future sequencer can gather enough signatures to finalize either one**, leading to a permanent stall in the protocol. Liveness is lost.
 
 To prevent this before accepting a new sequencer, each node should sync to the highest known locked index, just as they do for finalized data. This ensures that any valid locking signature held by even one honest node can be propagated across the network, allowing honest nodes to finalize and preventing split-lock deadlocks.
+
+Why might a finalization signature conflict with a node's locked state?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This situation can occur due to network connectivity issues during a sequencer switch. Specifically:
+
+- A node may receive a locking signature from a sequencer that is about to fail and be switched.
+- If the node experiences connectivity problems, it might fail to broadcast its locked state to other nodes during the switch process.
+- Consequently, the rest of the network remains unaware of this locked state.
+- A new sequencer, unaware of the previous lock, may proceed to finalize a different sequence of batches.
+- When the isolated node reconnects, it discovers a finalization signature that conflicts with its previously locked state.
+
+In such cases, the node must:
+
+- Discard its outdated locked state.
+- Adopt the finalized sequence recognized by the majority.
+
+This mechanism ensures that finalization, which requires agreement from more than two-thirds of nodes, always takes precedence over individual locked states, maintaining the protocol's consistency and safety.
+
+**Importantly**, this scenario does not imply that two conflicting finalization signatures can exist. Finalization requires >2/3 of nodes to have locked on the same sequence. Even if a few nodes are temporarily disconnected, the majority will enforce the locked state, and prevent any conflicting finalization from occurring. This ensures that finalization remains globally unique and consistent across the network.
