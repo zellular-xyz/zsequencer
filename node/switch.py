@@ -86,7 +86,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             ) in all_nodes_last_finalized_batch_records.items():
                 if batch_record:
                     zdb.reinitialize(app_name, new_sequencer_id, batch_record)
-                zdb.reset_not_finalized_batches_timestamps(app_name)
+                zdb.reset_latency_queue(app_name)
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
                 await asyncio.sleep(10)

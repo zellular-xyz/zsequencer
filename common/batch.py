@@ -7,7 +7,6 @@ from common.utils import get_utf8_size_kb
 class Batch(TypedDict, total=False):
     app_name: str
     node_id: str
-    timestamp: int
     body: str
     hash: str
     chaining_hash: str
