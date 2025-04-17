@@ -47,4 +47,4 @@ COPY settings.py /app/zsequencer/settings.py
 COPY run.py /app/zsequencer/run.py
 
 # Command to run the application
-CMD ["uv", "run", "python3", "zsequencer/run.py"]
+CMD ["uv", "run", "--no-sync", "zsequencer/run.py"]
