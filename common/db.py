@@ -4,18 +4,21 @@ import itertools
 import os
 import threading
 import time
+from collections import deque
 from collections.abc import Iterable
 from threading import Thread
-from typing import Any, TypedDict
+from typing import Any, TypedDict, TypeAlias
 
 from common import utils
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
 from common.snapshot_manager import SnapshotManager
-from common.state import OperationalState
+from common.state import OperationalState, SequencedState, FinalizedState
 from config import zconfig
 from utils import get_file_content
+
+TimestampedIndex: TypeAlias = tuple[int, int]
 
 
 class App(TypedDict, total=False):
@@ -26,6 +29,7 @@ class App(TypedDict, total=False):
     # TODO: Check if it's necessary.
     operational_batch_hash_index_map: dict[str, int]
     missed_batch_map: dict[str, Batch]
+    latency_tracking_queue: deque[TimestampedIndex]
 
 
 class SignatureData(TypedDict, total=False):
@@ -61,6 +65,36 @@ class InMemoryDB:
         )
         self._fetching_thread.start()
 
+    def track_sequencing_indices(self,
+                                 app_name: str,
+                                 state: SequencedState | FinalizedState,
+                                 last_index: int,
+                                 current_time: int):
+        """Track when a range of batches transitions to a new state and remove from previous state.
+
+        Args:
+            app_name: Name of the app to track state for
+            state: Target operational state
+            last_index: new last index committed at the state
+            current_time: Current timestamp
+        """
+        queue = self.apps[app_name]["latency_tracking_queue"]
+        if state == "sequenced":
+            if len(queue) == 0 or queue[-1][1] < last_index:
+                queue.append((current_time, last_index))
+            return
+
+        while queue and queue[0][1] <= last_index:
+            queue.popleft()
+
+    def has_delayed_batches(self) -> bool:
+        current_time = int(time.time())
+        for app_name in self.apps:
+            queue = self.apps[app_name]["latency_tracking_queue"]
+            if len(queue) > 0 and queue[0][0] < current_time - zconfig.FINALIZATION_TIME_BORDER:
+                return True
+        return False
+
     def _fetch_apps(self) -> None:
         """Fetchs the apps data."""
         data = get_file_content(zconfig.APPS_FILE)
@@ -76,6 +110,7 @@ class InMemoryDB:
                     "operational_batch_sequence": BatchSequence(),
                     "operational_batch_hash_index_map": {},
                     "missed_batch_map": {},
+                    "latency_tracking_queue": deque(),
                 }
                 self._snapshot_manager.initialize_app_storage(app_name)
         zconfig.APPS.update(data)
@@ -122,6 +157,7 @@ class InMemoryDB:
                     finalized_batch_sequence
                 ),
                 "missed_batch_map": {},
+                "latency_tracking_queue": deque()
             }
 
         return result
@@ -234,30 +270,17 @@ class InMemoryDB:
             batch_hash,
         )
 
-    def get_still_sequenced_batches(self, app_name: str) -> list[Batch]:
-        """Get batches that are not finalized based on the finalization time border."""
-        border = int(time.time()) - zconfig.FINALIZATION_TIME_BORDER
-        return [
-            batch
-            for batch in self.apps[app_name]["operational_batch_sequence"]
-            .filter(exclude_state="locked")
-            .batches()
-            if batch["timestamp"] < border
-        ]
-
     def init_batches(self, app_name: str, bodies: Iterable[str]) -> None:
         """Initialize batches of transactions with a given body."""
         if not bodies:
             return
 
-        now = int(time.time())
         for body in bodies:
             batch_hash = utils.gen_hash(body)
             if not self._batch_exists(app_name, batch_hash):
                 self.apps[app_name]["initialized_batch_map"][batch_hash] = {
                     "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
-                    "timestamp": now,
                     "hash": batch_hash,
                     "body": body,
                 }
@@ -328,7 +351,6 @@ class InMemoryDB:
             .get("batch", {})
             .get("chaining_hash", "")
         )
-        now = int(time.time())
         for batch in batches:
             chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             if batch["chaining_hash"] != chaining_hash:
@@ -336,8 +358,6 @@ class InMemoryDB:
                     f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}",
                 )
                 return
-
-            batch["timestamp"] = now
 
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
@@ -548,18 +568,19 @@ class InMemoryDB:
             for app_name in list(zconfig.APPS.keys())
         )
 
-    def reset_not_finalized_batches_timestamps(self, app_name: str) -> None:
-        resetting_batches = itertools.chain(
-            self.apps[app_name]["initialized_batch_map"].values(),
-            self.apps[app_name]["operational_batch_sequence"]
-            .filter(
-                exclude_state="finalized",
-            )
-            .batches(),
+    def reset_latency_queue(self, app_name: str) -> None:
+        self.apps[app_name]["latency_tracking_queue"].clear()
+        last_index = self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default()
+        last_finalized_index = self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default(
+            state="finalized"
         )
-        now = int(time.time())
-        for batch in resetting_batches:
-            batch["timestamp"] = now
+        if last_index > last_finalized_index:
+            self.track_sequencing_indices(
+                app_name=app_name,
+                state="sequenced",
+                last_index=last_index,
+                current_time=int(time.time())
+            )
 
     def reinitialize(
         self,
@@ -633,7 +654,6 @@ class InMemoryDB:
             resequenced_batch: Batch = {
                 "app_name": resequencing_batch["app_name"],
                 "node_id": resequencing_batch["node_id"],
-                "timestamp": resequencing_batch["timestamp"],
                 "hash": resequencing_batch["hash"],
                 "body": resequencing_batch["body"],
                 "chaining_hash": chaining_hash,
@@ -667,7 +687,6 @@ class InMemoryDB:
             reinitialized_batch: Batch = {
                 "app_name": batch["app_name"],
                 "node_id": batch["node_id"],
-                "timestamp": batch["timestamp"],
                 "hash": batch["hash"],
                 "body": batch["body"],
             }

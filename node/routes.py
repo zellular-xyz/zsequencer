@@ -105,7 +105,7 @@ def post_dispute() -> Response:
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
         return error_response(ErrorCodes.INVALID_SEQUENCER)
-    if zdb.has_missed_batches() or zdb.is_sequencer_down:
+    if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
         data: dict[str, Any] = {
             "node_id": zconfig.NODE["id"],

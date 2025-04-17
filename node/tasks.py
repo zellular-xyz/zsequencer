@@ -13,6 +13,7 @@ import requests
 from eigensdk.crypto.bls import attestation
 
 from common import bls, utils
+from common.batch_sequence import BatchSequence
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
@@ -22,16 +23,6 @@ from node.rate_limit import (
     try_acquire_rate_limit_of_self_node,
 )
 from node.switch import send_switch_requests, switch_sequencer_async
-
-
-def check_finalization() -> None:
-    """Check and add not finalized batches to missed batches."""
-    for app_name in list(zconfig.APPS.keys()):
-        not_finalized_batches: list[dict[str, Any]] = zdb.get_still_sequenced_batches(
-            app_name,
-        )
-        if not_finalized_batches:
-            zdb.add_missed_batches(app_name, not_finalized_batches)
 
 
 def send_batches() -> None:
@@ -158,7 +149,6 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         zdb.add_missed_batches(app_name, initialized_batches.values())
         zdb.is_sequencer_down = True
 
-    check_finalization()
     return response
 
 
@@ -215,6 +205,19 @@ def sync_with_sequencer(
             )
         else:
             zlogger.error("Invalid finalizing signature received from sequencer")
+
+    current_time = int(time.time())
+    for state in ("sequenced", "finalized"):
+        index = zdb.get_last_operational_batch_record_or_empty(app_name, state).get("index",
+                                                                                    BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+        if index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
+            continue
+
+        zdb.track_sequencing_indices(
+            app_name=app_name,
+            state=state,
+            last_index=index,
+            current_time=current_time)
 
     return check_censorship(
         app_name=app_name,
@@ -374,15 +377,19 @@ async def gather_disputes() -> dict[str, Any] | None:
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
     is_not_synced = not zconfig.get_synced_flag()
-    no_missed_batches = not zdb.has_missed_batches()
-    sequencer_up = not zdb.is_sequencer_down
     is_paused = zdb.pause_node.is_set()
 
-    if is_not_synced or (no_missed_batches and sequencer_up) or is_paused:
+    no_missed_batches = not zdb.has_missed_batches()
+    no_delayed_batches = not zdb.has_delayed_batches()
+    sequencer_up = not zdb.is_sequencer_down
+
+    no_functionality_issue = no_missed_batches and no_delayed_batches and sequencer_up
+
+    if is_not_synced or is_paused or no_functionality_issue:
         return
 
     zlogger.warning(
-        f"Sending dispute is_not_synced: {is_not_synced}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
+        f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
     )
     timestamp: int = int(time.time())
     new_sequencer_id: str = utils.get_next_sequencer_id(
@@ -436,6 +443,7 @@ async def send_dispute_request(
             "sequencer_id": zconfig.SEQUENCER["id"],
             "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
             "is_sequencer_down": is_sequencer_down,
+            "has_delayed_batches": zdb.has_delayed_batches(),
             "timestamp": timestamp,
         },
     )
