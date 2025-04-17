@@ -17,7 +17,7 @@ buy_order = {
     "base_token": "ETH",
     "quote_token": "USDT",
     "quantity": 1.0,
-    "price": 200.0
+    "price": 200.0,
 }
 
 sell_order = {
@@ -25,8 +25,9 @@ sell_order = {
     "base_token": "ETH",
     "quote_token": "USDT",
     "quantity": 1.0,
-    "price": 200.0
+    "price": 200.0,
 }
+
 
 def sign_order(account: Account, order: dict) -> dict:
     message = f"Order {order['order_type']} {order['quantity']} {order['base_token']} at {order['price']} {order['quote_token']}"
@@ -36,15 +37,17 @@ def sign_order(account: Account, order: dict) -> dict:
     signed_order = {
         "sender": account.address,
         **order,
-        "signature": signed.signature.hex()
+        "signature": signed.signature.hex(),
     }
     return signed_order
+
 
 def place_order(order_data):
     with httpx.Client() as client:
         response = client.post(f"{BASE_URL}/order", json=order_data)
         print(f"Placed {order_data['order_type']} order from {order_data['sender']}")
         print("Response:", response.json())
+
 
 # === Send orders ===
 if __name__ == "__main__":

@@ -1,6 +1,4 @@
-"""
-Configuration functions for the ZSequencer.
-"""
+"""Configuration functions for the ZSequencer."""
 
 import cProfile
 import functools
@@ -10,7 +8,7 @@ import pstats
 import sys
 import time
 from random import randbytes
-from typing import Any, Dict
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -21,8 +19,7 @@ from web3 import Account
 
 import utils
 from common.logger import zlogger
-from schema import NetworkState, NodeSource
-from schema import get_node_source
+from schema import NetworkState, NodeSource, get_node_source
 from settings import NodeConfig
 
 
@@ -31,7 +28,7 @@ class Config:
 
     def __init__(self, node_config: NodeConfig):
         self.node_config = node_config
-        self.HISTORICAL_NETWORK_STATE: Dict[int, NetworkState] = {}
+        self.HISTORICAL_NETWORK_STATE: dict[int, NetworkState] = {}
         self.NODE = {}
 
         self.APPS = {}
@@ -43,7 +40,7 @@ class Config:
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
         self.INIT_SEQUENCER_ID = node_config.init_sequencer_id
-        self.SEQUENCER = {'id': self.INIT_SEQUENCER_ID}
+        self.SEQUENCER = {"id": self.INIT_SEQUENCER_ID}
         self.BANDWIDTH_KB_PER_WINDOW = node_config.bandwidth_kb_per_window
         self.PUSH_RATE_LIMIT_WINDOW_SECONDS = node_config.push_rate_limit_window_seconds
         self.MAX_BATCH_SIZE_KB = node_config.max_batch_size_kb
@@ -76,7 +73,10 @@ class Config:
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
         self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
-        self.HEADERS = {"Content-Type": "application/json", "Version": node_config.version}
+        self.HEADERS = {
+            "Content-Type": "application/json",
+            "Version": node_config.version,
+        }
         # Init node encryption and networks configurations
         self._init_node()
 
@@ -103,16 +103,20 @@ class Config:
         if tag != 0 and (tag in self.HISTORICAL_NETWORK_STATE):
             return self.HISTORICAL_NETWORK_STATE[tag]
 
-        nodes_data: Dict[str, Dict[str, Any]] = {}
+        nodes_data: dict[str, dict[str, Any]] = {}
         if self.NODE_SOURCE == NodeSource.FILE:
             nodes_data = utils.get_file_content(self.NODES_FILE)
         elif self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
-            nodes_data = utils.get_eigen_network_info(sub_graph_socket=self.SUBGRAPH_URL,
-                                                      block_number=tag)
+            nodes_data = utils.get_eigen_network_info(
+                sub_graph_socket=self.SUBGRAPH_URL,
+                block_number=tag,
+            )
 
         elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             nodes_data = utils.fetch_historical_nodes_registry_data(
-                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY, timestamp=tag)
+                nodes_registry_socket=self.HISTORICAL_NODES_REGISTRY,
+                timestamp=tag,
+            )
 
         for address, node_data in nodes_data.items():
             public_key_g2: str = node_data["public_key_g2"]
@@ -120,13 +124,15 @@ class Config:
             node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
 
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
-        total_stake = sum([node['stake'] for node in nodes_data.values()])
+        total_stake = sum([node["stake"] for node in nodes_data.values()])
 
-        network_state = NetworkState(tag=tag,
-                                     timestamp=int(time.time()),
-                                     nodes=nodes_data,
-                                     aggregated_public_key=aggregated_public_key,
-                                     total_stake=total_stake)
+        network_state = NetworkState(
+            tag=tag,
+            timestamp=int(time.time()),
+            nodes=nodes_data,
+            aggregated_public_key=aggregated_public_key,
+            total_stake=total_stake,
+        )
 
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
         return network_state
@@ -134,15 +140,17 @@ class Config:
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def fetch_tag(self):
         if self.NODE_SOURCE == NodeSource.EIGEN_LAYER:
-            return utils.fetch_eigen_layer_last_block_number(sub_graph_socket=self.SUBGRAPH_URL)
-        elif self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
+            return utils.fetch_eigen_layer_last_block_number(
+                sub_graph_socket=self.SUBGRAPH_URL,
+            )
+        if self.NODE_SOURCE == NodeSource.NODES_REGISTRY:
             return utils.get_nodes_registry_last_tag()
-        elif self.NODE_SOURCE == NodeSource.FILE:
+        if self.NODE_SOURCE == NodeSource.FILE:
             return 0
 
     def fetch_network_state(self):
         """Fetch the latest network tag and nodes state and update current nodes info and sequencer"""
-        # Todo: properly handle exception on fetching tag and corresponding network state
+        # TODO: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
         self.NETWORK_STATUS_TAG = tag
@@ -152,7 +160,7 @@ class Config:
             # This will be false when node is not registered yet
             self.NODE.update(nodes_data[self.ADDRESS])
 
-        self.SEQUENCER.update(nodes_data[self.SEQUENCER['id']])
+        self.SEQUENCER.update(nodes_data[self.SEQUENCER["id"]])
 
         return nodes_data
 
@@ -175,12 +183,14 @@ class Config:
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
-        current_network_nodes = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes
+        current_network_nodes = self.HISTORICAL_NETWORK_STATE[
+            self.NETWORK_STATUS_TAG
+        ].nodes
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
-        sequencers_stake: dict[str, Any] = {
-            node_id: 0 for node_id in list(current_network_nodes.keys())
-        }
+        sequencers_stake: dict[str, Any] = dict.fromkeys(
+            list(current_network_nodes.keys()), 0
+        )
         for node_id in list(current_network_nodes.keys()):
             if node_id == self.NODE["id"]:
                 continue
@@ -190,32 +200,45 @@ class Config:
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += current_network_nodes[node_id]["stake"]
+                sequencers_stake[sequencer_id] += current_network_nodes[node_id][
+                    "stake"
+                ]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT and \
-                sequencers_stake[max_stake_id] > self.NODE["stake"]:
+        if (
+            100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT
+            and sequencers_stake[max_stake_id] > self.NODE["stake"]
+        ):
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
 
     def _init_node(self):
-        bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(self.BLS_KEY_STORE_PATH,
-                                                                               self.BLS_KEY_PASSWORD)
+        bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
+            self.BLS_KEY_STORE_PATH,
+            self.BLS_KEY_PASSWORD,
+        )
 
-        with open(self.ECDSA_KEY_STORE_PATH, 'r') as f:
+        with open(self.ECDSA_KEY_STORE_PATH) as f:
             encrypted_json: str = json.loads(f.read())
-        ecdsa_private_key: str = Account.decrypt(encrypted_json, self.ECDSA_KEY_PASSWORD)
+        ecdsa_private_key: str = Account.decrypt(
+            encrypted_json,
+            self.ECDSA_KEY_PASSWORD,
+        )
         self.ADDRESS = Account.from_key(ecdsa_private_key).address.lower()
 
         self.fetch_network_state()
 
         if self.ADDRESS in self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes:
-            self.NODE = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[self.ADDRESS]
-            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode('utf-8')
-            public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode('utf-8')
+            self.NODE = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[
+                self.ADDRESS
+            ]
+            public_key_g2: str = self.NODE["public_key_g2"].getStr(10).decode("utf-8")
+            public_key_g2_from_private: str = bls_key_pair.pub_g2.getStr(10).decode(
+                "utf-8",
+            )
             error_msg = "the bls key pair public key does not match public of the node in the nodes list"
             assert public_key_g2 == public_key_g2_from_private, error_msg
         else:
@@ -225,22 +248,25 @@ class Config:
             zlogger.warning("Operator not found in the nodes' list")
             sys.exit()
 
-        self.NODE.update({
-            'ecdsa_private_key': ecdsa_private_key,
-            'bls_key_pair': bls_key_pair
-        })
+        self.NODE.update(
+            {"ecdsa_private_key": ecdsa_private_key, "bls_key_pair": bls_key_pair},
+        )
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
-        if urlparse(self.NODE['socket']).port != self.PORT:
+        if urlparse(self.NODE["socket"]).port != self.PORT:
             zlogger.warning(
-                f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.")
+                f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.",
+            )
             sys.exit()
 
         self.init_sequencer()
 
         if self.is_sequencer:
-            zlogger.info("This node is acting as the SEQUENCER. ID: %s", self.NODE["id"])
+            zlogger.info(
+                "This node is acting as the SEQUENCER. ID: %s",
+                self.NODE["id"],
+            )
 
         self.APPS = utils.get_file_content(self.APPS_FILE)
 
@@ -279,7 +305,9 @@ class Config:
     def update_sequencer(self, sequencer_id: str | None) -> None:
         """Update the sequencer configuration."""
         if sequencer_id:
-            self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[sequencer_id]
+            self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[
+                self.NETWORK_STATUS_TAG
+            ].nodes[sequencer_id]
 
     # TODO: remove
     @staticmethod
@@ -296,9 +324,9 @@ class Config:
                 finally:
                     profiler.disable()
                     with open(
-                            file=f"{zconfig.NODE['port']}_{output_file}",
-                            mode="a",
-                            encoding="utf-8",
+                        file=f"{zconfig.NODE['port']}_{output_file}",
+                        mode="a",
+                        encoding="utf-8",
                     ) as file:
                         ps = pstats.Stats(profiler, stream=file)
                         ps.strip_dirs().sort_stats("cumulative").print_stats()

@@ -68,7 +68,7 @@ Disputing
 Switching
 ~~~~~~~~~
 
-* **Resetting Transactions:** Upon receiving a switch request, nodes reset all *sequenced* transactions to *initialised* and switch to the next Sequencer.
+* **Resetting Transactions:** Upon receiving a switch request, nodes reset all *sequenced* transactions to *initialised*, but **preserve locked and finalized batches**.
 
-* **New Sequencer Sync:** The new Sequencer queries all nodes for their latest *locked* and *finalised* transactions and syncs with the node having the highest index before processing new requests.
+* **State Synchronization:** All nodes query peers for their latest *finalized* and *locked* transactions and sync to the highest known state before connecting to the new Sequencer.
 
