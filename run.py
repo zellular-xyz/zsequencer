@@ -6,8 +6,9 @@ import os
 import sys
 import threading
 import time
-
+import requests
 from flask import Flask, redirect, url_for
+from urllib.parse import urljoin
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -84,8 +85,35 @@ def run_flask_app(app: Flask) -> None:
     )
 
 
+def check_node_reachability() -> bool:
+    """Check if node is reachable."""
+    if not zconfig.CHECK_REACHABILITY_OF_NODE_URL:
+        return True
+        
+    try:
+        node_host = zconfig.HOST.replace('http://', '').replace('https://', '')
+        response = requests.get(urljoin(zconfig.REMOTE_HOST_CHECKER_BASE_URL, node_host, zconfig.PORT))
+        
+        if response.status_code == 200:
+            return response.text.lower() == 'true'
+        
+        zlogger.error(f"Node reachability check failed with status code: {response.status_code}")
+        return False
+        
+    except requests.RequestException as e:
+        zlogger.error(f"Failed to check node reachability: {e}")
+        return False
+    except Exception as e:
+        zlogger.error(f"Unexpected error during node reachability check: {e}")
+        return False
+
+
 def main() -> None:
     """Main entry point for running the Zellular Node."""
+    if not check_node_reachability():
+        zlogger.error("Node is not reachable. Exiting...")
+        sys.exit(1)
+
     app: Flask = create_app()
 
     # Start periodic task in a thread
