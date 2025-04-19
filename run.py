@@ -111,17 +111,15 @@ def main() -> None:
     app: Flask = create_app()
 
     # Start periodic tasks in threads
-    sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks, daemon=True)
+    sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks)
     sequencer_tasks_thread.start()
 
-    node_tasks_thread = threading.Thread(target=run_node_tasks, daemon=True)
+    node_tasks_thread = threading.Thread(target=run_node_tasks)
     node_tasks_thread.start()
 
     # Start reachability check in separate thread
     if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
-        reachability_check_thread = threading.Thread(
-            target=check_node_reachability, daemon=True
-        )
+        reachability_check_thread = threading.Thread(target=check_node_reachability)
         reachability_check_thread.start()
 
     # Set the logging level to WARNING to suppress INFO level logs
