@@ -15,8 +15,6 @@ from flask import Flask, redirect, url_for
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-# Add to imports at the top
-from threading import Event
 from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
@@ -24,9 +22,6 @@ from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
 from sequencer.routes import sequencer_blueprint
-
-# Add shutdown event as a global variable
-shutdown_event = Event()
 
 
 def create_app() -> Flask:
@@ -46,7 +41,7 @@ def create_app() -> Flask:
 
 def run_node_tasks() -> None:
     """Periodically run node tasks."""
-    while not shutdown_event.is_set():
+    while True:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
             time.sleep(0.1)
             continue
@@ -67,7 +62,7 @@ def run_sequencer_tasks() -> None:
 
 async def run_sequencer_tasks_async() -> None:
     """Asynchronously run sequencer tasks."""
-    while not shutdown_event.is_set():
+    while True:
         await asyncio.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
@@ -78,60 +73,13 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def run_flask_app(app: Flask) -> None:
-    """Run the Flask application."""
-    logger: logging.Logger = logging.getLogger("werkzeug")
-    logger.setLevel(logging.WARNING)
-    zlogger.info("Starting flask on port %s", zconfig.PORT)
-
-    def flask_thread():
-        app.run(
-            host="0.0.0.0",
-            port=zconfig.PORT,
-            debug=False,
-            threaded=False,
-            use_reloader=False,
-        )
-
-    flask_thread = threading.Thread(target=flask_thread)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-
 def check_reachability_and_shutdown() -> None:
     """Check node reachability and shutdown if not reachable."""
     time.sleep(2)  # Give Flask time to start
     if zconfig.CHECK_REACHABILITY_OF_NODE_URL and not check_node_reachability():
         zlogger.error("Node is not reachable. Shutting down...")
-        shutdown_event.set()
-        sys.exit(1)
-
-
-def main() -> None:
-    """Main entry point for running the Zellular Node."""
-    app: Flask = create_app()
-
-    # Start periodic tasks in threads
-    sync_thread = threading.Thread(target=run_sequencer_tasks, daemon=True)
-    sync_thread.start()
-
-    node_tasks_thread = threading.Thread(target=run_node_tasks, daemon=True)
-    node_tasks_thread.start()
-
-    # Start reachability check in separate thread
-    reachability_thread = threading.Thread(target=check_reachability_and_shutdown, daemon=True)
-    reachability_thread.start()
-
-    # Start the Flask application (now non-blocking)
-    run_flask_app(app)
-
-    # Wait for shutdown event
-    try:
-        while not shutdown_event.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        shutdown_event.set()
-        sys.exit(0)
+        # Force kill the entire process with all its threads
+        os._exit(1)
 
 
 def check_node_reachability() -> bool:
@@ -152,6 +100,36 @@ def check_node_reachability() -> bool:
     except Exception as e:
         zlogger.error(f"Unexpected error during node reachability check: {e}")
         return False
+
+
+def main() -> None:
+    """Main entry point for running the Zellular Node."""
+    app: Flask = create_app()
+
+    # Start periodic tasks in threads
+    sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks, daemon=True)
+    sequencer_tasks_thread.start()
+
+    node_tasks_thread = threading.Thread(target=run_node_tasks, daemon=True)
+    node_tasks_thread.start()
+
+    # Start reachability check in separate thread
+    reachability_thread = threading.Thread(target=check_reachability_and_shutdown, daemon=True)
+    reachability_thread.start()
+
+    # Set the logging level to WARNING to suppress INFO level logs
+    logger: logging.Logger = logging.getLogger("werkzeug")
+    logger.setLevel(logging.WARNING)
+    zlogger.info("Starting flask on port %s", zconfig.PORT)
+
+    # Run Flask directly in the main thread - this is a blocking call
+    app.run(
+        host="0.0.0.0",
+        port=zconfig.PORT,
+        debug=False,
+        threaded=True,  # Enable threading in Flask to handle multiple requests
+        use_reloader=False,
+    )
 
 
 if __name__ == "__main__":
