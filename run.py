@@ -45,6 +45,8 @@ def run_node_tasks() -> None:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
             time.sleep(0.1)
             continue
+        if not zdb.is_node_reachable:
+            break
 
         node_tasks.send_batches()
         asyncio.run(node_tasks.send_dispute_requests())
@@ -73,7 +75,7 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def shutdown_if_not_reachable() -> None:
+def check_node_reachability() -> None:
     """Check node reachability and shutdown if not reachable."""
     time.sleep(5)  # Give Flask time to start
 
@@ -85,15 +87,16 @@ def shutdown_if_not_reachable() -> None:
         response = requests.get(url)
 
         if response.status_code == 200:
-            if response.text.lower() == "true":
-                # Node is reachable and nothing to do
-                return
-            else:
+            if response.text.lower() == "false":
+                zdb.is_node_reachable = False
                 zlogger.error(
                     "Node not reachable at {}:{}. Check firewall or port forwarding. Shutting down...".format(
                         node_host, zconfig.PORT
                     )
                 )
+            else:
+                # Node is reachable and nothing to do
+                return
         else:
             zlogger.error(
                 f"Node reachability check failed with status code: {response.status_code}"
@@ -101,8 +104,6 @@ def shutdown_if_not_reachable() -> None:
 
     except Exception as e:
         zlogger.error(f"Failed to check node reachability: {e}")
-
-    os._exit(1)
 
 
 def main() -> None:
@@ -119,7 +120,7 @@ def main() -> None:
     # Start reachability check in separate thread
     if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
         reachability_check_thread = threading.Thread(
-            target=shutdown_if_not_reachable, daemon=True
+            target=check_node_reachability, daemon=True
         )
         reachability_check_thread.start()
 
