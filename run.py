@@ -89,7 +89,11 @@ def shutdown_if_not_reachable() -> None:
                 # Node is reachable and nothing to do
                 return
             else:
-                zlogger.error("Node is not reachable. Shutting down...")
+                zlogger.error(
+                    "Node not reachable at {}:{}. Check firewall or port forwarding. Shutting down...".format(
+                        node_host, zconfig.PORT
+                    )
+                )
         else:
             zlogger.error(
                 f"Node reachability check failed with status code: {response.status_code}"
