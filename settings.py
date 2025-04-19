@@ -65,8 +65,10 @@ class NodeConfig(BaseSettings):
 
     max_missed_batches_to_pick: int = Field(default=10)
 
-    remote_host_checker_base_url: str = Field(default="https://portchecker.io/api")
-    check_reachability_of_node_url: bool = Field(default=False)
+    remote_host_checker_base_url: str = Field(
+        default="https://portchecker.io/api/{host}/{port}"
+    )
+    check_reachability_of_node_url: bool = Field(default=True)
 
     class Config:
         env_prefix = "ZSEQUENCER_"

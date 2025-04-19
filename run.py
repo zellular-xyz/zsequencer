@@ -6,7 +6,6 @@ import os
 import sys
 import threading
 import time
-from urllib.parse import urljoin
 
 import requests
 from flask import Flask, redirect, url_for
@@ -15,6 +14,7 @@ from flask import Flask, redirect, url_for
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
+
 from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
@@ -73,33 +73,32 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def check_reachability_and_shutdown() -> None:
+def shutdown_if_not_reachable() -> None:
     """Check node reachability and shutdown if not reachable."""
-    time.sleep(2)  # Give Flask time to start
-    if zconfig.CHECK_REACHABILITY_OF_NODE_URL and not check_node_reachability():
-        zlogger.error("Node is not reachable. Shutting down...")
-        # Force kill the entire process with all its threads
-        os._exit(1)
+    time.sleep(5)  # Give Flask time to start
 
-
-def check_node_reachability() -> bool:
-    """Check if node is reachable."""
     try:
-        node_host = zconfig.HOST.replace('http://', '').replace('https://', '')
-        response = requests.get(urljoin(zconfig.REMOTE_HOST_CHECKER_BASE_URL, node_host, zconfig.PORT))
+        node_host = zconfig.HOST.replace("http://", "").replace("https://", "")
+        url = zconfig.REMOTE_HOST_CHECKER_BASE_URL.format(
+            host=node_host, port=zconfig.PORT
+        )
+        response = requests.get(url)
 
         if response.status_code == 200:
-            return response.text.lower() == 'true'
+            if response.text.lower() == "true":
+                # Node is reachable and nothing to do
+                return
+            else:
+                zlogger.error("Node is not reachable. Shutting down...")
+        else:
+            zlogger.error(
+                f"Node reachability check failed with status code: {response.status_code}"
+            )
 
-        zlogger.error(f"Node reachability check failed with status code: {response.status_code}")
-        return False
-
-    except requests.RequestException as e:
-        zlogger.error(f"Failed to check node reachability: {e}")
-        return False
     except Exception as e:
-        zlogger.error(f"Unexpected error during node reachability check: {e}")
-        return False
+        zlogger.error(f"Failed to check node reachability: {e}")
+
+    os._exit(1)
 
 
 def main() -> None:
@@ -114,8 +113,11 @@ def main() -> None:
     node_tasks_thread.start()
 
     # Start reachability check in separate thread
-    reachability_thread = threading.Thread(target=check_reachability_and_shutdown, daemon=True)
-    reachability_thread.start()
+    if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
+        reachability_check_thread = threading.Thread(
+            target=shutdown_if_not_reachable, daemon=True
+        )
+        reachability_check_thread.start()
 
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
