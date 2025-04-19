@@ -38,7 +38,7 @@ epub_show_urls = "footnote"
 
 extlinks = {
     "src": (
-        "https://github.com/zellular-xyz/zsequencer/blob/usecases/examples/%s",
+        "https://github.com/zellular-xyz/zsequencer/tree/main/examples/%s",
         " %s",
     )
 }
