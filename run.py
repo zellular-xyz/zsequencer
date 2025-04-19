@@ -133,7 +133,7 @@ def main() -> None:
         host="0.0.0.0",
         port=zconfig.PORT,
         debug=False,
-        threaded=True,  # Enable threading in Flask to handle multiple requests
+        threaded=False,
         use_reloader=False,
     )
 
