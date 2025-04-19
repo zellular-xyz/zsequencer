@@ -76,7 +76,7 @@ async def run_sequencer_tasks_async() -> None:
 
 
 def check_node_reachability() -> None:
-    """Check node reachability and shutdown if not reachable."""
+    """Check node reachability"""
     time.sleep(5)  # Give Flask time to start
 
     try:
@@ -90,7 +90,7 @@ def check_node_reachability() -> None:
             if response.text.lower() == "false":
                 zdb.is_node_reachable = False
                 zlogger.error(
-                    "Node not reachable at {}:{}. Check firewall or port forwarding. Shutting down...".format(
+                    "Node not reachable at {}:{}. Check firewall or port forwarding.".format(
                         node_host, zconfig.PORT
                     )
                 )
