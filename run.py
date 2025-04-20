@@ -94,9 +94,6 @@ def check_node_reachability() -> None:
                         node_host, zconfig.PORT
                     )
                 )
-            else:
-                # Node is reachable and nothing to do
-                return
         else:
             zlogger.error(
                 f"Node reachability check failed with status code: {response.status_code}"
