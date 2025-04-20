@@ -53,6 +53,7 @@ class InMemoryDB:
         self.sequencer_put_batches_lock = threading.Lock()
         self.pause_node = threading.Event()
         self.is_sequencer_down = False
+        self.is_node_reachable = True
         self._snapshot_manager = SnapshotManager(
             base_path=zconfig.SNAPSHOT_PATH,
             version=zconfig.VERSION,
