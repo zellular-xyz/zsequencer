@@ -7,14 +7,14 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from threading import Thread
-from typing import Any, TypedDict, TypeAlias
+from typing import Any, TypeAlias, TypedDict
 
 from common import utils
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
 from common.snapshot_manager import SnapshotManager
-from common.state import OperationalState, SequencedState, FinalizedState
+from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
 from utils import get_file_content
 
@@ -66,11 +66,13 @@ class InMemoryDB:
         )
         self._fetching_thread.start()
 
-    def track_sequencing_indices(self,
-                                 app_name: str,
-                                 state: SequencedState | FinalizedState,
-                                 last_index: int,
-                                 current_time: int):
+    def track_sequencing_indices(
+        self,
+        app_name: str,
+        state: SequencedState | FinalizedState,
+        last_index: int,
+        current_time: int,
+    ):
         """Track when a range of batches transitions to a new state and remove from previous state.
 
         Args:
@@ -92,7 +94,10 @@ class InMemoryDB:
         current_time = int(time.time())
         for app_name in self.apps:
             queue = self.apps[app_name]["latency_tracking_queue"]
-            if len(queue) > 0 and queue[0][0] < current_time - zconfig.FINALIZATION_TIME_BORDER:
+            if (
+                len(queue) > 0
+                and queue[0][0] < current_time - zconfig.FINALIZATION_TIME_BORDER
+            ):
                 return True
         return False
 
@@ -158,7 +163,7 @@ class InMemoryDB:
                     finalized_batch_sequence
                 ),
                 "missed_batch_map": {},
-                "latency_tracking_queue": deque()
+                "latency_tracking_queue": deque(),
             }
 
         return result
@@ -571,16 +576,18 @@ class InMemoryDB:
 
     def reset_latency_queue(self, app_name: str) -> None:
         self.apps[app_name]["latency_tracking_queue"].clear()
-        last_index = self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default()
-        last_finalized_index = self.apps[app_name]["operational_batch_sequence"].get_last_index_or_default(
-            state="finalized"
-        )
+        last_index = self.apps[app_name][
+            "operational_batch_sequence"
+        ].get_last_index_or_default()
+        last_finalized_index = self.apps[app_name][
+            "operational_batch_sequence"
+        ].get_last_index_or_default(state="finalized")
         if last_index > last_finalized_index:
             self.track_sequencing_indices(
                 app_name=app_name,
                 state="sequenced",
                 last_index=last_index,
-                current_time=int(time.time())
+                current_time=int(time.time()),
             )
 
     def reinitialize(

@@ -208,16 +208,15 @@ def sync_with_sequencer(
 
     current_time = int(time.time())
     for state in ("sequenced", "finalized"):
-        index = zdb.get_last_operational_batch_record_or_empty(app_name, state).get("index",
-                                                                                    BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+        index = zdb.get_last_operational_batch_record_or_empty(app_name, state).get(
+            "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+        )
         if index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
             continue
 
         zdb.track_sequencing_indices(
-            app_name=app_name,
-            state=state,
-            last_index=index,
-            current_time=current_time)
+            app_name=app_name, state=state, last_index=index, current_time=current_time
+        )
 
     return check_censorship(
         app_name=app_name,
