@@ -142,9 +142,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
             if seq_tag != 0:
                 zconfig.NETWORK_STATUS_TAG = seq_tag
 
-    except Exception:
+    except Exception as e:
         zlogger.error(
-            "An unexpected error occurred, while sending batches to sequencer",
+            f"An unexpected error occurred, while sending batches to sequencer: {e}",
         )
         zdb.add_missed_batches(app_name, initialized_batches.values())
         zdb.is_sequencer_down = True
