@@ -14,6 +14,7 @@ from eigensdk.crypto.bls import attestation
 
 from common import bls, utils
 from common.batch_sequence import BatchSequence
+from common.batch import Batch
 from common.db import zdb
 from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
@@ -156,7 +157,7 @@ def sync_with_sequencer(
     app_name: str,
     initialized_batches: dict[str, Any],
     sequencer_response: dict[str, Any],
-) -> dict[str, Any]:
+) -> list[Batch]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(
         app_name=app_name,
@@ -230,7 +231,7 @@ def check_censorship(
     app_name: str,
     initialized_batches: dict[str, Any],
     sequencer_response: dict[str, Any],
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     """Check for censorship and update missed batches."""
     sequenced_hashes: set[str] = set(
         batch["hash"] for batch in sequencer_response["batches"]
@@ -271,7 +272,7 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
         or batch_record["index"] != sync_point["index"]
     ):
         return ""
-    message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
+    message = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature
 
@@ -324,7 +325,7 @@ def is_sync_point_signature_verified(
         )
         return False
 
-    data: str = json.dumps(
+    data = json.dumps(
         {
             "app_name": app_name,
             "state": state,
@@ -334,20 +335,21 @@ def is_sync_point_signature_verified(
         },
         sort_keys=True,
     )
-    message: str = utils.gen_hash(data)
+    message = utils.gen_hash(data)
     zlogger.info(
         f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}",
     )
-    return bls.is_bls_sig_verified(
+    verified = bls.is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
         public_key=agg_pub_key,
     )
+    return verified
 
 
-async def gather_disputes() -> dict[str, Any] | None:
+async def gather_disputes() -> tuple[list[dict[str, Any]], float]:
     """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
-    dispute_tasks: dict[asyncio.Task, str] = {
+    dispute_tasks = {
         asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
             "id"
         ]
@@ -356,21 +358,22 @@ async def gather_disputes() -> dict[str, Any] | None:
     }
 
     results = []
-    pending_tasks = list(dispute_tasks.keys())
-    stake_percent = (
-        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
-    )
+    pending_tasks = set(dispute_tasks.keys())
+    stake_percent = (100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE)
+
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(
             pending_tasks,
             return_when=asyncio.FIRST_COMPLETED,
         )
         for task in done:
-            if not task.result() or not utils.is_dispute_approved(task.result()):
+            result = task.result()
+            if result is None or not utils.is_dispute_approved(result):
                 continue
-            results.append(task.result())
+            results.append(result)
             node_id = dispute_tasks[task]
             stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
+
     return results, stake_percent
 
 
@@ -407,38 +410,37 @@ async def send_dispute_requests() -> None:
     )
 
     try:
-        responses, stake_percent = await asyncio.wait_for(
+        result = await asyncio.wait_for(
             gather_disputes(),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
+        responses, stake_percent = result
+
+        if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
+            zlogger.warning(
+                f"Not enough stake for dispute, stake_percent : {stake_percent}"
+            )
+            return
+
+        proofs.extend(responses)
+        old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
+        await send_switch_requests(proofs)
+        await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
+
     except TimeoutError:
         zlogger.warning(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
-        return
     except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
-        return
-
-    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
-        zlogger.warning(
-            f"Not enough stake for dispute, stake_percent : {stake_percent}"
-        )
-        return
-    proofs.extend(responses)
-
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
-    await send_switch_requests(proofs)
-    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
-
 
 async def send_dispute_request(
     node: dict[str, Any],
     is_sequencer_down: bool,
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
-    timestamp: int = int(time.time())
-    data: str = json.dumps(
+    timestamp = int(time.time())
+    data = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
             "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
@@ -447,7 +449,7 @@ async def send_dispute_request(
             "timestamp": timestamp,
         },
     )
-    url: str = f"{node['socket']}/node/dispute"
+    url = f"{node['socket']}/node/dispute"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -460,3 +462,4 @@ async def send_dispute_request(
                     return response_json.get("data")
     except aiohttp.ClientError as error:
         zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
+    return None
