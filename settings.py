@@ -1,6 +1,7 @@
+from typing import Literal
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Literal
 
 MODE_DEV = "dev"
 MODE_PROD = "prod"
@@ -18,7 +19,7 @@ class SequencerSabotageSimulation(BaseSettings):
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.16")
+    version: str = Field(default="v0.0.17")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -63,7 +64,11 @@ class NodeConfig(BaseSettings):
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
     max_missed_batches_to_pick: int = Field(default=10)
-    # sequencer_sabotage_simulation: SequencerSabotageSimulation = Field(default_factory=SequencerSabotageSimulation)
+
+    remote_host_checker_base_url: str = Field(
+        default="https://portchecker.io/api/{host}/{port}"
+    )
+    check_reachability_of_node_url: bool = Field(default=True)
 
     class Config:
         env_prefix = "ZSEQUENCER_"

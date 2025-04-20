@@ -3,6 +3,7 @@ import gzip
 import json
 import os
 from typing import TypeAlias
+
 from common.batch import get_batch_size_kb
 from common.batch_sequence import BatchSequence
 from common.logger import zlogger
@@ -14,11 +15,13 @@ ChunkFileInfo: TypeAlias = tuple[int, str]  # (start_index, filename)
 class SnapshotManager:
     """Manages chunked snapshots of batch sequences for multiple applications."""
 
-    def __init__(self,
-                 base_path: str,
-                 version: str,
-                 max_chunk_size_kb: float,
-                 app_names: list[str]):
+    def __init__(
+        self,
+        base_path: str,
+        version: str,
+        max_chunk_size_kb: float,
+        app_names: list[str],
+    ):
         """
         Initialize the SnapshotManager.
 
@@ -60,20 +63,26 @@ class SnapshotManager:
             self._last_persisted_finalized_batch_index[app_name] = None
             return
         last_chunk_filename = self._app_name_to_chunks[app_name][-1][1]
-        last_chunk_sequence = self._load_file(app_name=app_name, file_name=last_chunk_filename)
-        self._last_persisted_finalized_batch_index[app_name] = last_chunk_sequence.get_last_index_or_default()
+        last_chunk_sequence = self._load_file(
+            app_name=app_name, file_name=last_chunk_filename
+        )
+        self._last_persisted_finalized_batch_index[app_name] = (
+            last_chunk_sequence.get_last_index_or_default()
+        )
 
     def get_last_batch_index(self, app_name: str) -> int | None:
         return self._last_persisted_finalized_batch_index[app_name]
 
     def _find_file_pos(self, app_name: str, batch_index: int) -> int:
         if app_name not in self._app_name_to_chunks:
-            raise KeyError(f'App not found in indexed chunks: {app_name}')
+            raise KeyError(f"App not found in indexed chunks: {app_name}")
 
         indexed_chunks = self._app_name_to_chunks[app_name]
 
         # Extract start indices for binary search
-        return bisect.bisect_right(indexed_chunks, batch_index, key=lambda row: row[0]) - 1
+        return (
+            bisect.bisect_right(indexed_chunks, batch_index, key=lambda row: row[0]) - 1
+        )
 
     def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
@@ -84,11 +93,14 @@ class SnapshotManager:
         except (FileNotFoundError, EOFError):
             return BatchSequence()
         except (OSError, IOError, json.JSONDecodeError) as error:
-            zlogger.error("An error occurred while loading chunk for %s: %s", app_name, error)
+            zlogger.error(
+                "An error occurred while loading chunk for %s: %s", app_name, error
+            )
             return BatchSequence()
 
-    def load_batches(self, app_name: str, after: int,
-                     retrieve_size_limit_kb: float | None = None) -> BatchSequence:
+    def load_batches(
+        self, app_name: str, after: int, retrieve_size_limit_kb: float | None = None
+    ) -> BatchSequence:
         """
         Load all finalized batches for a given app from chunks after a given batch index.
 
@@ -98,7 +110,7 @@ class SnapshotManager:
             retrieve_size_limit_kb: Maximum size of batches to load in KB
         """
         if app_name not in self._app_name_to_chunks:
-            raise KeyError(f'App not found in indexed chunks: {app_name}')
+            raise KeyError(f"App not found in indexed chunks: {app_name}")
 
         file_pos = self._find_file_pos(app_name, 1 if after == 0 else after)
         if file_pos < 0:
@@ -107,12 +119,14 @@ class SnapshotManager:
         # Initialize result and size tracking
         merged_batches = BatchSequence()
         if retrieve_size_limit_kb is None:
-            retrieve_size_limit_kb = float('inf')
+            retrieve_size_limit_kb = float("inf")
 
         # Process chunks starting from the found position
         indexed_chunks = self._app_name_to_chunks[app_name][file_pos:]
         for _, file_name in indexed_chunks:
-            chunk_sequence = self._load_file(app_name, file_name).filter(start_exclusive=after)
+            chunk_sequence = self._load_file(app_name, file_name).filter(
+                start_exclusive=after
+            )
             merged_batches.extend(chunk_sequence)
 
             # Check if we've reached the size limit
@@ -131,7 +145,9 @@ class SnapshotManager:
         chunk_path = os.path.join(self._get_app_storage_path(app_name), chunk_filename)
 
         self._app_name_to_chunks[app_name].append((start_index, chunk_filename))
-        self._last_persisted_finalized_batch_index[app_name] = batches.get_last_index_or_default()
+        self._last_persisted_finalized_batch_index[app_name] = (
+            batches.get_last_index_or_default()
+        )
 
         with gzip.open(chunk_path, "wt", encoding="UTF-8") as file:
             json.dump(batches.to_mapping(), file)
@@ -154,11 +170,16 @@ class SnapshotManager:
                 current_size += batch_size
 
         for start_index, end_index in chunk_indices:
-            self._persist_batch_sequence(app_name=app_name,
-                                         batches=batches.filter(start_exclusive=start_index - 1,
-                                                                end_inclusive=end_index))
+            self._persist_batch_sequence(
+                app_name=app_name,
+                batches=batches.filter(
+                    start_exclusive=start_index - 1, end_inclusive=end_index
+                ),
+            )
 
-    def get_latest_chunks_start_index(self, app_name: str, latest_chunks_count: int) -> int:
+    def get_latest_chunks_start_index(
+        self, app_name: str, latest_chunks_count: int
+    ) -> int:
         """
         Get the starting index for loading the specified number of most recent chunks.
 
@@ -173,7 +194,7 @@ class SnapshotManager:
             KeyError: If app_name is not found in indexed chunks
         """
         if app_name not in self._app_name_to_chunks:
-            raise KeyError(f'App not found in indexed chunks: {app_name}')
+            raise KeyError(f"App not found in indexed chunks: {app_name}")
 
         indexed_chunks = self._app_name_to_chunks[app_name]
         start_exclusive_index = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
@@ -183,8 +204,12 @@ class SnapshotManager:
 
         return start_exclusive_index
 
-    def load_latest_chunks(self, app_name: str, latest_chunks_count: int) -> BatchSequence:
-        start_exclusive_index = self.get_latest_chunks_start_index(app_name, latest_chunks_count)
+    def load_latest_chunks(
+        self, app_name: str, latest_chunks_count: int
+    ) -> BatchSequence:
+        start_exclusive_index = self.get_latest_chunks_start_index(
+            app_name, latest_chunks_count
+        )
 
         return self.load_batches(app_name=app_name, after=start_exclusive_index)
 

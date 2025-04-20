@@ -1,11 +1,17 @@
 from __future__ import annotations
-from typing import Literal
-from collections.abc import Sequence
 
+from collections.abc import Sequence
+from typing import Literal
+
+InitializedState = Literal["initialized"]
+SequencedState = Literal["sequenced"]
+LockedState = Literal["locked"]
+FinalizedState = Literal["finalized"]
 
 # TODO: Replace with an enum when web schemas are supported.
-OperationalState = Literal["sequenced", "locked", "finalized"]
-State = Literal["initialized"] | OperationalState
+OperationalState = SequencedState | LockedState | FinalizedState
+State = InitializedState | OperationalState
+
 OPERATIONAL_STATES: Sequence[OperationalState] = ("sequenced", "locked", "finalized")
 STATES: Sequence[State] = ("initialized", *OPERATIONAL_STATES)
 

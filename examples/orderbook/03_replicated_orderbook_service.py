@@ -1,15 +1,16 @@
 import json
 import logging
+from bisect import insort
+from dataclasses import dataclass, field
 from threading import Thread
+from typing import Any
+from uuid import uuid4
+
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Any
-from uuid import uuid4
-from dataclasses import dataclass, field
-from bisect import insort
-from eth_account import Account
-from eth_account.messages import encode_defunct
 from zellular import Zellular
 
 app = FastAPI()
@@ -22,16 +23,19 @@ zellular = Zellular("orderbook", "http://37.27.41.237:6001/", threshold_percent=
 # In-memory balances
 balances: dict[str, dict[str, float]] = {
     "0xc66F8Fba940064B5bA8d437d6fF829E60134230E": {"USDT": 1000.0},
-    "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0}
+    "0x7F3b0b1530A0d0Ce3D721a6e976C7eA4296A0f5d": {"ETH": 5.0},
 }
+
 
 @dataclass(order=True)
 class OrderWrapper:
     sort_index: float
     order: dict = field(compare=False)
 
+
 # Order book
 order_book_wrapped: list[OrderWrapper] = []
+
 
 # Order request schema
 class OrderRequest(BaseModel):
@@ -43,15 +47,19 @@ class OrderRequest(BaseModel):
     price: float
     signature: str
 
+
 # --- Routes ---
+
 
 @app.get("/balance")
 def get_balance(address: str, token: str):
     return balances.get(address, {}).get(token, 0)
 
+
 @app.get("/orders")
 def get_orders():
     return [w.order for w in order_book_wrapped]
+
 
 # -- start: submitting order to zellular --
 @app.post("/order")
@@ -68,13 +76,16 @@ def place_order(order: OrderRequest):
         "quote_token": order.quote_token,
         "quantity": order.quantity,
         "price": order.price,
-        "signature": order.signature
+        "signature": order.signature,
     }
 
     # Send to Zellular for consensus-based processing
     zellular.send([order_payload], blocking=False)
     return JSONResponse({"message": "Order sent to consensus layer"})
+
+
 # -- end: submitting order to zellular --
+
 
 # Core order processing
 def apply_order(order: dict[str, Any]) -> None:
@@ -94,12 +105,12 @@ def apply_order(order: dict[str, Any]) -> None:
     user_bal = balances.get(user, {})
     cost = quantity * price
 
-    if order_type == 'buy':
+    if order_type == "buy":
         if user_bal.get(quote_token, 0.0) < cost:
             logger.error(f"Insufficient balance for {user}")
             return
         user_bal[quote_token] -= cost
-    elif order_type == 'sell':
+    elif order_type == "sell":
         if user_bal.get(base_token, 0.0) < quantity:
             logger.error(f"Insufficient balance for {user}")
             return
@@ -115,18 +126,23 @@ def apply_order(order: dict[str, Any]) -> None:
         "quote_token": quote_token,
         "order_type": order_type,
         "quantity": quantity,
-        "price": price
+        "price": price,
     }
 
     match_order(new_order)
 
     # Only insert unmatched portion of the order
     if new_order["quantity"] > 0:
-        sort_price = -new_order["price"] if new_order["order_type"] == "buy" else new_order["price"]
+        sort_price = (
+            -new_order["price"]
+            if new_order["order_type"] == "buy"
+            else new_order["price"]
+        )
         wrapped = OrderWrapper(sort_index=sort_price, order=new_order)
         insort(order_book_wrapped, wrapped)
 
     logger.info(f"Order placed: {new_order}")
+
 
 # Matching engine
 def match_order(new_order: dict):
@@ -136,10 +152,10 @@ def match_order(new_order: dict):
 
         # Skip if the order is not compatible for matching
         if (
-            existing["user"] == new_order["user"] or
-            existing["base_token"] != new_order["base_token"] or
-            existing["quote_token"] != new_order["quote_token"] or
-            existing["order_type"] == new_order["order_type"]
+            existing["user"] == new_order["user"]
+            or existing["base_token"] != new_order["base_token"]
+            or existing["quote_token"] != new_order["quote_token"]
+            or existing["order_type"] == new_order["order_type"]
         ):
             i += 1
             continue
@@ -148,7 +164,8 @@ def match_order(new_order: dict):
         price_ok = (
             new_order["order_type"] == "buy" and existing["price"] <= new_order["price"]
         ) or (
-            new_order["order_type"] == "sell" and existing["price"] >= new_order["price"]
+            new_order["order_type"] == "sell"
+            and existing["price"] >= new_order["price"]
         )
 
         if not price_ok:
@@ -171,6 +188,7 @@ def match_order(new_order: dict):
         if new_order["quantity"] == 0:
             break
 
+
 # Balance update
 def update_balances(order1: dict, order2: dict, qty: float):
     buyer = order1 if order1["order_type"] == "buy" else order2
@@ -180,8 +198,13 @@ def update_balances(order1: dict, order2: dict, qty: float):
     base_token = buyer["base_token"]
     total_price = qty * buyer["price"]
 
-    balances[buyer["user"]][base_token] = balances[buyer["user"]].get(base_token, 0.0) + qty
-    balances[seller["user"]][quote_token] = balances[seller["user"]].get(quote_token, 0.0) + total_price
+    balances[buyer["user"]][base_token] = (
+        balances[buyer["user"]].get(base_token, 0.0) + qty
+    )
+    balances[seller["user"]][quote_token] = (
+        balances[seller["user"]].get(quote_token, 0.0) + total_price
+    )
+
 
 # Signature verification
 def verify_signature(sender: str, message: str, signature: str) -> bool:
@@ -191,6 +214,7 @@ def verify_signature(sender: str, message: str, signature: str) -> bool:
         return recovered.lower() == sender.lower()
     except Exception:
         return False
+
 
 # Zellular replication loop
 # -- start: processing loop --
@@ -202,9 +226,12 @@ def process_loop():
                 apply_order(tx)
         except Exception as e:
             logger.error(f"Error processing batch #{index}: {e}")
+
+
 # -- end: processing loop --
 
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()
     import uvicorn
+
     uvicorn.run(app, port=5001)

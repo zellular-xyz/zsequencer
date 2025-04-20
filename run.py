@@ -1,6 +1,4 @@
-"""
-Main script to run Zellular Node and Sequencer tasks.
-"""
+"""Main script to run Zellular Node and Sequencer tasks."""
 
 import asyncio
 import logging
@@ -9,13 +7,17 @@ import sys
 import threading
 import time
 
+import requests
 from flask import Flask, redirect, url_for
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import secrets
-from common.db import zdb, zconfig, zlogger
+
+from common.db import zdb
+from common.logger import zlogger
+from config import zconfig
 from node import tasks as node_tasks
 from node.routes import node_blueprint
 from sequencer import tasks as sequencer_tasks
@@ -43,6 +45,8 @@ def run_node_tasks() -> None:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
             time.sleep(0.1)
             continue
+        if not zdb.is_node_reachable:
+            break
 
         node_tasks.send_batches()
         asyncio.run(node_tasks.send_dispute_requests())
@@ -52,7 +56,10 @@ def run_sequencer_tasks() -> None:
     """Run sequencer tasks in an asynchronous event loop."""
     loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_sequencer_tasks_async())
+    try:
+        loop.run_until_complete(run_sequencer_tasks_async())
+    finally:
+        loop.close()
 
 
 async def run_sequencer_tasks_async() -> None:
@@ -68,12 +75,58 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def run_flask_app(app: Flask) -> None:
-    """Run the Flask application."""
+def check_node_reachability() -> None:
+    """Check node reachability"""
+    time.sleep(5)  # Give Flask time to start
+
+    try:
+        host, port = (
+            zconfig.REGISTER_SOCKET.replace("http://", "")
+            .replace("https://", "")
+            .split(":")
+        )
+        url = zconfig.REMOTE_HOST_CHECKER_BASE_URL.format(host=host, port=port)
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            if response.text.lower() == "false":
+                zdb.is_node_reachable = False
+                zlogger.error(
+                    "Node not reachable at {}:{}. Check firewall or port forwarding.".format(
+                        host, port
+                    )
+                )
+        else:
+            zlogger.error(
+                f"Node reachability check failed with status code: {response.status_code}"
+            )
+
+    except Exception as e:
+        zlogger.error(f"Failed to check node reachability: {e}")
+
+
+def main() -> None:
+    """Main entry point for running the Zellular Node."""
+    app: Flask = create_app()
+
+    # Start periodic tasks in threads
+    sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks)
+    sequencer_tasks_thread.start()
+
+    node_tasks_thread = threading.Thread(target=run_node_tasks)
+    node_tasks_thread.start()
+
+    # Start reachability check in separate thread
+    if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
+        reachability_check_thread = threading.Thread(target=check_node_reachability)
+        reachability_check_thread.start()
+
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
     zlogger.info("Starting flask on port %s", zconfig.PORT)
+
+    # Run Flask directly in the main thread - this is a blocking call
     app.run(
         host="0.0.0.0",
         port=zconfig.PORT,
@@ -81,21 +134,6 @@ def run_flask_app(app: Flask) -> None:
         threaded=False,
         use_reloader=False,
     )
-
-
-def main() -> None:
-    """Main entry point for running the Zellular Node."""
-    app: Flask = create_app()
-
-    # Start periodic task in a thread
-    sync_thread: threading.Thread = threading.Thread(target=run_sequencer_tasks)
-    sync_thread.start()
-
-    node_tasks_thread: threading.Thread = threading.Thread(target=run_node_tasks)
-    node_tasks_thread.start()
-
-    # Start the Zellular node Flask application
-    run_flask_app(app)
 
 
 if __name__ == "__main__":

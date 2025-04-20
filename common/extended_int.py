@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Literal, Any, SupportsInt
+
 from functools import total_ordering
+from typing import Any, Literal, SupportsInt
 
 
 @total_ordering
 class ExtendedInt:
-    """
-    Represents an integer that can also be positive or negative infinity.
+    """Represents an integer that can also be positive or negative infinity.
 
     .. note::
        This class only implements the minimum behaviors needed in our application.
@@ -18,7 +18,9 @@ class ExtendedInt:
 
     @classmethod
     def from_optional_int(
-        self, value: int | None, none_as: Literal["inf", "-inf"]
+        self,
+        value: int | None,
+        none_as: Literal["inf", "-inf"],
     ) -> ExtendedInt:
         return ExtendedInt(value if value is not None else none_as)
 
@@ -43,7 +45,7 @@ class ExtendedInt:
 
         return True
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         match other:
             case ExtendedInt():
                 return self._value == other._value

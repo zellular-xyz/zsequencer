@@ -1,14 +1,16 @@
 from __future__ import annotations
-from typing import Any, Tuple
+
 from collections.abc import Iterable, Mapping
+from typing import Any
+
+from common.batch import Batch, BatchRecord, get_batch_size_kb
+from common.extended_int import ExtendedInt
+from common.logger import zlogger
 from common.state import (
-    OperationalState,
     OPERATIONAL_STATES,
+    OperationalState,
     is_state_before_or_equal,
 )
-from common.batch import Batch, BatchRecord, get_batch_size_kb
-from common.logger import zlogger
-from common.extended_int import ExtendedInt
 
 
 class BatchSequence:
@@ -30,7 +32,7 @@ class BatchSequence:
         if "sequenced" in each_state_last_index.keys():
             raise ValueError(
                 "All the batches are considered sequenced, so there is no need to "
-                "store the last index for the sequenced batches."
+                "store the last index for the sequenced batches.",
             )
 
         self._index_offset = index_offset
@@ -72,7 +74,9 @@ class BatchSequence:
         )
 
     def records(self, reverse: bool = False) -> Iterable[BatchRecord]:
-        for batch, index in zip(self.batches(reverse), self.indices(reverse)):
+        for batch, index in zip(
+            self.batches(reverse), self.indices(reverse), strict=False
+        ):
             yield BatchRecord(batch=batch, index=index, state=self._get_state(index))
 
     def indices(self, reverse: bool = False) -> Iterable[int]:
@@ -82,8 +86,7 @@ class BatchSequence:
         )
         if not reverse:
             return index_range
-        else:
-            return reversed(index_range)
+        return reversed(index_range)
 
     def batches(self, reverse: bool = False) -> Iterable[Batch]:
         return self._batches if not reverse else reversed(self._batches)
@@ -91,7 +94,8 @@ class BatchSequence:
     def has_any(self, state: OperationalState = "sequenced") -> bool:
         return (
             self.get_last_index_or_default(
-                state=state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                state=state,
+                default=self.BEFORE_GLOBAL_INDEX_OFFSET,
             )
             != self.BEFORE_GLOBAL_INDEX_OFFSET
         )
@@ -113,10 +117,8 @@ class BatchSequence:
         if state == "sequenced":
             if not self._batches:
                 return default
-            else:
-                return self._index_offset + len(self._batches) - 1
-        else:
-            return self._each_state_last_index.get(state, default)
+            return self._index_offset + len(self._batches) - 1
+        return self._each_state_last_index.get(state, default)
 
     def append(self, batch: Batch) -> int:
         self._batches.append(batch)
@@ -133,10 +135,11 @@ class BatchSequence:
             return True
 
         last_finalized_index = self.get_last_index_or_default(
-            state="finalized",
+            state="finalized", default=self.BEFORE_GLOBAL_INDEX_OFFSET
+        )
+        last_index_of_sequence = self.get_last_index_or_default(
             default=self.BEFORE_GLOBAL_INDEX_OFFSET
         )
-        last_index_of_sequence = self.get_last_index_or_default(default=self.BEFORE_GLOBAL_INDEX_OFFSET)
 
         return last_index_of_sequence <= last_finalized_index
 
@@ -176,7 +179,7 @@ class BatchSequence:
         if feasible_last_index != last_index:
             zlogger.warning(
                 f"The promoting {last_index=} was changed to {feasible_last_index=} "
-                "due to the sequence's maximum available index."
+                "due to the sequence's maximum available index.",
             )
 
         if feasible_last_index <= self.BEFORE_GLOBAL_INDEX_OFFSET:
@@ -226,7 +229,11 @@ class BatchSequence:
             total_size += batch_size
             end_index = record["index"]
 
-        return self.filter(end_inclusive=end_index) if end_index > self.before_index_offset else self._create_empty()
+        return (
+            self.filter(end_inclusive=end_index)
+            if end_index > self.before_index_offset
+            else self._create_empty()
+        )
 
     def filter(
         self,
@@ -237,15 +244,18 @@ class BatchSequence:
         end_inclusive: int | None = None,
     ) -> BatchSequence:
         if exclude_state is not None and is_state_before_or_equal(
-            exclude_state, target_state
+            exclude_state,
+            target_state,
         ):
             return self._create_empty()
 
         inf_supported_start_exclusive = ExtendedInt.from_optional_int(
-            start_exclusive, none_as="-inf"
+            start_exclusive,
+            none_as="-inf",
         )
         inf_supported_end_inclusive = ExtendedInt.from_optional_int(
-            end_inclusive, none_as="inf"
+            end_inclusive,
+            none_as="inf",
         )
 
         if inf_supported_start_exclusive >= inf_supported_end_inclusive:
@@ -256,7 +266,8 @@ class BatchSequence:
                 None
                 if target_state == "sequenced"
                 else self.get_last_index_or_default(
-                    target_state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                    target_state,
+                    default=self.BEFORE_GLOBAL_INDEX_OFFSET,
                 )
             ),
             none_as="inf",
@@ -269,7 +280,8 @@ class BatchSequence:
                 None
                 if exclude_state is None
                 else self.get_last_index_or_default(
-                    exclude_state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                    exclude_state,
+                    default=self.BEFORE_GLOBAL_INDEX_OFFSET,
                 )
             ),
             none_as="-inf",
@@ -326,7 +338,8 @@ class BatchSequence:
 
     def get_first_or_empty(self, state: OperationalState = "sequenced") -> BatchRecord:
         first_index = self.get_first_index_or_default(
-            state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+            state,
+            default=self.BEFORE_GLOBAL_INDEX_OFFSET,
         )
         if first_index == self.BEFORE_GLOBAL_INDEX_OFFSET:
             return {}
@@ -339,7 +352,8 @@ class BatchSequence:
 
     def get_last_or_empty(self, state: OperationalState = "sequenced") -> BatchRecord:
         last_index = self.get_last_index_or_default(
-            state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+            state,
+            default=self.BEFORE_GLOBAL_INDEX_OFFSET,
         )
         if last_index == self.BEFORE_GLOBAL_INDEX_OFFSET:
             return {}
@@ -371,7 +385,8 @@ class BatchSequence:
 
         for state in reversed(OPERATIONAL_STATES):
             if index <= self.get_last_index_or_default(
-                state, default=self.BEFORE_GLOBAL_INDEX_OFFSET
+                state,
+                default=self.BEFORE_GLOBAL_INDEX_OFFSET,
             ):
                 return state
 
