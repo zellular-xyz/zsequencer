@@ -80,10 +80,12 @@ def check_node_reachability() -> None:
     time.sleep(5)  # Give Flask time to start
 
     try:
-        node_host = zconfig.HOST.replace("http://", "").replace("https://", "")
-        url = zconfig.REMOTE_HOST_CHECKER_BASE_URL.format(
-            host=node_host, port=zconfig.PORT
+        host, port = (
+            zconfig.REGISTER_SOCKET.replace("http://", "")
+            .replace("https://", "")
+            .split(":")
         )
+        url = zconfig.REMOTE_HOST_CHECKER_BASE_URL.format(host=host, port=port)
         response = requests.get(url)
 
         if response.status_code == 200:
@@ -91,7 +93,7 @@ def check_node_reachability() -> None:
                 zdb.is_node_reachable = False
                 zlogger.error(
                     "Node not reachable at {}:{}. Check firewall or port forwarding.".format(
-                        node_host, zconfig.PORT
+                        host, port
                     )
                 )
         else:
