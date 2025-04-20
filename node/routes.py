@@ -250,13 +250,12 @@ def get_batches(app_name: str, state: str) -> Response:
     finalized = next(
         (
             {
-                "finalization_signature": batch_record["batch"][
-                    "finalization_signature"
-                ],
+                "signature": batch_record["batch"]["finalization_signature"],
                 "hash": batch_record["batch"]["hash"],
                 "chaining_hash": batch_record["batch"]["chaining_hash"],
                 "nonsigners": batch_record["batch"]["finalized_nonsigners"],
                 "index": batch_record["index"],
+                "tag": batch_record["finalized_tag"],
             }
             for batch_record in batch_sequence.records(reverse=True)
             if "finalization_signature" in batch_record["batch"]
