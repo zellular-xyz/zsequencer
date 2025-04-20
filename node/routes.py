@@ -246,7 +246,6 @@ def get_batches(app_name: str, state: str) -> Response:
         )
 
     first_chaining_hash = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
-
     finalized = next(
         (
             {
@@ -255,7 +254,7 @@ def get_batches(app_name: str, state: str) -> Response:
                 "chaining_hash": batch_record["batch"]["chaining_hash"],
                 "nonsigners": batch_record["batch"]["finalized_nonsigners"],
                 "index": batch_record["index"],
-                "tag": batch_record["finalized_tag"],
+                "tag": batch_record["batch"]["finalized_tag"],
             }
             for batch_record in batch_sequence.records(reverse=True)
             if "finalization_signature" in batch_record["batch"]
