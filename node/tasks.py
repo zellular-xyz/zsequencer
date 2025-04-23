@@ -23,6 +23,7 @@ from node.rate_limit import (
     try_acquire_rate_limit_of_self_node,
 )
 from node.switch import send_switch_requests, switch_sequencer_async
+from node.signature_verification import is_sync_point_signature_verified
 
 
 def send_batches() -> None:
@@ -51,15 +52,11 @@ def send_batches() -> None:
 
 def send_app_batches_iteration(app_name: str) -> bool:
     response = send_app_batches(app_name).get("data", {})
-    sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
-    finish_condition = (
-        not sequencer_last_finalized_hash
-        or zdb.get_batch_record_by_hash_or_empty(
-            app_name,
-            sequencer_last_finalized_hash,
-        )
-    )
-    return finish_condition
+    sequencer_last_finalized_index = response.get("sequencer_last_finalized_index",
+                                                  BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+    if sequencer_last_finalized_index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
+        return True
+    return sequencer_last_finalized_index <= zdb.get_last_operational_batch_record_or_empty(app_name).get("index")
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:

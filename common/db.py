@@ -594,25 +594,25 @@ class InMemoryDB:
         self,
         app_name: str,
         new_sequencer_id: str,
-        all_nodes_last_finalized_batch_record: BatchRecord,
+        network_last_locked_batch_record: BatchRecord,
     ) -> None:
         """Reinitialize the database after a switch in the sequencer."""
         # TODO: Should get the batches from other nodes if they are missing.
         self.finalize_batches(
             app_name,
             signature_data={
-                "index": all_nodes_last_finalized_batch_record["index"],
-                "chaining_hash": all_nodes_last_finalized_batch_record["batch"][
+                "index": network_last_locked_batch_record["index"],
+                "chaining_hash": network_last_locked_batch_record["batch"][
                     "chaining_hash"
                 ],
-                "hash": all_nodes_last_finalized_batch_record["batch"]["hash"],
-                "signature": all_nodes_last_finalized_batch_record["batch"][
+                "hash": network_last_locked_batch_record["batch"]["hash"],
+                "signature": network_last_locked_batch_record["batch"][
                     "finalization_signature"
                 ],
-                "nonsigners": all_nodes_last_finalized_batch_record["batch"][
+                "nonsigners": network_last_locked_batch_record["batch"][
                     "finalized_nonsigners"
                 ],
-                "tag": all_nodes_last_finalized_batch_record["batch"]["finalized_tag"],
+                "tag": network_last_locked_batch_record["batch"]["finalized_tag"],
             },
         )
 
@@ -623,12 +623,12 @@ class InMemoryDB:
             )
             self._resequence_batches(
                 app_name,
-                all_nodes_last_finalized_batch_record,
+                network_last_locked_batch_record,
             )
         else:
             self._reinitialize_batches(
                 app_name,
-                all_nodes_last_finalized_batch_record["index"],
+                network_last_locked_batch_record["index"],
             )
 
         self.apps[app_name]["nodes_state"] = {}

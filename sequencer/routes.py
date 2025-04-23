@@ -131,11 +131,13 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     # TODO: remove (create issue for testing)
     # if zconfig.NODE["id"] == "1":
     #     txs = {}
-
+    # Todo: Should return sequencer last finalized index to be used on node side for syncing detection scenario
     last_finalized_batch = last_finalized_batch_record.get("batch", {})
     last_locked_batch = last_locked_batch_record.get("batch", {})
     return {
         "batches": batch_sequence.batches(),
+        "sequencer_last_finalized_index": zdb.get_last_operational_batch_record_or_empty(app_name=req_data["app_name"],
+                                                                                         state="finalized").get("index"),
         "finalized": {
             "index": last_finalized_batch_record.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
