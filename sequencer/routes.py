@@ -131,7 +131,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     # TODO: remove (create issue for testing)
     # if zconfig.NODE["id"] == "1":
     #     txs = {}
-    # Todo: Should return sequencer last finalized index to be used on node side for syncing detection scenario
     last_finalized_batch = last_finalized_batch_record.get("batch", {})
     last_locked_batch = last_locked_batch_record.get("batch", {})
     return {
