@@ -4,11 +4,12 @@ import time
 from typing import Any, TypedDict
 
 import aiohttp
+import requests
 
+from common import utils
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
 from common.db import zdb
 from common.logger import zlogger
-from common import utils
 from config import zconfig
 from node.signature_verification import is_sync_point_signature_verified
 
@@ -118,15 +119,16 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         break
 
                     # Otherwise there is gap between the last in-memory sequenced batch index and the claiming lock batch
-                    result = await _sync_with_peer_node(peer_node_id=node_id,
-                                                        app_name=app_name,
-                                                        after=self_node_last_locked_batch["index"],
-                                                        until=last_locked_batch_record["index"])
+                    result = _sync_with_peer_node(peer_node_id=node_id,
+                                                  app_name=app_name,
+                                                  self_node_last_locked_index=self_node_last_locked_batch[
+                                                      "index"],
+                                                  target_locked_index=last_locked_batch_record["index"])
                     if result:
                         # if the syncing process with claiming peer node was successful ,
                         # break the process and it does not require to check any other more claiming node
                         break
-                zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
+                # zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
                 zdb.reset_latency_queue(app_name)
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
@@ -135,139 +137,93 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             zdb.pause_node.clear()
 
 
-async def _sync_with_peer_node(peer_node_id: str, app_name: str, after: int, until: int) -> bool:
-    """
-    Sync with a peer node on the network and retrieve batches in chunk mode.
-
-    Args:
-        peer_node_id: The ID of the peer node to sync with.
-        app_name: The name of the app.
-        after: The batch index number to retrieve batches after.
-        until: The target batch index to sync up to.
-
-    Returns:
-        True if synchronization was successful, False otherwise.
-    """
+async def _sync_with_peer_node(peer_node_id: str,
+                               app_name: str,
+                               self_node_last_locked_index: int,
+                               target_locked_index: int) -> bool:
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
-    after_index = after
+    after_index = self_node_last_locked_index
+    zdb.reinitialize_batches(app_name=app_name,
+                             index=self_node_last_locked_index)
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            while True:
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
                 params = {"after": after_index}
 
-                try:
-                    async with session.get(url, params=params, headers=zconfig.HEADERS) as response:
-                        if response.status != 200:
-                            zlogger.warning(
-                                f"Failed to fetch batches from node {peer_node_socket}: {await response.text()}")
-                            return False
+                async with session.get(url, params=params, headers=zconfig.HEADERS) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        zlogger.warning(
+                            f"Failed to fetch batches from node {peer_node_socket}: {error_text}")
+                        return False
 
-                        data = await response.json()
-                        if data.get("status") != "success" or not data.get("data"):
-                            return False
+                    data = await response.json()
+                    if data.get("status") != "success" or not data.get("data"):
+                        return False
 
-                        batch_bodies = data["data"]["batches"]
-                        if not batch_bodies:
-                            return False
+                    batch_bodies = data["data"]["batches"]
+                    if not batch_bodies:
+                        return False
 
-                        # last_locked_signature_info = data["data"]["locked"]
-                        chaining_hash = data["data"]["first_chaining_hash"]
+                    chaining_hash = data["data"]["first_chaining_hash"]
+                    locked_signature_info = data["data"]["locked"]
+                    finalized_signature_info = data["data"]["finalized"]
+                    last_page = after_index <= target_locked_index <= after_index + len(batch_bodies)
 
-                        # verify first chaining hash string
-                        last_sequenced_batch_chaining_hash = zdb \
-                            .get_last_operational_batch_record_or_empty(state="sequenced") \
-                            .get("batch") \
-                            .get("chaining_hash")
-                        expected_chaining_hash = utils.gen_hash(last_sequenced_batch_chaining_hash + batch_bodies[0])
-                        if expected_chaining_hash != chaining_hash:
-                            zlogger.warning(
-                                f"Invalid chaining hash: expected {expected_chaining_hash} got {chaining_hash}"
-                            )
-                            return False
-
-                        # verify finalized signature info if exists on peer node response
-                        finalized_signature_info = data["data"]["finalized"]
-                        if finalized_signature_info and not is_sync_point_signature_verified(
-                                app_name=app_name,
-                                state="finalized",
-                                index=finalized_signature_info.get("index"),
-                                batch_hash=finalized_signature_info.get("hash"),
-                                chaining_hash=finalized_signature_info.get("chaining_hash"),
-                                tag=finalized_signature_info.get("tag"),
-                                signature_hex=finalized_signature_info.get("signature"),
-                                nonsigners=finalized_signature_info.get("nonsigners")):
-                            zlogger.warning("Invalid finalized signature")
-                            return False
-
-                        contain_target_locked_batch = after_index <= until <= after_index + len(batch_bodies)
-                        if contain_target_locked_batch:
-                            locked_signature_info = data["data"]["locked"]
-                            if not locked_signature_info:
-                                zlogger.warning(
-                                    f"expected to find locked signature on the last page containing target locked batch")
-                                return False
-
-                            if locked_signature_info["index"] < until:
-                                zlogger.warning(
-                                    f"expected to find locked signature index be greater than or equal to the target locked: {until}")
-                                return False
-
-                            if locked_signature_info["index"] > until and not is_sync_point_signature_verified(
-                                    app_name=app_name,
-                                    state="locked",
-                                    index=locked_signature_info.get("index"),
-                                    batch_hash=locked_signature_info.get("hash"),
-                                    chaining_hash=locked_signature_info.get("chaining_hash"),
-                                    tag=locked_signature_info.get("tag"),
-                                    signature_hex=locked_signature_info.get("signature"),
-                                    nonsigners=locked_signature_info.get("nonsigners")):
-                                zlogger.warning(f"locked signature verification failed at the last page")
-                                return False
-
-                        batches: list[Batch] = []
-                        for batch_body in batch_bodies:
-                            batch_hash = utils.gen_hash(batch_body)
+                    batches: list[Batch] = []
+                    for idx, batch_body in enumerate(batch_bodies):
+                        batch_hash = utils.gen_hash(batch_body)
+                        if idx > 0:
                             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
-                            batches.append(dict(app_name=app_name,
-                                                node_id=peer_node_id,
-                                                body=batch_body,
-                                                hash=batch_hash,
-                                                chaining_hash=chaining_hash))
+                        batches.append(dict(app_name=app_name,
+                                            node_id=peer_node_id,
+                                            body=batch_body,
+                                            hash=batch_hash,
+                                            chaining_hash=chaining_hash))
 
-                            # append signatures on corresponding batches, they are already verified
-                            if locked_signature_info:
-                                idx = locked_signature_info.get("index") - after_index
-                                batches[idx]["lock_signature"] = locked_signature_info.get("signature")
-                                batches[idx]["locked_nonsigners"] = locked_signature_info.get("nonsigners")
-                                batches[idx]["locked_tag"] = locked_signature_info.get("tag")
+                    # put signatures on corresponding batches, they are already verified
+                    if locked_signature_info:
+                        locked_signature_idx = locked_signature_info.get("index") - after_index
+                        batches[locked_signature_idx] = {
+                            **batches[locked_signature_idx],
+                            "lock_signature": locked_signature_info.get("signature"),
+                            "locked_nonsigners": locked_signature_info.get("nonsigners"),
+                            "locked_tag": locked_signature_info.get("tag")
+                        }
 
-                            if finalized_signature_info:
-                                idx = finalized_signature_info.get("index") - after_index
-                                batches[idx]["finalization_signature"] = finalized_signature_info.get("signature")
-                                batches[idx]["finalized_nonsigners"] = finalized_signature_info.get("nonsigners")
-                                batches[idx]["finalized_tag"] = finalized_signature_info.get("tag")
+                    if finalized_signature_info:
+                        finalized_signature_idx = finalized_signature_info.get("index") - after_index
+                        batches[finalized_signature_idx] = {
+                            **batches[finalized_signature_idx],
+                            "finalization_signature": finalized_signature_info.get("signature"),
+                            "finalized_nonsigners": finalized_signature_info.get("nonsigners"),
+                            "finalized_tag": finalized_signature_info.get("tag")
+                        }
 
-                        zdb.upsert_sequenced_batches(app_name=app_name, batches=batches)
-                        if locked_signature_info:
-                            zdb.upsert_locked_sync_point(app_name=app_name, sync_point=locked_signature_info)
-                        if finalized_signature_info:
-                            zdb.upsert_finalized_sync_point(app_name=app_name, sync_point=finalized_signature_info)
+                    if last_page and not locked_signature_info:
+                        return False
 
-                        after_index += len(batches)
-                        if contain_target_locked_batch:
-                            break
+                    result = zdb.upsert_sequenced_batches(app_name=app_name, batches=batches)
+                    if not result:
+                        zlogger.warning(
+                            f"Error while upserting sequenced batches, app_name:{app_name}, peer_node_id:{peer_node_id}")
+                        return False
 
-                except Exception as e:
-                    zlogger.warning(f"Error occurred while fetching batches from {peer_node_socket}: {e}")
-                    return False
+                    if locked_signature_info:
+                        zdb.upsert_locked_sync_point(app_name=app_name, sync_point=locked_signature_info)
+                    if finalized_signature_info:
+                        zdb.upsert_finalized_sync_point(app_name=app_name, sync_point=finalized_signature_info)
 
-        return True
+                    if last_page:
+                        return True
 
-    except Exception as e:
-        zlogger.warning(f"Failed to establish connection with peer node {peer_node_socket}: {e}")
-        return False
+                    after_index += len(batches)
+
+            except Exception as e:
+                zlogger.warning(f"Error occurred while fetching batches from {peer_node_socket}: {e}")
+                return False
 
 
 async def get_network_last_locked_batch_entries() -> dict[str, LastLockedBatchEntry]:

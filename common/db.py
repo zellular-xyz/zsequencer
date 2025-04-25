@@ -346,10 +346,10 @@ class InMemoryDB:
         self,
         app_name: str,
         batches: list[Batch],
-    ) -> None:
+    ) -> bool:
         """Upsert sequenced batches."""
         if not batches:
-            return
+            return True
 
         chaining_hash = (
             self.apps[app_name]["operational_batch_sequence"]
@@ -363,7 +363,7 @@ class InMemoryDB:
                 zlogger.warning(
                     f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}",
                 )
-                return
+                return False
 
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
@@ -372,6 +372,8 @@ class InMemoryDB:
             self.apps[app_name]["operational_batch_hash_index_map"][batch["hash"]] = (
                 batch_index
             )
+
+        return True
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> None:
         """Update batches to 'locked' state up to a specified index."""
@@ -626,7 +628,7 @@ class InMemoryDB:
                 network_last_locked_batch_record,
             )
         else:
-            self._reinitialize_batches(
+            self.reinitialize_batches(
                 app_name,
                 network_last_locked_batch_record["index"],
             )
@@ -681,15 +683,15 @@ class InMemoryDB:
             )
         )
 
-    def _reinitialize_batches(
+    def reinitialize_batches(
         self,
         app_name: str,
-        all_nodes_last_finalized_batch_index: int,
+        index: int,
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
-            .filter(start_exclusive=all_nodes_last_finalized_batch_index)
+            .filter(start_exclusive=index)
             .batches()
         ):
             reinitialized_batch: Batch = {
@@ -705,7 +707,7 @@ class InMemoryDB:
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].filter(end_inclusive=all_nodes_last_finalized_batch_index)
+        ].filter(end_inclusive=index)
 
     def _get_operational_batch_record_by_hash_or_empty(
         self,
