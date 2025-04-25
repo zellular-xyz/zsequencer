@@ -52,11 +52,15 @@ def send_batches() -> None:
 
 def send_app_batches_iteration(app_name: str) -> bool:
     response = send_app_batches(app_name).get("data", {})
-    sequencer_last_finalized_index = response.get("sequencer_last_finalized_index",
-                                                  BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
-    if sequencer_last_finalized_index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
-        return True
-    return sequencer_last_finalized_index <= zdb.get_last_operational_batch_record_or_empty(app_name).get("index")
+    sequencer_last_finalized_hash = response.get("finalized", {}).get("hash", "")
+    finish_condition = (
+            not sequencer_last_finalized_hash
+            or zdb.get_batch_record_by_hash_or_empty(
+        app_name,
+        sequencer_last_finalized_hash,
+    )
+    )
+    return finish_condition
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:
@@ -150,9 +154,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
 
 
 def sync_with_sequencer(
-    app_name: str,
-    initialized_batches: dict[str, Any],
-    sequencer_response: dict[str, Any],
+        app_name: str,
+        initialized_batches: dict[str, Any],
+        sequencer_response: dict[str, Any],
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.upsert_sequenced_batches(
@@ -165,14 +169,14 @@ def sync_with_sequencer(
     ).get("index", 0)
     if sequencer_response["locked"]["index"] > last_locked_index:
         if is_sync_point_signature_verified(
-            app_name=app_name,
-            state="sequenced",
-            index=sequencer_response["locked"]["index"],
-            batch_hash=sequencer_response["locked"]["hash"],
-            chaining_hash=sequencer_response["locked"]["chaining_hash"],
-            tag=sequencer_response["locked"]["tag"],
-            signature_hex=sequencer_response["locked"]["signature"],
-            nonsigners=sequencer_response["locked"]["nonsigners"],
+                app_name=app_name,
+                state="sequenced",
+                index=sequencer_response["locked"]["index"],
+                batch_hash=sequencer_response["locked"]["hash"],
+                chaining_hash=sequencer_response["locked"]["chaining_hash"],
+                tag=sequencer_response["locked"]["tag"],
+                signature_hex=sequencer_response["locked"]["signature"],
+                nonsigners=sequencer_response["locked"]["nonsigners"],
         ):
             zdb.lock_batches(
                 app_name=app_name,
@@ -187,14 +191,14 @@ def sync_with_sequencer(
     ).get("index", 0)
     if sequencer_response["finalized"]["index"] > last_finalized_index:
         if is_sync_point_signature_verified(
-            app_name=app_name,
-            state="locked",
-            index=sequencer_response["finalized"]["index"],
-            batch_hash=sequencer_response["finalized"]["hash"],
-            chaining_hash=sequencer_response["finalized"]["chaining_hash"],
-            tag=sequencer_response["finalized"]["tag"],
-            signature_hex=sequencer_response["finalized"]["signature"],
-            nonsigners=sequencer_response["finalized"]["nonsigners"],
+                app_name=app_name,
+                state="locked",
+                index=sequencer_response["finalized"]["index"],
+                batch_hash=sequencer_response["finalized"]["hash"],
+                chaining_hash=sequencer_response["finalized"]["chaining_hash"],
+                tag=sequencer_response["finalized"]["tag"],
+                signature_hex=sequencer_response["finalized"]["signature"],
+                nonsigners=sequencer_response["finalized"]["nonsigners"],
         ):
             zdb.finalize_batches(
                 app_name=app_name,
@@ -223,9 +227,9 @@ def sync_with_sequencer(
 
 
 def check_censorship(
-    app_name: str,
-    initialized_batches: dict[str, Any],
-    sequencer_response: dict[str, Any],
+        app_name: str,
+        initialized_batches: dict[str, Any],
+        sequencer_response: dict[str, Any],
 ) -> dict[str, Any]:
     """Check for censorship and update missed batches."""
     sequenced_hashes: set[str] = set(
@@ -259,12 +263,12 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     )
     batch = batch_record.get("batch", {})
     if (
-        any(
-            batch.get(key) != sync_point[key]
-            for key in ["app_name", "hash", "chaining_hash"]
-        )
-        or batch_record["state"] != sync_point["state"]
-        or batch_record["index"] != sync_point["index"]
+            any(
+                batch.get(key) != sync_point[key]
+                for key in ["app_name", "hash", "chaining_hash"]
+            )
+            or batch_record["state"] != sync_point["state"]
+            or batch_record["index"] != sync_point["index"]
     ):
         return ""
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
@@ -278,9 +282,9 @@ def _validate_nonsigners_stake(nonsigners_stake: int, total_stake: int):
 
 
 def compute_signature_public_key(
-    nodes_info,
-    agg_pub_key,
-    non_signers: list[str],
+        nodes_info,
+        agg_pub_key,
+        non_signers: list[str],
 ) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = agg_pub_key
     for node_id in non_signers:
@@ -289,14 +293,14 @@ def compute_signature_public_key(
 
 
 def is_sync_point_signature_verified(
-    app_name: str,
-    state: str,
-    index: int,
-    batch_hash: str,
-    chaining_hash: str,
-    tag: int,
-    signature_hex: str,
-    nonsigners: list[str],
+        app_name: str,
+        state: str,
+        index: int,
+        batch_hash: str,
+        chaining_hash: str,
+        tag: int,
+        signature_hex: str,
+        nonsigners: list[str],
 ) -> bool:
     """Should first load the state of network nodes info using signature tag
 
@@ -354,7 +358,7 @@ async def gather_disputes() -> dict[str, Any] | None:
     results = []
     pending_tasks = list(dispute_tasks.keys())
     stake_percent = (
-        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
+            100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
     )
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(
@@ -429,8 +433,8 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-    node: dict[str, Any],
-    is_sequencer_down: bool,
+        node: dict[str, Any],
+        is_sequencer_down: bool,
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
@@ -447,9 +451,9 @@ async def send_dispute_request(
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=url,
-                data=data,
-                headers=zconfig.HEADERS,
+                    url=url,
+                    data=data,
+                    headers=zconfig.HEADERS,
             ) as response:
                 response_json: dict[str, Any] = await response.json()
                 if response_json["status"] == "success":
