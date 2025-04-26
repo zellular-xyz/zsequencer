@@ -109,6 +109,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                                                             signature_hex=last_locked_batch.get("lock_signature"),
                                                             nonsigners=last_locked_batch.get("locked_nonsigners")
                                                             ):
+                        zlogger.warning(f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified.")
                         continue
 
                     # check whether the last locked index is already in self node memory and only promote
