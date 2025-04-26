@@ -93,7 +93,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                 for entry in entries:
                     # The peer node which claims it has max locked signature index, has equal index with the self itself
                     # so it is not necessary anymore to start any syncing process with that peer node
-                    if entry['last_locked_batch']['index'] == self_node_last_locked_batch['index']:
+                    if entry['last_locked_batch']['index'] <= self_node_last_locked_batch['index']:
                         break
 
                     node_id, last_locked_batch_record = entry['node_id'], entry['last_locked_batch']
