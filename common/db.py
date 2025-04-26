@@ -596,102 +596,75 @@ class InMemoryDB:
         self,
         app_name: str,
         new_sequencer_id: str,
-        network_last_locked_batch_record: BatchRecord,
+        # network_last_locked_batch_record: BatchRecord,
     ) -> None:
         """Reinitialize the database after a switch in the sequencer."""
-        # TODO: Should get the batches from other nodes if they are missing.
-        self.finalize_batches(
-            app_name,
-            signature_data={
-                "index": network_last_locked_batch_record["index"],
-                "chaining_hash": network_last_locked_batch_record["batch"][
-                    "chaining_hash"
-                ],
-                "hash": network_last_locked_batch_record["batch"]["hash"],
-                "signature": network_last_locked_batch_record["batch"][
-                    "finalization_signature"
-                ],
-                "nonsigners": network_last_locked_batch_record["batch"][
-                    "finalized_nonsigners"
-                ],
-                "tag": network_last_locked_batch_record["batch"]["finalized_tag"],
-            },
-        )
+        # self.finalize_batches(
+        #     app_name,
+        #     signature_data={
+        #         "index": network_last_locked_batch_record["index"],
+        #         "chaining_hash": network_last_locked_batch_record["batch"][
+        #             "chaining_hash"
+        #         ],
+        #         "hash": network_last_locked_batch_record["batch"]["hash"],
+        #         "signature": network_last_locked_batch_record["batch"][
+        #             "finalization_signature"
+        #         ],
+        #         "nonsigners": network_last_locked_batch_record["batch"][
+        #             "finalized_nonsigners"
+        #         ],
+        #         "tag": network_last_locked_batch_record["batch"]["finalized_tag"],
+        #     },
+        # )
 
         if zconfig.NODE["id"] == new_sequencer_id:
             zlogger.info(
                 "This node is acting as the SEQUENCER. ID: %s",
                 zconfig.NODE["id"],
             )
-            self._resequence_batches(
-                app_name,
-                network_last_locked_batch_record,
-            )
+            self._re_sequence_batches(app_name)
         else:
-            self.reinitialize_batches(
-                app_name,
-                network_last_locked_batch_record["index"],
-            )
+            self.reinitialize_batches(app_name)
 
         self.apps[app_name]["nodes_state"] = {}
         self.apps[app_name]["missed_batch_map"] = {}
 
-    def _resequence_batches(
+    def _re_sequence_batches(
         self,
-        app_name: str,
-        all_nodes_last_finalized_batch_record: BatchRecord,
+        app_name: str
     ) -> None:
-        """Resequence batches after a switch in the sequencer."""
-        chaining_hash = all_nodes_last_finalized_batch_record.get("batch", {}).get(
-            "chaining_hash",
-            "",
-        )
-        resequencing_batches = itertools.chain(
+        """Re-sequence batches after a switch in the sequencer."""
+        chaining_hash = (
             self.apps[app_name]["operational_batch_sequence"]
-            .filter(
-                # TODO: I guess we should resequence all batches until the index of
-                # the last finalized batch across all nodes instead of all locally
-                # non-finalized batches, as the fully finalized batch across all nodes
-                # may differ from the local last finalized batch.
-                exclude_state="finalized",
-            )
-            .batches(),
-            self.apps[app_name]["initialized_batch_map"].values(),
+            .get_last_or_empty()
+            .get("batch", {})
+            .get("chaining_hash", "")
         )
-        resequenced_batches_list: list[Batch] = []
-        for resequencing_batch in resequencing_batches:
-            chaining_hash = utils.gen_hash(chaining_hash + resequencing_batch["hash"])
-            resequenced_batch: Batch = {
-                "app_name": resequencing_batch["app_name"],
-                "node_id": resequencing_batch["node_id"],
-                "hash": resequencing_batch["hash"],
-                "body": resequencing_batch["body"],
+        re_sequenced_batches_list: list[Batch] = []
+        for batch in self.apps[app_name]["initialized_batch_map"].values():
+            chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
+            re_sequenced_batches_list.append({
+                "app_name": batch["app_name"],
+                "node_id": batch["node_id"],
+                "hash": batch["hash"],
+                "body": batch["body"],
                 "chaining_hash": chaining_hash,
-            }
-            resequenced_batches_list.append(resequenced_batch)
+            })
 
         self.apps[app_name]["initialized_batch_map"] = {}
-        self.apps[app_name]["operational_batch_sequence"] = (
-            self.apps[app_name]["operational_batch_sequence"].filter(
-                target_state="finalized",
-            )
-            + resequenced_batches_list
-        )
-        self.apps[app_name]["operational_batch_hash_index_map"] = (
-            self._generate_batch_hash_index_map(
-                self.apps[app_name]["operational_batch_sequence"],
-            )
-        )
+        self.upsert_sequenced_batches(app_name=app_name, batches=re_sequenced_batches_list)
 
     def reinitialize_batches(
         self,
-        app_name: str,
-        index: int,
+        app_name: str
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
+        last_locked_index = (self.get_last_operational_batch_record_or_empty(app_name=app_name, state="locked")
+                             .get("batch")
+                             .get("index"))
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
-            .filter(start_exclusive=index)
+            .filter(start_exclusive=last_locked_index)
             .batches()
         ):
             reinitialized_batch: Batch = {
@@ -707,7 +680,7 @@ class InMemoryDB:
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
-        ].filter(end_inclusive=index)
+        ].filter(end_inclusive=last_locked_index)
 
     def _get_operational_batch_record_by_hash_or_empty(
         self,

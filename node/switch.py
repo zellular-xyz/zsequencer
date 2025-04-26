@@ -128,7 +128,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         # if the syncing process with claiming peer node was successful ,
                         # break the process and it does not require to check any other more claiming node
                         break
-                # zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
+                zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
                 zdb.reset_latency_queue(app_name)
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
@@ -143,8 +143,7 @@ async def _sync_with_peer_node(peer_node_id: str,
                                target_locked_index: int) -> bool:
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
     after_index = self_node_last_locked_index
-    zdb.reinitialize_batches(app_name=app_name,
-                             index=self_node_last_locked_index)
+    zdb.reinitialize_batches(app_name=app_name)
 
     async with aiohttp.ClientSession() as session:
         while True:
@@ -321,10 +320,11 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastL
 
 
 async def _fetch_node_last_locked_batch_records_or_empty(
-        session: aiohttp.ClientSession, node_id: str
+        session: aiohttp.ClientSession,
+        node_id: str
 ) -> dict[str, BatchRecord]:
     """Fetch last locked batches for all apps from a single node asynchronously."""
-    socket = zconfig.NODES[node_id]['socket']
+    socket = zconfig.NODES[node_id]["socket"]
     url = f"{socket}/node/batches/locked/last"
     try:
         async with session.get(
