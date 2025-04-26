@@ -4,7 +4,6 @@ import time
 from typing import Any, TypedDict
 
 import aiohttp
-import requests
 
 from common import utils
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
@@ -113,12 +112,8 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                             f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified.")
                         continue
 
-                    # check whether the last locked index is already in self node memory and only promote
-                    if entry['last_locked_batch']['index'] <= zdb.get_last_operational_batch_record_or_empty(
-                            "sequenced").get("index"):
-                        zdb.apps[app_name]["operational_batch_sequence"].promote(entry['last_locked_batch']['index'],
-                                                                                 "locked")
-                        break
+                    # re-initialize batches if the peer node has verified locked-signature upper than the node itself
+                    zdb.reinitialize_batches(app_name=app_name)
 
                     # Otherwise there is gap between the last in-memory sequenced batch index and the claiming lock batch
                     result = _sync_with_peer_node(peer_node_id=node_id,
@@ -130,6 +125,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         # if the syncing process with claiming peer node was successful ,
                         # break the process and it does not require to check any other more claiming node
                         break
+
                 zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
                 zdb.reset_latency_queue(app_name)
 

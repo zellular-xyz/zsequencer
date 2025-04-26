@@ -595,28 +595,9 @@ class InMemoryDB:
     def reinitialize(
         self,
         app_name: str,
-        new_sequencer_id: str,
-        # network_last_locked_batch_record: BatchRecord,
+        new_sequencer_id: str
     ) -> None:
         """Reinitialize the database after a switch in the sequencer."""
-        # self.finalize_batches(
-        #     app_name,
-        #     signature_data={
-        #         "index": network_last_locked_batch_record["index"],
-        #         "chaining_hash": network_last_locked_batch_record["batch"][
-        #             "chaining_hash"
-        #         ],
-        #         "hash": network_last_locked_batch_record["batch"]["hash"],
-        #         "signature": network_last_locked_batch_record["batch"][
-        #             "finalization_signature"
-        #         ],
-        #         "nonsigners": network_last_locked_batch_record["batch"][
-        #             "finalized_nonsigners"
-        #         ],
-        #         "tag": network_last_locked_batch_record["batch"]["finalized_tag"],
-        #     },
-        # )
-
         if zconfig.NODE["id"] == new_sequencer_id:
             zlogger.info(
                 "This node is acting as the SEQUENCER. ID: %s",
