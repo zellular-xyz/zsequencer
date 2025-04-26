@@ -7,6 +7,7 @@ import aiohttp
 
 from common import utils
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
+from common.batch_sequence import BatchSequence
 from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
@@ -90,12 +91,18 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                     state="locked"
                 )
                 for entry in entries:
+                    node_id, last_locked_batch_record = entry['node_id'], entry['last_locked_batch']
+
+                    # does not need to process node-id with invalid last
+                    if 'lock_signature' not in last_locked_batch_record:
+                        continue
+
                     # The peer node which claims it has max locked signature index, has equal index with the self itself
                     # so it is not necessary anymore to start any syncing process with that peer node
-                    if entry['last_locked_batch']['index'] <= self_node_last_locked_batch['index']:
+                    if entry['last_locked_batch']['index'] <= self_node_last_locked_batch.get('index',
+                                                                                              BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET):
                         break
 
-                    node_id, last_locked_batch_record = entry['node_id'], entry['last_locked_batch']
                     last_locked_batch = last_locked_batch_record.get("batch")
 
                     # peer node must contain locked signature on claimed index and the signature must be verified
@@ -126,7 +133,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         # break the process and it does not require to check any other more claiming node
                         break
 
-                zdb.reinitialize(app_name, new_sequencer_id, last_locked_batch_record)
+                zdb.reinitialize(app_name, new_sequencer_id)
                 zdb.reset_latency_queue(app_name)
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
@@ -269,54 +276,52 @@ async def _sync_with_peer_node(peer_node_id: str,
                 return False
 
 
-async def get_network_last_locked_batch_entries() -> dict[str, LastLockedBatchEntry]:
-    """Retrieves the last locked batch records from all network nodes."""
-    apps = list(zconfig.APPS.keys())
+async def _fetch_node_last_locked_batch_records_or_empty(
+        session: aiohttp.ClientSession,
+        node_id: str
+) -> dict[str, BatchRecord] | None:
+    """
+    Fetch last locked batches for all apps from a single node asynchronously.
+    Returns None if any error occurs during the fetch operation.
+    """
+    socket = zconfig.NODES[node_id]["socket"]
+    url = f"{socket}/node/batches/locked/last"
+    try:
+        async with session.get(
+                url, headers=zconfig.HEADERS, timeout=aiohttp.ClientTimeout(total=10)
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                zlogger.warning(
+                    f"Failed to fetch last locked record from node {socket}: {error_text}"
+                )
+                return None
 
-    # Get local records first
-    self_node_id = zconfig.NODE["id"]
-    highest_records = {
-        app_name: {"node_id": self_node_id,
-                   "batch_record": zdb.get_last_operational_batch_record_or_empty(app_name=app_name, state="locked")}
-        for app_name in apps
-    }
+            data = await response.json()
+            if data.get("status") == "error":
+                zlogger.warning(
+                    f"Failed to fetch last locked record from node {socket}: {data}"
+                )
+                return None
 
-    highest_indices = {
-        app_name: entry["batch_record"].get("index", 0) for app_name, entry in highest_records.items()
-    }
-
-    # Filter nodes to exclude self
-    nodes_to_query = [
-        node for node in zconfig.NODES.values() if node["id"] != self_node_id
-    ]
-
-    if not nodes_to_query:
-        return highest_records
-
-    # Query all nodes concurrently
-    async with aiohttp.ClientSession() as session:
-        tasks_with_node_ids = [
-            (node["id"], _fetch_node_last_locked_batch_records_or_empty(session, node))
-            for node in nodes_to_query
-        ]
-        results = await asyncio.gather(*(task for _, task in tasks_with_node_ids))
-
-    # Process results and find highest locked index for each app
-    for node_id, node_records in zip([node_id for node_id, _ in tasks_with_node_ids], results):
-        if not node_records:
-            continue
-        for app_name, record in node_records.items():
-            record_index = record.get("index", 0)
-            if record_index > highest_indices[app_name]:
-                highest_indices[app_name] = record_index
-                highest_records[app_name] = {"node_id": node_id, "batch_record": record}
-
-    return highest_records
+            return {
+                app_name: stateful_batch_to_batch_record(data["data"][app_name])
+                for app_name in zconfig.APPS
+                if app_name in data["data"]
+            }
+    except Exception as e:
+        zlogger.warning(
+            f"Failed to fetch last locked record from node {socket}: {e}"
+        )
+        return None
 
 
 async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastLockedBatchEntry]]:
-    """Retrieves all nodes' last locked batch records sorted by batch index in descending order.
-    If multiple nodes have the same highest index, prioritizes self node."""
+    """
+    Retrieves all nodes' last locked batch records sorted by batch index in descending order.
+    If multiple nodes have the same highest index, prioritizes self node.
+    Filters out None responses from nodes and only processes valid responses.
+    """
     apps = list(zconfig.APPS.keys())
     self_node_id = zconfig.NODE["id"]
 
@@ -336,57 +341,27 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastL
         ]
         results = await asyncio.gather(*(task for _, task in tasks_with_node_ids))
 
-    # Process results and add to records
+    # Process results and add to records, filtering out None responses
     for node_id, node_records in zip([node_id for node_id, _ in tasks_with_node_ids], results):
-        if not node_records:
+        if node_records is None:  # Skip None responses
             continue
+
         for app_name, batch_record in node_records.items():
+            # Ensure batch_record has an index, otherwise use BEFORE_GLOBAL_INDEX_OFFSET
+            if 'index' not in batch_record:
+                batch_record['index'] = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+
             all_records[app_name].append({
                 "node_id": node_id,
                 "last_locked_batch": batch_record
             })
 
+    # Sort records for each app by index in descending order
     for app_name in apps:
+        # print('  \n\n  ', ' app_name: ' , app_name , ' all_records: ', all_records[app_name], '  \n\n  ')
         all_records[app_name].sort(
-            key=lambda entry: entry["last_locked_batch"]["index"],
+            key=lambda entry: entry["last_locked_batch"].get("index"),
             reverse=True
         )
 
     return all_records
-
-
-async def _fetch_node_last_locked_batch_records_or_empty(
-        session: aiohttp.ClientSession,
-        node_id: str
-) -> dict[str, BatchRecord]:
-    """Fetch last locked batches for all apps from a single node asynchronously."""
-    socket = zconfig.NODES[node_id]["socket"]
-    url = f"{socket}/node/batches/locked/last"
-    try:
-        async with session.get(
-                url, headers=zconfig.HEADERS, timeout=aiohttp.ClientTimeout(total=10)
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {error_text}"
-                )
-                return {}
-
-            data = await response.json()
-            if data.get("status") == "error":
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {data}"
-                )
-                return {}
-
-            return {
-                app_name: stateful_batch_to_batch_record(data["data"][app_name])
-                for app_name in zconfig.APPS
-                if app_name in data["data"]
-            }
-    except Exception as e:
-        zlogger.warning(
-            f"Failed to fetch last locked record from node {socket}: {e}"
-        )
-        return {}

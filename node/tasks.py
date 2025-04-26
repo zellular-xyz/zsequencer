@@ -55,9 +55,12 @@ def send_app_batches_iteration(app_name: str) -> bool:
     sequencer_last_finalized_index = (response
                                       .get("finalized", {})
                                       .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
+    last_in_memory_index = (zdb
+                            .get_last_operational_batch_record_or_empty(app_name=app_name, state="sequenced")
+                            .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
     if sequencer_last_finalized_index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
         return True
-    return sequencer_last_finalized_index <= zdb.get_last_operational_batch_record_or_empty(app_name).get("index")
+    return sequencer_last_finalized_index <= last_in_memory_index
 
 
 def send_app_batches(app_name: str) -> dict[str, Any]:

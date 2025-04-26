@@ -640,9 +640,10 @@ class InMemoryDB:
         app_name: str
     ) -> None:
         """Reinitialize batches after a switch in the sequencer."""
-        last_locked_index = (self.get_last_operational_batch_record_or_empty(app_name=app_name, state="locked")
-                             .get("batch")
-                             .get("index"))
+        last_locked_index = (self.apps[app_name]["operational_batch_sequence"]
+                                .get_last_or_empty(state="locked")
+                                .get("batch", {})
+                                .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
             .filter(start_exclusive=last_locked_index)
