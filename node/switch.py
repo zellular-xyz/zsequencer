@@ -143,7 +143,10 @@ async def _sync_with_peer_node(peer_node_id: str,
     after_index = self_node_last_locked_index
     zdb.reinitialize_batches(app_name=app_name)
 
-    async with aiohttp.ClientSession() as session:
+    #  timeout value (in seconds)
+    timeout = aiohttp.ClientTimeout(total=10)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         while True:
             try:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
