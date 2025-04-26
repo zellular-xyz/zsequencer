@@ -109,7 +109,8 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                                                             signature_hex=last_locked_batch.get("lock_signature"),
                                                             nonsigners=last_locked_batch.get("locked_nonsigners")
                                                             ):
-                        zlogger.warning(f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified.")
+                        zlogger.warning(
+                            f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified.")
                         continue
 
                     # check whether the last locked index is already in self node memory and only promote
@@ -203,6 +204,9 @@ async def _sync_with_peer_node(peer_node_id: str,
                         }
 
                     if last_page and not locked_signature_info:
+                        zlogger.warning(
+                            f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
+                        )
                         return False
 
                     result = zdb.upsert_sequenced_batches(app_name=app_name, batches=batches)
@@ -212,10 +216,50 @@ async def _sync_with_peer_node(peer_node_id: str,
                         return False
 
                     if locked_signature_info:
-                        zdb.upsert_locked_sync_point(app_name=app_name, sync_point=locked_signature_info)
-                    if finalized_signature_info:
-                        zdb.upsert_finalized_sync_point(app_name=app_name, sync_point=finalized_signature_info)
+                        if not is_sync_point_signature_verified(app_name=app_name,
+                                                                state="locked",
+                                                                index=locked_signature_info.get("index"),
+                                                                batch_hash=locked_signature_info.get("hash"),
+                                                                chaining_hash=locked_signature_info.get(
+                                                                    "chaining_hash"),
+                                                                tag=locked_signature_info.get("tag"),
+                                                                signature_hex=locked_signature_info.get("signature"),
+                                                                nonsigners=locked_signature_info.get("nonsigners")):
+                            zlogger.warning(
+                                f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
+                            )
+                            return False
+                        zdb.lock_batches(app_name=app_name,
+                                         signature_data=dict(index=locked_signature_info.get("index"),
+                                                             chaining_hash=locked_signature_info.get("chaining_hash"),
+                                                             batch_hash=locked_signature_info.get("hash"),
+                                                             signature=locked_signature_info.get("signature"),
+                                                             nonsigners=locked_signature_info.get("nonsigners"),
+                                                             tag=locked_signature_info.get("tag")))
 
+                    if finalized_signature_info:
+                        if not is_sync_point_signature_verified(app_name=app_name,
+                                                                state="finalized",
+                                                                index=finalized_signature_info.get("index"),
+                                                                chaining_hash=finalized_signature_info.get(
+                                                                    "chaining_hash"),
+                                                                batch_hash=finalized_signature_info.get("hash"),
+                                                                signature_hex=finalized_signature_info.get("signature"),
+                                                                tag=finalized_signature_info.get("tag"),
+                                                                nonsigners=finalized_signature_info.get("nonsigners")
+                                                                ):
+                            zlogger.warning(
+                                f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
+                            )
+                            return False
+                        zdb.finalize_batches(app_name=app_name,
+                                             signature_data=dict(index=finalized_signature_info.get("index"),
+                                                                 chaining_hash=finalized_signature_info.get(
+                                                                     "chaining_hash"),
+                                                                 batch_hash=finalized_signature_info.get("hash"),
+                                                                 signature=finalized_signature_info.get("signature"),
+                                                                 nonsigners=finalized_signature_info.get("nonsigners"),
+                                                                 tag=finalized_signature_info.get("tag")))
                     if last_page:
                         return True
 
