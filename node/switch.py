@@ -281,14 +281,6 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastL
         app_name: [] for app_name in apps
     }
 
-    # Add self node records
-    for app_name in apps:
-        last_locked_batch = zdb.get_last_operational_batch_record_or_empty(app_name=app_name, state="locked")
-        all_records[app_name].append({
-            "node_id": self_node_id,
-            "last_locked_batch": last_locked_batch
-        })
-
     # Query all other nodes
     nodes_to_query = [node_id for node_id in zconfig.NODES if node_id != self_node_id]
 
