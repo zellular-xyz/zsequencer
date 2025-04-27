@@ -236,7 +236,7 @@ def is_sync_point_signature_verified(
     zlogger.info(
         f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}",
     )
-    return bls.is_bls_sig_verified(
+    return is_bls_sig_verified(
         signature_hex=signature_hex,
         message=message,
         public_key=agg_pub_key,
