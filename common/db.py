@@ -656,7 +656,7 @@ class InMemoryDB:
             })
 
         self.apps[app_name]["initialized_batch_map"] = {}
-        self.upsert_sequenced_batches(app_name=app_name, batches=re_sequenced_batches_list)
+        self.sequencer_init_batches(app_name=app_name, initializing_batches=re_sequenced_batches_list)
 
     def reinitialize_batches(
         self,
