@@ -86,6 +86,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         app_name=req_data["app_name"],
         state="finalized",
     )
+    last_finalized_index = last_finalized_batch_record.get("index", 0)
     last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=req_data["app_name"],
         state="locked",
@@ -135,8 +136,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     last_locked_batch = last_locked_batch_record.get("batch", {})
     return {
         "batches": batch_sequence.batches(),
-        "sequencer_last_finalized_index": zdb.get_last_operational_batch_record_or_empty(app_name=req_data["app_name"],
-                                                                                         state="finalized").get("index"),
+        "last_finalized_index": last_finalized_index,
         "finalized": {
             "index": last_finalized_batch_record.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),

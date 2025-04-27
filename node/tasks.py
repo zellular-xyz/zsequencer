@@ -52,9 +52,10 @@ def send_batches() -> None:
 
 def send_app_batches_iteration(app_name: str) -> bool:
     response = send_app_batches(app_name).get("data", {})
-    sequencer_last_finalized_index = (response
-                                      .get("finalized", {})
-                                      .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
+    sequencer_last_finalized_index = response.get(
+        "last_finalized_index",
+        BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
+    )
     last_in_memory_index = (zdb
                             .get_last_operational_batch_record_or_empty(app_name=app_name, state="sequenced")
                             .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
