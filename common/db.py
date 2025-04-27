@@ -638,21 +638,13 @@ class InMemoryDB:
         app_name: str
     ) -> None:
         """Re-sequence batches after a switch in the sequencer."""
-        chaining_hash = (
-            self.apps[app_name]["operational_batch_sequence"]
-            .get_last_or_empty()
-            .get("batch", {})
-            .get("chaining_hash", "")
-        )
         re_sequenced_batches_list: list[Batch] = []
         for batch in self.apps[app_name]["initialized_batch_map"].values():
-            chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             re_sequenced_batches_list.append({
                 "app_name": batch["app_name"],
                 "node_id": batch["node_id"],
                 "hash": batch["hash"],
-                "body": batch["body"],
-                "chaining_hash": chaining_hash,
+                "body": batch["body"]
             })
 
         self.apps[app_name]["initialized_batch_map"] = {}
