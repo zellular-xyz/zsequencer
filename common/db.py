@@ -16,7 +16,7 @@ from common.logger import zlogger
 from common.snapshot_manager import SnapshotManager
 from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
-from node.signature_verification import is_sync_point_signature_verified
+from common.bls import is_sync_point_signature_verified
 from utils import get_file_content
 
 TimestampedIndex: TypeAlias = tuple[int, int]

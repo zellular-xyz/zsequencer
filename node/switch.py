@@ -11,7 +11,7 @@ from common.batch_sequence import BatchSequence
 from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
-from node.signature_verification import is_sync_point_signature_verified
+from common.bls import is_sync_point_signature_verified
 
 switch_lock: asyncio.Lock = asyncio.Lock()
 

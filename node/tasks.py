@@ -23,7 +23,7 @@ from node.rate_limit import (
     try_acquire_rate_limit_of_self_node,
 )
 from node.switch import send_switch_requests, switch_sequencer_async
-from node.signature_verification import is_sync_point_signature_verified
+from common.bls import is_sync_point_signature_verified
 
 
 def send_batches() -> None:
