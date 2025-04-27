@@ -119,9 +119,6 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                             f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified.")
                         continue
 
-                    # re-initialize batches if the peer node has verified locked-signature upper than the node itself
-                    zdb.reinitialize_batches(app_name=app_name)
-
                     # Otherwise there is gap between the last in-memory sequenced batch index and the claiming lock batch
                     result = _sync_with_peer_node(peer_node_id=node_id,
                                                   app_name=app_name,
