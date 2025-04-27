@@ -13,3 +13,4 @@
    examples/token
    examples/orderbook
    examples/verification
+   examples/downtime_monitoring

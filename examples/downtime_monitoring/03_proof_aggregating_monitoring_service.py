@@ -107,8 +107,10 @@ def check_state(address: str, timestamp: int) -> dict[str, Any]:
     url = MONITORED_NODES[address]
     state = check_node_state(address, url)
 
+    # -- start: signing state confirmation --
     message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
+    # -- end: signing state confirmation --
 
     return {
         "address": address,
@@ -127,6 +129,7 @@ async def fetch_state(session: aiohttp.ClientSession, node_name: str, node_info:
 
 async def query_monitoring_nodes_for_state(address: str) -> tuple[list[tuple[str, str, str]], int]:
     timestamp = int(time.time())
+    # -- start: querying state from monitoring nodes --
     async with aiohttp.ClientSession() as session:
         tasks = [
             fetch_state(session, node, info, address, timestamp)
@@ -134,8 +137,10 @@ async def query_monitoring_nodes_for_state(address: str) -> tuple[list[tuple[str
             if node != SELF_NODE_ID
         ]
         results = await asyncio.gather(*tasks)
+    # -- end: querying state from monitoring nodes --
     return results, timestamp
 
+# -- start: aggregating valid signatures --
 def aggregate_signatures(message: bytes, expected_value: Any, results: list[tuple[str, Any, str]]):
     valid_signatures = []
     non_signers = []
@@ -160,6 +165,7 @@ def aggregate_signatures(message: bytes, expected_value: Any, results: list[tupl
 
     aggregated_signature = PopSchemeMPL.aggregate(valid_signatures)
     return aggregated_signature, non_signers
+# -- end: aggregating valid signatures --
 
 async def handle_state_change(node_address: str, new_state: str):
     results, timestamp = await query_monitoring_nodes_for_state(node_address)
@@ -218,6 +224,7 @@ def apply_event(event: dict[str, Any]):
     else:
         logger.warning(f"Duplicate state for {address}, event ignored")
 
+# -- start: verifying and applying events --
 def process_loop():
     for batch, index in zellular.batches():
         events = json.loads(batch)
@@ -231,6 +238,7 @@ def process_loop():
                 apply_event(event)
             else:
                 logger.error(f"Invalid proof for event {event['address']}, ignored")
+# -- end: verifying and applying events --
 
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
     interval_events = [e for e in events if from_ts <= e["timestamp"] <= to_ts]

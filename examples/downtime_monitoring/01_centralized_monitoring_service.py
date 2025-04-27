@@ -13,31 +13,38 @@ from zellular import Zellular
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("downtime-monitoring")
 
+# -- start: monitoring nodes config --
 # Node URL configuration
 MONITORED_NODES = {
     "0xNodeA123": "http://localhost:8001",
     "0xNodeB456": "http://localhost:8002",
     "0xNodeC789": "http://localhost:8003",
 }
+# -- end: monitoring nodes config --
 
 REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 
+# -- start: tracking node states --
 nodes_state: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
 nodes_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
+# -- end: tracking node states --
 
 app = FastAPI()
 
+# -- start: checking node health --
 def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
     except requests.RequestException:
         return "down"
+# -- end: checking node health --
 
+# -- start: detecting node state change --
 def monitor_loop():
     while True:
         node_address = random.choice(list(MONITORED_NODES.keys()))
@@ -58,7 +65,9 @@ def monitor_loop():
             logger.info(f"No change: {node_address} is {new_state}")
 
         time.sleep(POLL_INTERVAL_SECONDS)
+# -- end: detecting node state change --
 
+# -- start: calculating downtime --
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
     interval_events = [e for e in events if from_ts <= e["timestamp"] <= to_ts]
 
@@ -82,7 +91,9 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
         downtime += to_ts - down_since
 
     return downtime
+# -- end: calculating downtime --
 
+# -- start: exposing downtime endpoint --
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
     if address not in nodes_events:
@@ -96,7 +107,10 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
         "to_timestamp": to_timestamp,
         "total_downtime_seconds": total_downtime
     })
+# -- end: exposing downtime endpoint --
 
+# -- start: running monitoring loop --
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=5000)
+# -- end: running monitoring loop --

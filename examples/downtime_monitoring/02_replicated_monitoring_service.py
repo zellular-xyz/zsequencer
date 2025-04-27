@@ -24,12 +24,14 @@ MONITORED_NODES = {
 REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 
+# -- start: configuring eigenlayer network --
 # Initialize Zellular client
 network = EigenlayerNetwork(
     subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
     threshold_percent=40
 )
 zellular = Zellular("downtime-monitoring", network)
+# -- end: configuring eigenlayer network --
 
 nodes_state: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
@@ -54,6 +56,7 @@ def monitor_loop():
         new_state = check_node_state(node_address, node_url)
         last_state = nodes_state.get(node_address)
 
+        # -- start: sending event to zellular --
         if last_state != new_state:
             event = {
                 "address": node_address,
@@ -64,9 +67,11 @@ def monitor_loop():
             logger.info(f"Sent state change event to Zellular: {node_address} ➔ {new_state}")
         else:
             logger.info(f"No change: {node_address} is {new_state}")
+        # -- end: sending event to zellular --
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
+# -- start: applying event to local state --
 def apply_event(event: dict[str, Any]):
     address = event["address"]
     state = event["state"]
@@ -82,6 +87,7 @@ def apply_event(event: dict[str, Any]):
         logger.info(f"Applied event: {address} ➔ {state}")
     else:
         logger.warning(f"Duplicate state for {address}, event ignored")
+# -- end: applying event to local state --
 
 def process_loop():
     for batch, index in zellular.batches():
@@ -127,7 +133,9 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
         "total_downtime_seconds": total_downtime
     })
 
+# -- start: running monitor and process loops --
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=process_loop, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=5000)
+# -- end: running monitor and process loops --

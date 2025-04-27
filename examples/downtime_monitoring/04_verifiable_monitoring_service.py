@@ -256,6 +256,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
     return downtime
 
+# -- start: signing downtime report --
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
     if address not in nodes_events:
@@ -274,7 +275,9 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
         "total_downtime_seconds": total_downtime,
         "signature": str(signature)
     })
+# -- end: signing downtime report --
 
+# -- start: aggregating downtime responses --
 async def fetch_downtime(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, from_timestamp: int, to_timestamp: int):
     try:
         async with session.get(f"{node_info['url']}/downtime", params={"address": address, "from_timestamp": from_timestamp, "to_timestamp": to_timestamp}, timeout=REQUEST_TIMEOUT) as response:
@@ -303,7 +306,9 @@ async def query_monitoring_nodes_for_downtime(address: str, from_timestamp: int,
     results.append((SELF_NODE_ID, total_downtime, str(signature)))
 
     return results, total_downtime
+# -- end: aggregating downtime responses --
 
+# -- start: downtime aggregation endpoint --
 @app.get("/aggregate_downtime")
 async def aggregate_downtime(address: str, from_timestamp: int, to_timestamp: int):
     results, target_downtime = await query_monitoring_nodes_for_downtime(address, from_timestamp, to_timestamp)
@@ -325,6 +330,7 @@ async def aggregate_downtime(address: str, from_timestamp: int, to_timestamp: in
         "aggregated_signature": str(aggregated_signature),
         "non_signing_nodes": non_signers
     }
+# -- end: downtime aggregation endpoint --
 
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
