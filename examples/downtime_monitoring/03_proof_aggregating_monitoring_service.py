@@ -10,7 +10,7 @@ import aiohttp
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
-from zellular import Zellular
+from zellular import Zellular, EigenlayerNetwork
 from blspy import PrivateKey, G1Element, G2Element, PopSchemeMPL
 
 
@@ -30,18 +30,19 @@ with open("monitoring_nodes.json") as f:
     MONITORING_NODES: dict[str, dict[str, str]] = json.load(f)
 
 # Aggregate public key of all downtime monitoring nodes (precomputed offline)
-AGGREGATE_PUBLIC_KEY_HEX = "your_aggregate_pubkey_hex_here"
+AGGREGATE_PUBLIC_KEY_HEX = "a95b5b00610160521fc0a34bf5bc3e9c4e4b81ca10a99731de2291ad34f07224e16581c195d1452dfd75876c973853a1"
 AGGREGATE_PUBLIC_KEY = G1Element.from_bytes(bytes.fromhex(AGGREGATE_PUBLIC_KEY_HEX))
-
-# Self node ID (this node's name in the downtime monitoring nodes config)
-SELF_NODE_ID = "Node1"  # Adjust this value per node
 
 REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 MAX_TIMESTAMP_DRIFT = 10  # seconds
 
 # Initialize Zellular client
-zellular = Zellular("downtime-monitor", "http://37.27.41.237:6001/", threshold_percent=1)
+network = EigenlayerNetwork(
+    subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
+    threshold_percent=40
+)
+zellular = Zellular("downtime-monitoring", network)
 
 node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
@@ -49,8 +50,25 @@ node_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
+# Uncomment the desired node's private key and port
+NODE_PRIVATE_KEY, PORT, SELF_NODE_ID = (
+    "5b009195821da22cf90f375db7ee2dcf698791a5190a0b50dda3af653ee67d9b",
+    5001,
+    "Node1",
+)
+# NODE_PRIVATE_KEY, PORT, SELF_NODE_ID = (
+#     "53217fdb58315338ab035f6939b9c684ca54ec7fa7da2f78cf9583af5799fb40",
+#     5002,
+#     "Node2",
+# )
+# NODE_PRIVATE_KEY, PORT, SELF_NODE_ID = (
+#     '7126ea0f6c7acb39d30ce7fde262a8a1fc53f5d994ef03be265d65bf370ad184',
+#     5003,
+#     "Node3",
+# )
+
 # BLS private key (Load securely in production)
-sk = PrivateKey.from_bytes(bytes.fromhex("your_private_key_hex_here"))
+sk = PrivateKey.from_bytes(bytes.fromhex(NODE_PRIVATE_KEY))
 pk = sk.get_g1()
 
 app = FastAPI()
@@ -96,7 +114,7 @@ def check_status(address: str, timestamp: int) -> dict[str, Any]:
         "address": address,
         "state": state,
         "timestamp": timestamp,
-        "signature": signature.serialize().hex()
+        "signature": str(signature),
     }
 
 async def fetch_status(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, timestamp: int):
@@ -137,7 +155,7 @@ def aggregate_signatures(message: bytes, expected_value: Any, results: list[tupl
         except Exception:
             non_signers.append(node_name)
 
-    if len(valid_signatures) < (2 * len(MONITORING_NODES)) // 3 + 1:
+    if len(valid_signatures) < 2 * len(MONITORING_NODES) / 3:
         raise ValueError("Not enough valid signatures to reach threshold")
 
     aggregated_signature = PopSchemeMPL.aggregate(valid_signatures)
@@ -149,7 +167,7 @@ async def handle_state_change(node_address: str, new_state: str):
     # Locally sign our observation and append it
     message = f"Address: {node_address}, State: {new_state}, Timestamp: {timestamp}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
-    results.append((SELF_NODE_ID, new_state, signature.serialize().hex()))
+    results.append((SELF_NODE_ID, new_state, str(signature)))
 
     try:
         aggregated_signature, non_signers = aggregate_signatures(message, new_state, results)
@@ -158,13 +176,13 @@ async def handle_state_change(node_address: str, new_state: str):
             "address": node_address,
             "state": new_state,
             "timestamp": timestamp,
-            "aggregated_signature": aggregated_signature.serialize().hex(),
+            "aggregated_signature": str(aggregated_signature),
             "non_signing_nodes": non_signers
         }
         zellular.send([event], blocking=False)
-        logger.info(f"✅ Sent event with proof: {node_address} ➔ {new_state}")
+        logger.info(f"Sent event with proof: {node_address} ➔ {new_state}")
     except ValueError as e:
-        logger.error(f"❌ Could not aggregate proof: {str(e)}")
+        logger.error(f"Could not aggregate proof: {str(e)}")
 
 def verify_event(event: dict[str, Any]) -> bool:
     address = event["address"]
@@ -204,7 +222,12 @@ def process_loop():
     for batch, index in zellular.batches():
         events = json.loads(batch)
         for event in events:
-            if verify_event(event):
+            try:
+                verified = verify_event(event)
+            except Exception as e:
+                logger.warning(f"Error in event verification: {event}, error: {type(e)} {e}")
+                continue
+            if verified:
                 apply_event(event)
             else:
                 logger.error(f"Invalid proof for event {event['address']}, ignored")
@@ -250,4 +273,4 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=process_loop, daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)

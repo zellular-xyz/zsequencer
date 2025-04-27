@@ -8,7 +8,7 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
-from zellular import Zellular
+from zellular import Zellular, EigenlayerNetwork
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,11 @@ REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 
 # Initialize Zellular client
-zellular = Zellular("downtime-monitor", "http://37.27.41.237:6001/", threshold_percent=1)
+network = EigenlayerNetwork(
+    subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
+    threshold_percent=40
+)
+zellular = Zellular("downtime-monitoring", network)
 
 node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
