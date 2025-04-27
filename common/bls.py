@@ -216,7 +216,7 @@ def is_sync_point_signature_verified(
         nonsigners,
     )
 
-    if not _has_quorum(nonsigners_stake, network_state.total_stake):
+    if not has_quorum(nonsigners_stake, network_state.total_stake):
         zlogger.error(
             f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}",
         )
@@ -243,7 +243,7 @@ def is_sync_point_signature_verified(
     )
 
 
-def _has_quorum(nonsigners_stake: int, total_stake: int):
+def has_quorum(nonsigners_stake: int, total_stake: int):
     return 100 * nonsigners_stake / total_stake <= 100 - zconfig.THRESHOLD_PERCENT
 
 
