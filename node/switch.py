@@ -319,7 +319,6 @@ async def _fetch_node_last_locked_batch_records_or_empty(
 async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastLockedBatchEntry]]:
     """
     Retrieves all nodes' last locked batch records sorted by batch index in descending order.
-    If multiple nodes have the same highest index, prioritizes self node.
     Filters out None responses from nodes and only processes valid responses.
     """
     apps = list(zconfig.APPS.keys())
@@ -347,9 +346,9 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastL
             continue
 
         for app_name, batch_record in node_records.items():
-            # Ensure batch_record has an index, otherwise use BEFORE_GLOBAL_INDEX_OFFSET
-            if 'index' not in batch_record:
-                batch_record['index'] = BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+            # Does not need to add record with batch for any more processing:
+            if not batch_record.get("batch"):
+                continue
 
             all_records[app_name].append({
                 "node_id": node_id,
@@ -358,7 +357,6 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[str, list[LastL
 
     # Sort records for each app by index in descending order
     for app_name in apps:
-        # print('  \n\n  ', ' app_name: ' , app_name , ' all_records: ', all_records[app_name], '  \n\n  ')
         all_records[app_name].sort(
             key=lambda entry: entry["last_locked_batch"].get("index"),
             reverse=True
