@@ -638,15 +638,7 @@ class InMemoryDB:
         app_name: str
     ) -> None:
         """Re-sequence batches after a switch in the sequencer."""
-        re_sequenced_batches_list: list[Batch] = []
-        for batch in self.apps[app_name]["initialized_batch_map"].values():
-            re_sequenced_batches_list.append({
-                "app_name": batch["app_name"],
-                "node_id": batch["node_id"],
-                "hash": batch["hash"],
-                "body": batch["body"]
-            })
-
+        re_sequenced_batches_list: list[Batch] = list(self.apps[app_name]["initialized_batch_map"].values())
         self.apps[app_name]["initialized_batch_map"] = {}
         self.sequencer_init_batches(app_name=app_name, initializing_batches=re_sequenced_batches_list)
 
