@@ -40,7 +40,7 @@ MAX_TIMESTAMP_DRIFT = 10  # seconds
 # Initialize Zellular client
 network = EigenlayerNetwork(
     subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
-    threshold_percent=40
+    threshold_percent=40,
 )
 zellular = Zellular("downtime-monitoring", network)
 
@@ -73,12 +73,14 @@ pk = sk.get_g1()
 
 app = FastAPI()
 
+
 def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
     except requests.RequestException:
         return "down"
+
 
 def monitor_loop():
     while True:
@@ -95,6 +97,7 @@ def monitor_loop():
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
+
 @app.get("/state")
 def check_state(address: str, timestamp: int) -> dict[str, Any]:
     if address not in MONITORED_NODES:
@@ -107,7 +110,9 @@ def check_state(address: str, timestamp: int) -> dict[str, Any]:
     url = MONITORED_NODES[address]
     state = check_node_state(address, url)
 
-    message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode("utf-8")
+    message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode(
+        "utf-8"
+    )
     signature = PopSchemeMPL.sign(sk, message)
 
     return {
@@ -117,15 +122,29 @@ def check_state(address: str, timestamp: int) -> dict[str, Any]:
         "signature": str(signature),
     }
 
-async def fetch_state(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, timestamp: int):
+
+async def fetch_state(
+    session: aiohttp.ClientSession,
+    node_name: str,
+    node_info: dict[str, str],
+    address: str,
+    timestamp: int,
+):
     try:
-        async with session.get(f"{node_info['url']}/state", params={"address": address, "timestamp": timestamp}, timeout=REQUEST_TIMEOUT) as response:
+        async with session.get(
+            f"{node_info['url']}/state",
+            params={"address": address, "timestamp": timestamp},
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
             data = await response.json()
             return node_name, data["state"], data["signature"]
     except Exception:
         return node_name, None, None
 
-async def query_monitoring_nodes_for_state(address: str) -> tuple[list[tuple[str, str, str]], int]:
+
+async def query_monitoring_nodes_for_state(
+    address: str,
+) -> tuple[list[tuple[str, str, str]], int]:
     timestamp = int(time.time())
     async with aiohttp.ClientSession() as session:
         tasks = [
@@ -136,7 +155,10 @@ async def query_monitoring_nodes_for_state(address: str) -> tuple[list[tuple[str
         results = await asyncio.gather(*tasks)
     return results, timestamp
 
-def aggregate_signatures(message: bytes, expected_value: Any, results: list[tuple[str, Any, str]]):
+
+def aggregate_signatures(
+    message: bytes, expected_value: Any, results: list[tuple[str, Any, str]]
+):
     valid_signatures = []
     non_signers = []
 
@@ -146,7 +168,9 @@ def aggregate_signatures(message: bytes, expected_value: Any, results: list[tupl
             continue
 
         try:
-            pubkey = G1Element.from_bytes(bytes.fromhex(MONITORING_NODES[node_name]["pubkey"]))
+            pubkey = G1Element.from_bytes(
+                bytes.fromhex(MONITORING_NODES[node_name]["pubkey"])
+            )
             signature = G2Element.from_bytes(bytes.fromhex(signature_hex))
             if PopSchemeMPL.verify(pubkey, message, signature):
                 valid_signatures.append(signature)
@@ -161,28 +185,36 @@ def aggregate_signatures(message: bytes, expected_value: Any, results: list[tupl
     aggregated_signature = PopSchemeMPL.aggregate(valid_signatures)
     return aggregated_signature, non_signers
 
+
 async def handle_state_change(node_address: str, new_state: str):
     results, timestamp = await query_monitoring_nodes_for_state(node_address)
 
     # Locally sign our observation and append it
-    message = f"Address: {node_address}, State: {new_state}, Timestamp: {timestamp}".encode("utf-8")
+    message = (
+        f"Address: {node_address}, State: {new_state}, Timestamp: {timestamp}".encode(
+            "utf-8"
+        )
+    )
     signature = PopSchemeMPL.sign(sk, message)
     results.append((SELF_NODE_ID, new_state, str(signature)))
 
     try:
-        aggregated_signature, non_signers = aggregate_signatures(message, new_state, results)
+        aggregated_signature, non_signers = aggregate_signatures(
+            message, new_state, results
+        )
 
         event = {
             "address": node_address,
             "state": new_state,
             "timestamp": timestamp,
             "aggregated_signature": str(aggregated_signature),
-            "non_signing_nodes": non_signers
+            "non_signing_nodes": non_signers,
         }
         zellular.send([event], blocking=False)
         logger.info(f"Sent event with proof: {node_address} ➔ {new_state}")
     except ValueError as e:
         logger.error(f"Could not aggregate proof: {str(e)}")
+
 
 def verify_event(event: dict[str, Any]) -> bool:
     address = event["address"]
@@ -191,16 +223,21 @@ def verify_event(event: dict[str, Any]) -> bool:
     signature_hex = event["aggregated_signature"]
     non_signing_nodes = event.get("non_signing_nodes", [])
 
-    message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode("utf-8")
+    message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode(
+        "utf-8"
+    )
     signature = G2Element.from_bytes(bytes.fromhex(signature_hex))
 
     aggregate_pubkey = AGGREGATE_PUBLIC_KEY
 
     for node_id in non_signing_nodes:
-        node_pubkey = G1Element.from_bytes(bytes.fromhex(MONITORING_NODES[node_id]["pubkey"]))
+        node_pubkey = G1Element.from_bytes(
+            bytes.fromhex(MONITORING_NODES[node_id]["pubkey"])
+        )
         aggregate_pubkey += node_pubkey.negate()
 
     return PopSchemeMPL.verify(aggregate_pubkey, message, signature)
+
 
 def apply_event(event: dict[str, Any]):
     address = event["address"]
@@ -210,13 +247,11 @@ def apply_event(event: dict[str, Any]):
     last_state = nodes_state.get(address)
     if last_state != state:
         nodes_state[address] = state
-        nodes_events[address].append({
-            "state": state,
-            "timestamp": timestamp
-        })
+        nodes_events[address].append({"state": state, "timestamp": timestamp})
         logger.info(f"Applied event: {address} ➔ {state}")
     else:
         logger.warning(f"Duplicate state for {address}, event ignored")
+
 
 def process_loop():
     for batch, index in zellular.batches():
@@ -225,12 +260,15 @@ def process_loop():
             try:
                 verified = verify_event(event)
             except Exception as e:
-                logger.warning(f"Error in event verification: {event}, error: {type(e)} {e}")
+                logger.warning(
+                    f"Error in event verification: {event}, error: {type(e)} {e}"
+                )
                 continue
             if verified:
                 apply_event(event)
             else:
                 logger.error(f"Invalid proof for event {event['address']}, ignored")
+
 
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
     interval_events = [e for e in events if from_ts <= e["timestamp"] <= to_ts]
@@ -238,7 +276,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
     if not interval_events:
         starting_state = max(
             (e for e in events if e["timestamp"] < from_ts),
-            key=lambda e: e["timestamp"]
+            key=lambda e: e["timestamp"],
         )["state"]
         return to_ts - from_ts if starting_state == "down" else 0
 
@@ -256,6 +294,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
     return downtime
 
+
 # -- start: signing downtime report --
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
@@ -265,28 +304,53 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
     events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
 
-    message = f"Address: {address}, Downtime: {total_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode("utf-8")
+    message = f"Address: {address}, Downtime: {total_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode(
+        "utf-8"
+    )
     signature = PopSchemeMPL.sign(sk, message)
 
-    return JSONResponse({
-        "address": address,
-        "from_timestamp": from_timestamp,
-        "to_timestamp": to_timestamp,
-        "total_downtime_seconds": total_downtime,
-        "signature": str(signature)
-    })
+    return JSONResponse(
+        {
+            "address": address,
+            "from_timestamp": from_timestamp,
+            "to_timestamp": to_timestamp,
+            "total_downtime_seconds": total_downtime,
+            "signature": str(signature),
+        }
+    )
+
+
 # -- end: signing downtime report --
 
+
 # -- start: aggregating downtime responses --
-async def fetch_downtime(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, from_timestamp: int, to_timestamp: int):
+async def fetch_downtime(
+    session: aiohttp.ClientSession,
+    node_name: str,
+    node_info: dict[str, str],
+    address: str,
+    from_timestamp: int,
+    to_timestamp: int,
+):
     try:
-        async with session.get(f"{node_info['url']}/downtime", params={"address": address, "from_timestamp": from_timestamp, "to_timestamp": to_timestamp}, timeout=REQUEST_TIMEOUT) as response:
+        async with session.get(
+            f"{node_info['url']}/downtime",
+            params={
+                "address": address,
+                "from_timestamp": from_timestamp,
+                "to_timestamp": to_timestamp,
+            },
+            timeout=REQUEST_TIMEOUT,
+        ) as response:
             data = await response.json()
             return node_name, data["total_downtime_seconds"], data["signature"]
     except Exception:
         return node_name, None, None
 
-async def query_monitoring_nodes_for_downtime(address: str, from_timestamp: int, to_timestamp: int) -> tuple[list[tuple[str, int, str]], int]:
+
+async def query_monitoring_nodes_for_downtime(
+    address: str, from_timestamp: int, to_timestamp: int
+) -> tuple[list[tuple[str, int, str]], int]:
     async with aiohttp.ClientSession() as session:
         tasks = [
             fetch_downtime(session, node, info, address, from_timestamp, to_timestamp)
@@ -301,25 +365,36 @@ async def query_monitoring_nodes_for_downtime(address: str, from_timestamp: int,
 
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
 
-    message = f"Address: {address}, Downtime: {total_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode("utf-8")
+    message = f"Address: {address}, Downtime: {total_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode(
+        "utf-8"
+    )
     signature = PopSchemeMPL.sign(sk, message)
     results.append((SELF_NODE_ID, total_downtime, str(signature)))
 
     return results, total_downtime
+
+
 # -- end: aggregating downtime responses --
+
 
 # -- start: downtime aggregation endpoint --
 @app.get("/aggregate_downtime")
 async def aggregate_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    results, target_downtime = await query_monitoring_nodes_for_downtime(address, from_timestamp, to_timestamp)
+    results, target_downtime = await query_monitoring_nodes_for_downtime(
+        address, from_timestamp, to_timestamp
+    )
 
-    message = f"Address: {address}, Downtime: {target_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode("utf-8")
+    message = f"Address: {address}, Downtime: {target_downtime}, From: {from_timestamp}, To: {to_timestamp}".encode(
+        "utf-8"
+    )
     try:
-        aggregated_signature, non_signers = aggregate_signatures(message, target_downtime, results)
+        aggregated_signature, non_signers = aggregate_signatures(
+            message, target_downtime, results
+        )
     except ValueError:
         raise HTTPException(
             status_code=424,  # 424 Failed Dependency
-            detail="Not enough valid signatures to aggregate downtime proof."
+            detail="Not enough valid signatures to aggregate downtime proof.",
         )
 
     return {
@@ -328,8 +403,10 @@ async def aggregate_downtime(address: str, from_timestamp: int, to_timestamp: in
         "to_timestamp": to_timestamp,
         "total_downtime_seconds": target_downtime,
         "aggregated_signature": str(aggregated_signature),
-        "non_signing_nodes": non_signers
+        "non_signing_nodes": non_signers,
     }
+
+
 # -- end: downtime aggregation endpoint --
 
 if __name__ == "__main__":

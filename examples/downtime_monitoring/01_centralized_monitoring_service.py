@@ -35,6 +35,7 @@ nodes_events: dict[str, list[dict[str, Any]]] = {
 
 app = FastAPI()
 
+
 # -- start: checking node health --
 def check_node_state(node_address: str, node_url: str) -> str:
     try:
@@ -42,7 +43,10 @@ def check_node_state(node_address: str, node_url: str) -> str:
         return "up" if response.status_code == 200 else "down"
     except requests.RequestException:
         return "down"
+
+
 # -- end: checking node health --
+
 
 # -- start: detecting node state change --
 def monitor_loop():
@@ -55,17 +59,17 @@ def monitor_loop():
 
         if last_state != new_state:
             nodes_state[node_address] = new_state
-            event = {
-                "state": new_state,
-                "timestamp": int(time.time())
-            }
+            event = {"state": new_state, "timestamp": int(time.time())}
             nodes_events[node_address].append(event)
             logger.info(f"{node_address} ➔ {new_state}")
         else:
             logger.info(f"No change: {node_address} is {new_state}")
 
         time.sleep(POLL_INTERVAL_SECONDS)
+
+
 # -- end: detecting node state change --
+
 
 # -- start: calculating downtime --
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
@@ -74,7 +78,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
     if not interval_events:
         starting_state = max(
             (e for e in events if e["timestamp"] < from_ts),
-            key=lambda e: e["timestamp"]
+            key=lambda e: e["timestamp"],
         )["state"]
         return to_ts - from_ts if starting_state == "down" else 0
 
@@ -91,7 +95,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
         downtime += to_ts - down_since
 
     return downtime
+
+
 # -- end: calculating downtime --
+
 
 # -- start: exposing downtime endpoint --
 @app.get("/downtime")
@@ -101,12 +108,16 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
 
     events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
-    return JSONResponse({
-        "address": address,
-        "from_timestamp": from_timestamp,
-        "to_timestamp": to_timestamp,
-        "total_downtime_seconds": total_downtime
-    })
+    return JSONResponse(
+        {
+            "address": address,
+            "from_timestamp": from_timestamp,
+            "to_timestamp": to_timestamp,
+            "total_downtime_seconds": total_downtime,
+        }
+    )
+
+
 # -- end: exposing downtime endpoint --
 
 # -- start: running monitoring loop --

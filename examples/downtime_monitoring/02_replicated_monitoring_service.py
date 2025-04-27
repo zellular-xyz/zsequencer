@@ -28,7 +28,7 @@ POLL_INTERVAL_SECONDS = 10
 # Initialize Zellular client
 network = EigenlayerNetwork(
     subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
-    threshold_percent=40
+    threshold_percent=40,
 )
 zellular = Zellular("downtime-monitoring", network)
 # -- end: configuring eigenlayer network --
@@ -41,12 +41,14 @@ nodes_events: dict[str, list[dict[str, Any]]] = {
 
 app = FastAPI()
 
+
 def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
     except requests.RequestException:
         return "down"
+
 
 def monitor_loop():
     while True:
@@ -61,15 +63,18 @@ def monitor_loop():
             event = {
                 "address": node_address,
                 "state": new_state,
-                "timestamp": int(time.time())
+                "timestamp": int(time.time()),
             }
             zellular.send([event], blocking=False)
-            logger.info(f"Sent state change event to Zellular: {node_address} ➔ {new_state}")
+            logger.info(
+                f"Sent state change event to Zellular: {node_address} ➔ {new_state}"
+            )
         else:
             logger.info(f"No change: {node_address} is {new_state}")
         # -- end: sending event to zellular --
 
         time.sleep(POLL_INTERVAL_SECONDS)
+
 
 # -- start: applying event to local state --
 def apply_event(event: dict[str, Any]):
@@ -80,20 +85,21 @@ def apply_event(event: dict[str, Any]):
     last_state = nodes_state.get(address)
     if last_state != state:
         nodes_state[address] = state
-        nodes_events[address].append({
-            "state": state,
-            "timestamp": timestamp
-        })
+        nodes_events[address].append({"state": state, "timestamp": timestamp})
         logger.info(f"Applied event: {address} ➔ {state}")
     else:
         logger.warning(f"Duplicate state for {address}, event ignored")
+
+
 # -- end: applying event to local state --
+
 
 def process_loop():
     for batch, index in zellular.batches():
         events = json.loads(batch)
         for event in events:
-                apply_event(event)
+            apply_event(event)
+
 
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
     interval_events = [e for e in events if from_ts <= e["timestamp"] <= to_ts]
@@ -101,7 +107,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
     if not interval_events:
         starting_state = max(
             (e for e in events if e["timestamp"] < from_ts),
-            key=lambda e: e["timestamp"]
+            key=lambda e: e["timestamp"],
         )["state"]
         return to_ts - from_ts if starting_state == "down" else 0
 
@@ -119,6 +125,7 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
     return downtime
 
+
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
     if address not in nodes_events:
@@ -126,12 +133,15 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
 
     events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
-    return JSONResponse({
-        "address": address,
-        "from_timestamp": from_timestamp,
-        "to_timestamp": to_timestamp,
-        "total_downtime_seconds": total_downtime
-    })
+    return JSONResponse(
+        {
+            "address": address,
+            "from_timestamp": from_timestamp,
+            "to_timestamp": to_timestamp,
+            "total_downtime_seconds": total_downtime,
+        }
+    )
+
 
 # -- start: running monitor and process loops --
 if __name__ == "__main__":
