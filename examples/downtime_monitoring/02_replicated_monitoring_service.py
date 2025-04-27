@@ -1,6 +1,7 @@
 import random
 import time
 import threading
+import json
 import logging
 from typing import Any
 import requests
@@ -11,7 +12,7 @@ from zellular import Zellular
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("downtime-monitor")
+logger = logging.getLogger("downtime-monitoring")
 
 # Node URL configuration
 MONITORED_NODES = {
@@ -23,15 +24,18 @@ MONITORED_NODES = {
 REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 
-node_health_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+# Initialize Zellular client
+zellular = Zellular("downtime-monitor", "http://37.27.41.237:6001/", threshold_percent=1)
 
-node_health_events: dict[str, list[dict[str, Any]]] = {
+node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+
+node_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
 app = FastAPI()
 
-def check_node_health(node_address: str, node_url: str) -> str:
+def check_node_status(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
@@ -43,21 +47,43 @@ def monitor_loop():
         node_address = random.choice(list(MONITORED_NODES.keys()))
         node_url = MONITORED_NODES[node_address]
 
-        new_state = check_node_health(node_address, node_url)
-        last_state = node_health_status.get(node_address)
+        new_state = check_node_status(node_address, node_url)
+        last_state = node_status.get(node_address)
 
         if last_state != new_state:
-            node_health_status[node_address] = new_state
             event = {
+                "address": node_address,
                 "state": new_state,
                 "timestamp": int(time.time())
             }
-            node_health_events[node_address].append(event)
-            logger.info(f"{node_address} ➔ {new_state}")
+            zellular.send([event], blocking=False)
+            logger.info(f"Sent state change event to Zellular: {node_address} ➔ {new_state}")
         else:
             logger.info(f"No change: {node_address} is {new_state}")
 
         time.sleep(POLL_INTERVAL_SECONDS)
+
+def apply_event(event: dict[str, Any]):
+    address = event["address"]
+    state = event["state"]
+    timestamp = event["timestamp"]
+
+    last_state = node_status.get(address)
+    if last_state != state:
+        node_status[address] = state
+        node_events[address].append({
+            "state": state,
+            "timestamp": timestamp
+        })
+        logger.info(f"Applied event: {address} ➔ {state}")
+    else:
+        logger.warning(f"Duplicate state for {address}, event ignored")
+
+def process_loop():
+    for batch, index in zellular.batches():
+        events = json.loads(batch)
+        for event in events:
+                apply_event(event)
 
 def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -> int:
     interval_events = [e for e in events if from_ts <= e["timestamp"] <= to_ts]
@@ -85,10 +111,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    if address not in node_health_events:
+    if address not in node_events:
         raise HTTPException(status_code=404, detail="Address not found")
 
-    events = node_health_events[address]
+    events = node_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
     return JSONResponse({
         "address": address,
@@ -99,4 +125,5 @@ def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
 
 if __name__ == "__main__":
     threading.Thread(target=monitor_loop, daemon=True).start()
+    threading.Thread(target=process_loop, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=5000)

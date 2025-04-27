@@ -16,7 +16,7 @@ from blspy import PrivateKey, G1Element, G2Element, PopSchemeMPL
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("downtime-monitor")
+logger = logging.getLogger("downtime-monitoring")
 
 # Node URL configuration
 MONITORED_NODES = {
@@ -25,15 +25,15 @@ MONITORED_NODES = {
     "0xNodeC789": "http://localhost:8003",
 }
 
-# Load health checker nodes configuration
+# Load downtime monitoring nodes configuration
 with open("monitoring_nodes.json") as f:
     MONITORING_NODES: dict[str, dict[str, str]] = json.load(f)
 
-# Aggregate public key of all health checker nodes (precomputed offline)
+# Aggregate public key of all downtime monitoring nodes (precomputed offline)
 AGGREGATE_PUBLIC_KEY_HEX = "your_aggregate_pubkey_hex_here"
 AGGREGATE_PUBLIC_KEY = G1Element.from_bytes(bytes.fromhex(AGGREGATE_PUBLIC_KEY_HEX))
 
-# Self node ID (this node's name in the health checker nodes config)
+# Self node ID (this node's name in the downtime monitoring nodes config)
 SELF_NODE_ID = "Node1"  # Adjust this value per node
 
 REQUEST_TIMEOUT = 3
@@ -43,9 +43,9 @@ MAX_TIMESTAMP_DRIFT = 10  # seconds
 # Initialize Zellular client
 zellular = Zellular("downtime-monitor", "http://37.27.41.237:6001/", threshold_percent=1)
 
-node_health_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
-node_health_events: dict[str, list[dict[str, Any]]] = {
+node_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
@@ -55,7 +55,7 @@ pk = sk.get_g1()
 
 app = FastAPI()
 
-def check_node_health(node_address: str, node_url: str) -> str:
+def check_node_status(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
@@ -67,8 +67,8 @@ def monitor_loop():
         node_address = random.choice(list(MONITORED_NODES.keys()))
         node_url = MONITORED_NODES[node_address]
 
-        new_state = check_node_health(node_address, node_url)
-        last_state = node_health_status.get(node_address)
+        new_state = check_node_status(node_address, node_url)
+        last_state = node_status.get(node_address)
 
         if last_state != new_state:
             asyncio.run(handle_state_change(node_address, new_state))
@@ -87,7 +87,7 @@ def check_status(address: str, timestamp: int) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Timestamp drift too large")
 
     url = MONITORED_NODES[address]
-    state = check_node_health(address, url)
+    state = check_node_status(address, url)
 
     message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
@@ -189,10 +189,10 @@ def apply_event(event: dict[str, Any]):
     state = event["state"]
     timestamp = event["timestamp"]
 
-    last_state = node_health_status.get(address)
+    last_state = node_status.get(address)
     if last_state != state:
-        node_health_status[address] = state
-        node_health_events[address].append({
+        node_status[address] = state
+        node_events[address].append({
             "state": state,
             "timestamp": timestamp
         })
@@ -235,10 +235,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    if address not in node_health_events:
+    if address not in node_events:
         raise HTTPException(status_code=404, detail="Address not found")
 
-    events = node_health_events[address]
+    events = node_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
     return JSONResponse({
         "address": address,
