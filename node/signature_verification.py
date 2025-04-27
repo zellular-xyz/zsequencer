@@ -8,7 +8,6 @@ from config import zconfig
 
 
 def _has_quorum(nonsigners_stake: int, total_stake: int):
-    """Verify the nonsigners' stake."""
     return 100 * nonsigners_stake / total_stake <= 100 - zconfig.THRESHOLD_PERCENT
 
 
