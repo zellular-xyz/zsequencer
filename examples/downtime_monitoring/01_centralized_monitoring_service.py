@@ -7,7 +7,6 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
-from zellular import Zellular
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
