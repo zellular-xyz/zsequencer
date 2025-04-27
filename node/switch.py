@@ -219,50 +219,38 @@ async def _sync_with_peer_node(peer_node_id: str,
                         return False
 
                     if locked_signature_info:
-                        if not is_sync_point_signature_verified(app_name=app_name,
-                                                                state="locked",
-                                                                index=locked_signature_info.get("index"),
-                                                                batch_hash=locked_signature_info.get("hash"),
-                                                                chaining_hash=locked_signature_info.get(
-                                                                    "chaining_hash"),
-                                                                tag=locked_signature_info.get("tag"),
-                                                                signature_hex=locked_signature_info.get("signature"),
-                                                                nonsigners=locked_signature_info.get("nonsigners")):
+                        locking_result = zdb.lock_batches(app_name=app_name,
+                                                          signature_data=dict(index=locked_signature_info.get("index"),
+                                                                              chaining_hash=locked_signature_info.get(
+                                                                                  "chaining_hash"),
+                                                                              hash=locked_signature_info.get("hash"),
+                                                                              signature=locked_signature_info.get(
+                                                                                  "signature"),
+                                                                              nonsigners=locked_signature_info.get(
+                                                                                  "nonsigners"),
+                                                                              tag=locked_signature_info.get("tag")))
+                        if not locking_result:
                             zlogger.warning(
                                 f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
                             )
                             return False
-                        zdb.lock_batches(app_name=app_name,
-                                         signature_data=dict(index=locked_signature_info.get("index"),
-                                                             chaining_hash=locked_signature_info.get("chaining_hash"),
-                                                             batch_hash=locked_signature_info.get("hash"),
-                                                             signature=locked_signature_info.get("signature"),
-                                                             nonsigners=locked_signature_info.get("nonsigners"),
-                                                             tag=locked_signature_info.get("tag")))
-
                     if finalized_signature_info:
-                        if not is_sync_point_signature_verified(app_name=app_name,
-                                                                state="finalized",
-                                                                index=finalized_signature_info.get("index"),
-                                                                chaining_hash=finalized_signature_info.get(
-                                                                    "chaining_hash"),
-                                                                batch_hash=finalized_signature_info.get("hash"),
-                                                                signature_hex=finalized_signature_info.get("signature"),
-                                                                tag=finalized_signature_info.get("tag"),
-                                                                nonsigners=finalized_signature_info.get("nonsigners")
-                                                                ):
+                        finalizing_result = zdb.finalize_batches(app_name=app_name,
+                                                                 signature_data=dict(
+                                                                     index=finalized_signature_info.get("index"),
+                                                                     chaining_hash=finalized_signature_info.get(
+                                                                         "chaining_hash"),
+                                                                     hash=finalized_signature_info.get("hash"),
+                                                                     signature=finalized_signature_info.get(
+                                                                         "signature"),
+                                                                     nonsigners=finalized_signature_info.get(
+                                                                         "nonsigners"),
+                                                                     tag=finalized_signature_info.get("tag")))
+                        if not finalizing_result:
                             zlogger.warning(
                                 f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
                             )
                             return False
-                        zdb.finalize_batches(app_name=app_name,
-                                             signature_data=dict(index=finalized_signature_info.get("index"),
-                                                                 chaining_hash=finalized_signature_info.get(
-                                                                     "chaining_hash"),
-                                                                 batch_hash=finalized_signature_info.get("hash"),
-                                                                 signature=finalized_signature_info.get("signature"),
-                                                                 nonsigners=finalized_signature_info.get("nonsigners"),
-                                                                 tag=finalized_signature_info.get("tag")))
                     if last_page:
                         return True
 

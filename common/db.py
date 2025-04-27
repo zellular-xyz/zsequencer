@@ -16,6 +16,7 @@ from common.logger import zlogger
 from common.snapshot_manager import SnapshotManager
 from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
+from node.signature_verification import is_sync_point_signature_verified
 from utils import get_file_content
 
 TimestampedIndex: TypeAlias = tuple[int, int]
@@ -375,15 +376,25 @@ class InMemoryDB:
 
         return True
 
-    def lock_batches(self, app_name: str, signature_data: SignatureData) -> None:
+    def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """Update batches to 'locked' state up to a specified index."""
+        if not is_sync_point_signature_verified(app_name=app_name,
+                                                state="locked",
+                                                index=signature_data.get("index"),
+                                                batch_hash=signature_data.get("hash"),
+                                                chaining_hash=signature_data.get("chaining_hash"),
+                                                tag=signature_data.get("tag"),
+                                                signature_hex=signature_data.get("signature"),
+                                                nonsigners=signature_data.get("nonsigners")):
+            return False
+
         if signature_data["index"] <= self.apps[app_name][
             "operational_batch_sequence"
         ].get_last_index_or_default(
             "locked",
             default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
         ):
-            return
+            return False
 
         if (
             signature_data["hash"]
@@ -393,7 +404,7 @@ class InMemoryDB:
                 f"The locking {signature_data=} hash couldn't be found in the "
                 "operational batches.",
             )
-            return
+            return False
 
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
             app_name,
@@ -406,12 +417,23 @@ class InMemoryDB:
             last_index=signature_data["index"],
             target_state="locked",
         )
+        return True
 
-    def finalize_batches(self, app_name: str, signature_data: SignatureData) -> None:
+    def finalize_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """
         Update batches to 'finalized' state up to a specified index and save snapshots.
         Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
         """
+        if not is_sync_point_signature_verified(app_name=app_name,
+                                                state="finalized",
+                                                index=signature_data.get("index"),
+                                                batch_hash=signature_data.get("hash"),
+                                                chaining_hash=signature_data.get("chaining_hash"),
+                                                tag=signature_data.get("tag"),
+                                                signature_hex=signature_data.get("signature"),
+                                                nonsigners=signature_data.get("nonsigners")):
+            return False
+
         signature_finalized_index = signature_data.get(
             "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
         )
@@ -423,7 +445,7 @@ class InMemoryDB:
 
         # Skip if already finalized or batch not found
         if signature_finalized_index <= last_finalized_index:
-            return
+            return False
 
         if (
             signature_data["hash"]
@@ -432,7 +454,7 @@ class InMemoryDB:
             zlogger.warning(
                 f"The finalizing {signature_data=} hash couldn't be found in the operational batches."
             )
-            return
+            return False
 
         # Update target batch with finalization data
         target_batch = self._get_operational_batch_record_by_hash_or_empty(
@@ -461,12 +483,13 @@ class InMemoryDB:
         )
 
         if fresh_finalized_sequence.size_kb < zconfig.SNAPSHOT_CHUNK_SIZE_KB:
-            return
+            return True
 
         self._snapshot_manager.chunk_and_store_batch_sequence(
             app_name=app_name, batches=fresh_finalized_sequence
         )
         self._prune_old_finalized_batches(app_name)
+        return True
 
     def upsert_node_state(
         self,
