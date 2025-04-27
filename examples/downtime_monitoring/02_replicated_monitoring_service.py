@@ -31,15 +31,15 @@ network = EigenlayerNetwork(
 )
 zellular = Zellular("downtime-monitoring", network)
 
-node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+nodes_state: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
-node_events: dict[str, list[dict[str, Any]]] = {
+nodes_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
 app = FastAPI()
 
-def check_node_status(node_address: str, node_url: str) -> str:
+def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
@@ -51,8 +51,8 @@ def monitor_loop():
         node_address = random.choice(list(MONITORED_NODES.keys()))
         node_url = MONITORED_NODES[node_address]
 
-        new_state = check_node_status(node_address, node_url)
-        last_state = node_status.get(node_address)
+        new_state = check_node_state(node_address, node_url)
+        last_state = nodes_state.get(node_address)
 
         if last_state != new_state:
             event = {
@@ -72,10 +72,10 @@ def apply_event(event: dict[str, Any]):
     state = event["state"]
     timestamp = event["timestamp"]
 
-    last_state = node_status.get(address)
+    last_state = nodes_state.get(address)
     if last_state != state:
-        node_status[address] = state
-        node_events[address].append({
+        nodes_state[address] = state
+        nodes_events[address].append({
             "state": state,
             "timestamp": timestamp
         })
@@ -115,10 +115,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    if address not in node_events:
+    if address not in nodes_events:
         raise HTTPException(status_code=404, detail="Address not found")
 
-    events = node_events[address]
+    events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
     return JSONResponse({
         "address": address,

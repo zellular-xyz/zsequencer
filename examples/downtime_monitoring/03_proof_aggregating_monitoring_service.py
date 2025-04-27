@@ -44,9 +44,9 @@ network = EigenlayerNetwork(
 )
 zellular = Zellular("downtime-monitoring", network)
 
-node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+nodes_state: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
-node_events: dict[str, list[dict[str, Any]]] = {
+nodes_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
@@ -73,7 +73,7 @@ pk = sk.get_g1()
 
 app = FastAPI()
 
-def check_node_status(node_address: str, node_url: str) -> str:
+def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
@@ -85,8 +85,8 @@ def monitor_loop():
         node_address = random.choice(list(MONITORED_NODES.keys()))
         node_url = MONITORED_NODES[node_address]
 
-        new_state = check_node_status(node_address, node_url)
-        last_state = node_status.get(node_address)
+        new_state = check_node_state(node_address, node_url)
+        last_state = nodes_state.get(node_address)
 
         if last_state != new_state:
             asyncio.run(handle_state_change(node_address, new_state))
@@ -95,8 +95,8 @@ def monitor_loop():
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
-@app.get("/status")
-def check_status(address: str, timestamp: int) -> dict[str, Any]:
+@app.get("/state")
+def check_state(address: str, timestamp: int) -> dict[str, Any]:
     if address not in MONITORED_NODES:
         raise HTTPException(status_code=404, detail="Address not found")
 
@@ -105,7 +105,7 @@ def check_status(address: str, timestamp: int) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Timestamp drift too large")
 
     url = MONITORED_NODES[address]
-    state = check_node_status(address, url)
+    state = check_node_state(address, url)
 
     message = f"Address: {address}, State: {state}, Timestamp: {timestamp}".encode("utf-8")
     signature = PopSchemeMPL.sign(sk, message)
@@ -117,19 +117,19 @@ def check_status(address: str, timestamp: int) -> dict[str, Any]:
         "signature": str(signature),
     }
 
-async def fetch_status(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, timestamp: int):
+async def fetch_state(session: aiohttp.ClientSession, node_name: str, node_info: dict[str, str], address: str, timestamp: int):
     try:
-        async with session.get(f"{node_info['url']}/status", params={"address": address, "timestamp": timestamp}, timeout=REQUEST_TIMEOUT) as response:
+        async with session.get(f"{node_info['url']}/state", params={"address": address, "timestamp": timestamp}, timeout=REQUEST_TIMEOUT) as response:
             data = await response.json()
             return node_name, data["state"], data["signature"]
     except Exception:
         return node_name, None, None
 
-async def query_monitoring_nodes_for_status(address: str) -> tuple[list[tuple[str, str, str]], int]:
+async def query_monitoring_nodes_for_state(address: str) -> tuple[list[tuple[str, str, str]], int]:
     timestamp = int(time.time())
     async with aiohttp.ClientSession() as session:
         tasks = [
-            fetch_status(session, node, info, address, timestamp)
+            fetch_state(session, node, info, address, timestamp)
             for node, info in MONITORING_NODES.items()
             if node != SELF_NODE_ID
         ]
@@ -162,7 +162,7 @@ def aggregate_signatures(message: bytes, expected_value: Any, results: list[tupl
     return aggregated_signature, non_signers
 
 async def handle_state_change(node_address: str, new_state: str):
-    results, timestamp = await query_monitoring_nodes_for_status(node_address)
+    results, timestamp = await query_monitoring_nodes_for_state(node_address)
 
     # Locally sign our observation and append it
     message = f"Address: {node_address}, State: {new_state}, Timestamp: {timestamp}".encode("utf-8")
@@ -207,10 +207,10 @@ def apply_event(event: dict[str, Any]):
     state = event["state"]
     timestamp = event["timestamp"]
 
-    last_state = node_status.get(address)
+    last_state = nodes_state.get(address)
     if last_state != state:
-        node_status[address] = state
-        node_events[address].append({
+        nodes_state[address] = state
+        nodes_events[address].append({
             "state": state,
             "timestamp": timestamp
         })
@@ -258,10 +258,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    if address not in node_events:
+    if address not in nodes_events:
         raise HTTPException(status_code=404, detail="Address not found")
 
-    events = node_events[address]
+    events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
     return JSONResponse({
         "address": address,

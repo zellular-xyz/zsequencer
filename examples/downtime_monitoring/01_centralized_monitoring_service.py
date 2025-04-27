@@ -23,15 +23,15 @@ MONITORED_NODES = {
 REQUEST_TIMEOUT = 3
 POLL_INTERVAL_SECONDS = 10
 
-node_status: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
+nodes_state: dict[str, str] = {addr: "up" for addr in MONITORED_NODES}
 
-node_events: dict[str, list[dict[str, Any]]] = {
+nodes_events: dict[str, list[dict[str, Any]]] = {
     addr: [{"state": "up", "timestamp": 0}] for addr in MONITORED_NODES
 }
 
 app = FastAPI()
 
-def check_node_status(node_address: str, node_url: str) -> str:
+def check_node_state(node_address: str, node_url: str) -> str:
     try:
         response = requests.get(f"{node_url}/health", timeout=REQUEST_TIMEOUT)
         return "up" if response.status_code == 200 else "down"
@@ -43,16 +43,16 @@ def monitor_loop():
         node_address = random.choice(list(MONITORED_NODES.keys()))
         node_url = MONITORED_NODES[node_address]
 
-        new_state = check_node_status(node_address, node_url)
-        last_state = node_status.get(node_address)
+        new_state = check_node_state(node_address, node_url)
+        last_state = nodes_state.get(node_address)
 
         if last_state != new_state:
-            node_status[node_address] = new_state
+            nodes_state[node_address] = new_state
             event = {
                 "state": new_state,
                 "timestamp": int(time.time())
             }
-            node_events[node_address].append(event)
+            nodes_events[node_address].append(event)
             logger.info(f"{node_address} ➔ {new_state}")
         else:
             logger.info(f"No change: {node_address} is {new_state}")
@@ -85,10 +85,10 @@ def calculate_downtime(events: list[dict[str, Any]], from_ts: int, to_ts: int) -
 
 @app.get("/downtime")
 def get_downtime(address: str, from_timestamp: int, to_timestamp: int):
-    if address not in node_events:
+    if address not in nodes_events:
         raise HTTPException(status_code=404, detail="Address not found")
 
-    events = node_events[address]
+    events = nodes_events[address]
     total_downtime = calculate_downtime(events, from_timestamp, to_timestamp)
     return JSONResponse({
         "address": address,
