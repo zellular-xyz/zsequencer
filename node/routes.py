@@ -158,7 +158,8 @@ def get_state() -> Response:
         "version": zconfig.VERSION,
         "sequencer_id": zconfig.SEQUENCER["id"],
         "node_id": zconfig.NODE["id"],
-        "public_key_g2": zconfig.NODE["public_key_g2"].getStr(10).decode("utf-8"),
+        "pubkeyG2_X": zconfig.NODE["pubkeyG2_X"],
+        "pubkeyG2_Y": zconfig.NODE["pubkeyG2_Y"],
         "address": zconfig.NODE["address"],
         "apps": {},
     }
