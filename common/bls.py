@@ -69,7 +69,7 @@ async def gather_signatures(
 
     except Exception as error:
         if not isinstance(error, ValueError):  # For empty list
-            zlogger.exception(f"An unexpected error occurred: {error}")
+            zlogger.error(f"An unexpected error occurred: {error}")
     return completed_results, stake_percent
 
 
@@ -117,7 +117,7 @@ async def gather_and_aggregate_signatures(
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
     except TimeoutError:
-        zlogger.exception(
+        zlogger.error(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return None
