@@ -121,9 +121,12 @@ class Config:
             )
 
         for address, node_data in nodes_data.items():
-            public_key_g2: str = node_data["public_key_g2"]
-            node_data["public_key_g2"] = attestation.new_zero_g2_point()
-            node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+            node_data["public_key_g2"] = attestation.G2Point(
+                node_data["pubkeyG2_X"][0],
+                node_data["pubkeyG2_X"][1],
+                node_data["pubkeyG2_Y"][0],
+                node_data["pubkeyG2_Y"][1],
+            )
 
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node["stake"] for node in nodes_data.values()])

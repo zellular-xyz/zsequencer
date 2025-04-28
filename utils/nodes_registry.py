@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 class NodeInfo(BaseModel):
     id: str
+    pubkeyG2_X: tuple
+    pubkeyG2_Y: tuple
     public_key_g2: str
     address: str
     socket: str

@@ -41,14 +41,8 @@ def get_eigen_network_info(sub_graph_socket: str, block_number: int):
             "address": item.get("id"),
             "socket": item.get("socket"),
             "stake": get_stake(item),
-            "public_key_g2": "1 "
-            + item["pubkeyG2_X"][1]
-            + " "
-            + item["pubkeyG2_X"][0]
-            + " "
-            + item["pubkeyG2_Y"][1]
-            + " "
-            + item["pubkeyG2_Y"][0],
+            "pubkeyG2_X": item.get("pubkeyG2_X"),
+            "pubkeyG2_Y": item.get("pubkeyG2_Y"),
         }
         for item in result.get("data").get("operators", [])
     }
