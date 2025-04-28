@@ -86,28 +86,30 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             network_last_locked_batch_entries = await get_network_last_locked_batch_entries_sorted()
 
             for (app_name, entries) in network_last_locked_batch_entries.items():
-                self_node_last_locked_batch = zdb.get_last_operational_batch_record_or_empty(
+                self_node_last_locked_record = zdb.get_last_operational_batch_record_or_empty(
                     app_name=app_name,
                     state="locked"
                 )
                 for entry in entries:
                     node_id, last_locked_batch_record = entry['node_id'], entry['last_locked_batch']
+                    last_locked_batch = last_locked_batch_record.get("batch")
 
                     # does not need to process node-id with invalid last
-                    if 'lock_signature' not in last_locked_batch_record:
+                    if 'lock_signature' not in last_locked_batch:
+                        zlogger.warning(f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} does not have lock signature.")
                         continue
 
                     # The peer node which claims it has max locked signature index, has equal index with the self itself
                     # so it is not necessary anymore to start any syncing process with that peer node
-                    if entry['last_locked_batch']['index'] <= self_node_last_locked_batch.get('index',
-                                                                                              BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET):
+                    self_node_last_locked_batch_index = self_node_last_locked_record.get('index',
+                                                                                              BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+                    if last_locked_batch_record['index'] <= self_node_last_locked_batch_index:
+                        zlogger.info(f"Node last locked batch index is higher than or equal to others at the network with index: {self_node_last_locked_batch_index}")
                         break
-
-                    last_locked_batch = last_locked_batch_record.get("batch")
 
                     # peer node must contain locked signature on claimed index and the signature must be verified
                     if not is_sync_point_signature_verified(app_name=app_name,
-                                                            state="locked",
+                                                            state="sequenced",
                                                             index=last_locked_batch_record.get("index"),
                                                             batch_hash=last_locked_batch.get("hash"),
                                                             chaining_hash=last_locked_batch.get("chaining_hash"),
@@ -120,10 +122,9 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         continue
 
                     # Otherwise there is gap between the last in-memory sequenced batch index and the claiming lock batch
-                    result = _sync_with_peer_node(peer_node_id=node_id,
+                    result = await _sync_with_peer_node(peer_node_id=node_id,
                                                   app_name=app_name,
-                                                  self_node_last_locked_index=self_node_last_locked_batch[
-                                                      "index"],
+                                                  self_node_last_locked_index=self_node_last_locked_batch_index,
                                                   target_locked_index=last_locked_batch_record["index"])
                     if result:
                         # if the syncing process with claiming peer node was successful ,
@@ -142,7 +143,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                 zdb.apps[app_name]["nodes_state"] = {}
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-                await asyncio.sleep(10)
+                await asyncio.sleep(zconfig.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS)
         finally:
             zdb.pause_node.clear()
 
@@ -159,7 +160,7 @@ async def _sync_with_peer_node(peer_node_id: str,
     #  timeout value (in seconds)
     timeout = aiohttp.ClientTimeout(total=10)
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with (aiohttp.ClientSession(timeout=timeout) as session):
         while True:
             try:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
@@ -198,7 +199,8 @@ async def _sync_with_peer_node(peer_node_id: str,
 
                     # put signatures on corresponding batches, they are already verified
                     if locked_signature_info:
-                        locked_signature_idx = locked_signature_info.get("index") - after_index
+                        locked_signature_idx = locked_signature_info.get("index") if after_index == 0 else \
+                            locked_signature_info.get("index") - (after_index+1)
                         batches[locked_signature_idx] = {
                             **batches[locked_signature_idx],
                             "lock_signature": locked_signature_info.get("signature"),
@@ -207,7 +209,8 @@ async def _sync_with_peer_node(peer_node_id: str,
                         }
 
                     if finalized_signature_info:
-                        finalized_signature_idx = finalized_signature_info.get("index") - after_index
+                        finalized_signature_idx = finalized_signature_info.get("index") if after_index == 0 else \
+                            finalized_signature_info.get("index") - (after_index + 1)
                         batches[finalized_signature_idx] = {
                             **batches[finalized_signature_idx],
                             "finalization_signature": finalized_signature_info.get("signature"),
@@ -260,11 +263,13 @@ async def _sync_with_peer_node(peer_node_id: str,
                                 f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
                             )
                             return False
+
+                    zlogger.info(
+                        f"Fetched {len(batches)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}")
                     if last_page:
                         return True
 
                     after_index += len(batches)
-
             except Exception as e:
                 zlogger.warning(f"Error occurred while fetching batches from {peer_node_socket}: {e}")
                 return False

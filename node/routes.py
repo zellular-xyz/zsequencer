@@ -27,6 +27,12 @@ node_blueprint = Blueprint("node", __name__)
 @utils.is_synced
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
+    if zdb.pause_node.is_set():
+        return error_response(
+            error_code=ErrorCodes.IS_PAUSED,
+            error_message=ErrorMessages.IS_PAUSED
+        )
+
     batches_mapping = request.get_json()
     valid_apps = set(zconfig.APPS)
     filtered_batches_mapping = {
@@ -55,6 +61,12 @@ def put_bulk_batches() -> Response:
 @utils.is_synced
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
+    if zdb.pause_node.is_set():
+        return error_response(
+            error_code=ErrorCodes.IS_PAUSED,
+            error_message=ErrorMessages.IS_PAUSED
+        )
+
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
     if app_name not in list(zconfig.APPS):
