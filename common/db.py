@@ -379,7 +379,7 @@ class InMemoryDB:
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """Update batches to 'locked' state up to a specified index."""
         if not is_sync_point_signature_verified(app_name=app_name,
-                                                state="locked",
+                                                state="sequenced",
                                                 index=signature_data.get("index"),
                                                 batch_hash=signature_data.get("hash"),
                                                 chaining_hash=signature_data.get("chaining_hash"),
@@ -425,7 +425,7 @@ class InMemoryDB:
         Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
         """
         if not is_sync_point_signature_verified(app_name=app_name,
-                                                state="finalized",
+                                                state="locked",
                                                 index=signature_data.get("index"),
                                                 batch_hash=signature_data.get("hash"),
                                                 chaining_hash=signature_data.get("chaining_hash"),
