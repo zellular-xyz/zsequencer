@@ -136,7 +136,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         "This node is acting as the SEQUENCER. ID: %s",
                         zconfig.NODE["id"],
                     )
-                    zdb.re_sequence_batches(app_name)
+                    zdb.sequence_initialized_batches(app_name)
 
                 zdb.reset_latency_queue(app_name)
                 zdb.apps[app_name]["nodes_state"] = {}
