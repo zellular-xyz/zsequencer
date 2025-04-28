@@ -343,7 +343,7 @@ class InMemoryDB:
                 batch_index
             )
 
-    def upsert_sequenced_batches(
+    def insert_sequenced_batches(
         self,
         app_name: str,
         batches: list[Batch],
@@ -615,25 +615,7 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def reinitialize(
-        self,
-        app_name: str,
-        new_sequencer_id: str
-    ) -> None:
-        """Reinitialize the database after a switch in the sequencer."""
-        if zconfig.NODE["id"] == new_sequencer_id:
-            zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s",
-                zconfig.NODE["id"],
-            )
-            self._re_sequence_batches(app_name)
-        else:
-            self.reinitialize_batches(app_name)
-
-        self.apps[app_name]["nodes_state"] = {}
-        self.apps[app_name]["missed_batch_map"] = {}
-
-    def _re_sequence_batches(
+    def re_sequence_batches(
         self,
         app_name: str
     ) -> None:
@@ -641,6 +623,13 @@ class InMemoryDB:
         re_sequenced_batches_list: list[Batch] = list(self.apps[app_name]["initialized_batch_map"].values())
         self.apps[app_name]["initialized_batch_map"] = {}
         self.sequencer_init_batches(app_name=app_name, initializing_batches=re_sequenced_batches_list)
+
+    def initialize_missing_batches(self, app_name: str):
+        """Initialized missing batches."""
+        missing_batches = self.apps[app_name]["missed_batch_map"]
+        for batch_hash, batch in missing_batches.items():
+            self.apps[app_name]["initialized_batch_map"][batch_hash] = batch
+        self.apps[app_name]["missed_batch_map"] = {}
 
     def reinitialize_batches(
         self,

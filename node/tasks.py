@@ -159,7 +159,7 @@ def sync_with_sequencer(
         sequencer_response: dict[str, Any],
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
-    zdb.upsert_sequenced_batches(
+    zdb.insert_sequenced_batches(
         app_name=app_name,
         batches=sequencer_response["batches"],
     )

@@ -130,8 +130,16 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         # break the process and it does not require to check any other more claiming node
                         break
 
-                zdb.reinitialize(app_name, new_sequencer_id)
+                zdb.initialize_missing_batches(app_name)
+                if zconfig.NODE["id"] == new_sequencer_id:
+                    zlogger.info(
+                        "This node is acting as the SEQUENCER. ID: %s",
+                        zconfig.NODE["id"],
+                    )
+                    zdb.re_sequence_batches(app_name)
+
                 zdb.reset_latency_queue(app_name)
+                zdb.apps[app_name]["nodes_state"] = {}
 
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
                 await asyncio.sleep(10)
@@ -145,6 +153,7 @@ async def _sync_with_peer_node(peer_node_id: str,
                                target_locked_index: int) -> bool:
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
     after_index = self_node_last_locked_index
+
     zdb.reinitialize_batches(app_name=app_name)
 
     #  timeout value (in seconds)
@@ -212,7 +221,7 @@ async def _sync_with_peer_node(peer_node_id: str,
                         )
                         return False
 
-                    result = zdb.upsert_sequenced_batches(app_name=app_name, batches=batches)
+                    result = zdb.insert_sequenced_batches(app_name=app_name, batches=batches)
                     if not result:
                         zlogger.warning(
                             f"Error while upserting sequenced batches, app_name:{app_name}, peer_node_id:{peer_node_id}")
