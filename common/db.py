@@ -638,7 +638,6 @@ class InMemoryDB:
         """Reinitialize batches after a switch in the sequencer."""
         last_locked_index = (self.apps[app_name]["operational_batch_sequence"]
                                 .get_last_or_empty(state="locked")
-                                .get("batch", {})
                                 .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
