@@ -141,6 +141,13 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         "This node is acting as the SEQUENCER. ID: %s",
                         zconfig.NODE["id"],
                     )
+                    # Clear initialized batches if this node becomes the new sequencer.
+                    # These batches can not be added to the operational pool as sequenced,
+                    # because if their number exceeds the per-node quota, batches from other
+                    # nodes might not be returned immediately.
+                    # This could lead to disputes against the new leader over missing batches.
+                    zdb.reset_initialized_batches()
+
                     zdb.sequence_initialized_batches(app_name)
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)

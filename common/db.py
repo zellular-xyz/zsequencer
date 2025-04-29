@@ -615,14 +615,12 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def sequence_initialized_batches(
+    def reset_initialized_batches(
         self,
         app_name: str
     ) -> None:
-        """Sequence initialized batches after a switch in the sequencer."""
-        batches: list[Batch] = list(self.apps[app_name]["initialized_batch_map"].values())
+        """reset initialized batches after a switch for the new sequencer."""
         self.apps[app_name]["initialized_batch_map"] = {}
-        self.sequencer_init_batches(app_name=app_name, initializing_batches=batches)
 
     def initialize_missing_batches(self, app_name: str):
         """Initialized missing batches."""
