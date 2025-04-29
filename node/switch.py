@@ -93,7 +93,6 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                 for entry in entries:
                     node_id, last_locked_batch_record = entry['node_id'], entry['last_locked_batch']
                     last_locked_batch = last_locked_batch_record.get("batch")
-
                     # does not need to process node-id with invalid last
                     if 'lock_signature' not in last_locked_batch:
                         zlogger.warning(f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} does not have lock signature.")
@@ -131,6 +130,10 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         # break the process and it does not require to check any other more claiming node
                         break
 
+
+            if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+                await asyncio.sleep(zconfig.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS)
+            for app_name in zconfig.APPS:
                 zdb.initialize_missing_batches(app_name)
                 if zconfig.NODE["id"] == new_sequencer_id:
                     zlogger.info(
@@ -138,12 +141,8 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         zconfig.NODE["id"],
                     )
                     zdb.sequence_initialized_batches(app_name)
-
-                zdb.reset_latency_queue(app_name)
                 zdb.apps[app_name]["nodes_state"] = {}
-
-            if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-                await asyncio.sleep(zconfig.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS)
+                zdb.reset_latency_queue(app_name)
         finally:
             zdb.pause_node.clear()
 
@@ -180,17 +179,19 @@ async def _sync_with_peer_node(peer_node_id: str,
                     batch_bodies = data["data"]["batches"]
                     if not batch_bodies:
                         return False
-
                     chaining_hash = data["data"]["first_chaining_hash"]
                     locked_signature_info = data["data"]["locked"]
                     finalized_signature_info = data["data"]["finalized"]
                     last_page = after_index <= target_locked_index <= after_index + len(batch_bodies)
-
+                    zlogger.warning(f"{after_index}, {chaining_hash}")
+                    
                     batches: list[Batch] = []
                     for idx, batch_body in enumerate(batch_bodies):
                         batch_hash = utils.gen_hash(batch_body)
                         if idx > 0:
                             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
+                        if idx < 3:
+                            zlogger.warning(f"{idx}, {after_index}, {batch_hash}, {batch_body}")
                         batches.append(dict(app_name=app_name,
                                             node_id=peer_node_id,
                                             body=batch_body,
