@@ -412,6 +412,14 @@ class InMemoryDB:
             app_name,
             signature_data["hash"],
         ).get("batch", {})
+
+        if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
+            zlogger.warning(
+                f"The chaining hash on the locking signature does not match the corrosponding batch"
+                "in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
+            )
+            return False
+
         target_batch["lock_signature"] = signature_data["signature"]
         target_batch["locked_nonsigners"] = signature_data["nonsigners"]
         target_batch["locked_tag"] = signature_data["tag"]
@@ -465,6 +473,13 @@ class InMemoryDB:
             app_name,
             signature_data["hash"],
         ).get("batch", {})
+        if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
+            zlogger.warning(
+                f"The chaining hash on the finalizing signature does not match the corrosponding batch"
+                "in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
+            )
+            return False
+
         target_batch.update(
             {
                 "finalization_signature": signature_data["signature"],
