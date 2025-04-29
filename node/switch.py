@@ -190,8 +190,6 @@ async def _sync_with_peer_node(peer_node_id: str,
                         batch_hash = utils.gen_hash(batch_body)
                         if idx > 0:
                             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
-                        if idx < 3:
-                            zlogger.warning(f"{idx}, {after_index}, {batch_hash}, {batch_body}")
                         batches.append(dict(app_name=app_name,
                                             node_id=peer_node_id,
                                             body=batch_body,
