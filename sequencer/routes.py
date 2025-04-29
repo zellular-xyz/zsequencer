@@ -38,8 +38,7 @@ def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
     if zdb.pause_node.is_set():
         return error_response(
-            error_code=ErrorCodes.IS_PAUSED,
-            error_message=ErrorMessages.IS_PAUSED
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
         )
 
     req_data: dict[str, Any] = request.get_json(silent=True) or {}

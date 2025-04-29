@@ -12,11 +12,11 @@ from typing import Any, TypeAlias, TypedDict
 from common import utils
 from common.batch import Batch, BatchRecord, get_batch_size_kb
 from common.batch_sequence import BatchSequence
+from common.bls import is_sync_point_signature_verified
 from common.logger import zlogger
 from common.snapshot_manager import SnapshotManager
 from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
-from common.bls import is_sync_point_signature_verified
 from utils import get_file_content
 
 TimestampedIndex: TypeAlias = tuple[int, int]
@@ -378,14 +378,16 @@ class InMemoryDB:
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """Update batches to 'locked' state up to a specified index."""
-        if not is_sync_point_signature_verified(app_name=app_name,
-                                                state="sequenced",
-                                                index=signature_data.get("index"),
-                                                batch_hash=signature_data.get("hash"),
-                                                chaining_hash=signature_data.get("chaining_hash"),
-                                                tag=signature_data.get("tag"),
-                                                signature_hex=signature_data.get("signature"),
-                                                nonsigners=signature_data.get("nonsigners")):
+        if not is_sync_point_signature_verified(
+            app_name=app_name,
+            state="sequenced",
+            index=signature_data.get("index"),
+            batch_hash=signature_data.get("hash"),
+            chaining_hash=signature_data.get("chaining_hash"),
+            tag=signature_data.get("tag"),
+            signature_hex=signature_data.get("signature"),
+            nonsigners=signature_data.get("nonsigners"),
+        ):
             return False
 
         if signature_data["index"] <= self.apps[app_name][
@@ -424,14 +426,16 @@ class InMemoryDB:
         Update batches to 'finalized' state up to a specified index and save snapshots.
         Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
         """
-        if not is_sync_point_signature_verified(app_name=app_name,
-                                                state="locked",
-                                                index=signature_data.get("index"),
-                                                batch_hash=signature_data.get("hash"),
-                                                chaining_hash=signature_data.get("chaining_hash"),
-                                                tag=signature_data.get("tag"),
-                                                signature_hex=signature_data.get("signature"),
-                                                nonsigners=signature_data.get("nonsigners")):
+        if not is_sync_point_signature_verified(
+            app_name=app_name,
+            state="locked",
+            index=signature_data.get("index"),
+            batch_hash=signature_data.get("hash"),
+            chaining_hash=signature_data.get("chaining_hash"),
+            tag=signature_data.get("tag"),
+            signature_hex=signature_data.get("signature"),
+            nonsigners=signature_data.get("nonsigners"),
+        ):
             return False
 
         signature_finalized_index = signature_data.get(
@@ -615,10 +619,7 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def reset_initialized_batches(
-        self,
-        app_name: str
-    ) -> None:
+    def reset_initialized_batches(self, app_name: str) -> None:
         """reset initialized batches after a switch for the new sequencer."""
         self.apps[app_name]["initialized_batch_map"] = {}
 
@@ -629,14 +630,13 @@ class InMemoryDB:
             self.apps[app_name]["initialized_batch_map"][batch_hash] = batch
         self.apps[app_name]["missed_batch_map"] = {}
 
-    def reinitialize_batches(
-        self,
-        app_name: str
-    ) -> None:
+    def reinitialize_batches(self, app_name: str) -> None:
         """Reinitialize batches after a switch in the sequencer."""
-        last_locked_index = (self.apps[app_name]["operational_batch_sequence"]
-                                .get_last_or_empty(state="locked")
-                                .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
+        last_locked_index = (
+            self.apps[app_name]["operational_batch_sequence"]
+            .get_last_or_empty(state="locked")
+            .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
+        )
         for batch in (
             self.apps[app_name]["operational_batch_sequence"]
             .filter(start_exclusive=last_locked_index)

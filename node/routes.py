@@ -29,8 +29,7 @@ def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
     if zdb.pause_node.is_set():
         return error_response(
-            error_code=ErrorCodes.IS_PAUSED,
-            error_message=ErrorMessages.IS_PAUSED
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
         )
 
     batches_mapping = request.get_json()
@@ -63,8 +62,7 @@ def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
     if zdb.pause_node.is_set():
         return error_response(
-            error_code=ErrorCodes.IS_PAUSED,
-            error_message=ErrorMessages.IS_PAUSED
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
         )
 
     if not app_name:
@@ -216,10 +214,13 @@ def get_last_batch_by_state(app_name: str, state: str) -> Response:
     """Get the last batch record for a given app and state."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    
+
     if state not in ["locked", "finalized"]:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid state. Must be 'locked' or 'finalized'.")
-    
+        return error_response(
+            ErrorCodes.INVALID_REQUEST,
+            "Invalid state. Must be 'locked' or 'finalized'.",
+        )
+
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name,
         state,
@@ -234,8 +235,11 @@ def get_last_batch_by_state(app_name: str, state: str) -> Response:
 def get_last_batches_in_bulk_mode(state: str) -> Response:
     """Get the last batch record for all apps for a given state."""
     if state not in ["locked", "finalized"]:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid state. Must be 'locked' or 'finalized'.")
-    
+        return error_response(
+            ErrorCodes.INVALID_REQUEST,
+            "Invalid state. Must be 'locked' or 'finalized'.",
+        )
+
     last_batch_records = {
         app_name: batch_record_to_stateful_batch(
             zdb.get_last_operational_batch_record_or_empty(app_name, state)
@@ -303,6 +307,6 @@ def get_batches(app_name: str, state: str) -> Response:
             "batches": [batch["body"] for batch in batch_sequence.batches()],
             "first_chaining_hash": first_chaining_hash,
             "finalized": finalized,
-            "locked": locked
+            "locked": locked,
         },
     )

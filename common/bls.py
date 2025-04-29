@@ -191,14 +191,14 @@ def gen_aggregated_signature(signatures: list[dict[str, Any] | None]) -> str:
 
 
 def is_sync_point_signature_verified(
-        app_name: str,
-        state: str,
-        index: int,
-        batch_hash: str,
-        chaining_hash: str,
-        tag: int,
-        signature_hex: str,
-        nonsigners: list[str],
+    app_name: str,
+    state: str,
+    index: int,
+    batch_hash: str,
+    chaining_hash: str,
+    tag: int,
+    signature_hex: str,
+    nonsigners: list[str],
 ) -> bool:
     """Should first load the state of network nodes info using signature tag
 
@@ -248,9 +248,9 @@ def has_quorum(nonsigners_stake: int, total_stake: int):
 
 
 def compute_signature_public_key(
-        nodes_info,
-        agg_pub_key,
-        non_signers: list[str],
+    nodes_info,
+    agg_pub_key,
+    non_signers: list[str],
 ) -> attestation.G2Point:
     aggregated_public_key: attestation.G2Point = agg_pub_key
     for node_id in non_signers:

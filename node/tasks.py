@@ -54,9 +54,9 @@ def send_app_batches_iteration(app_name: str) -> bool:
         "last_finalized_index",
         BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
     )
-    last_in_memory_index = (zdb
-                            .get_last_operational_batch_record_or_empty(app_name=app_name, state="sequenced")
-                            .get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET))
+    last_in_memory_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name=app_name, state="sequenced"
+    ).get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
     if sequencer_last_finalized_index == BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET:
         return True
     return sequencer_last_finalized_index <= last_in_memory_index
@@ -153,9 +153,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
 
 
 def sync_with_sequencer(
-        app_name: str,
-        initialized_batches: dict[str, Any],
-        sequencer_response: dict[str, Any],
+    app_name: str,
+    initialized_batches: dict[str, Any],
+    sequencer_response: dict[str, Any],
 ) -> dict[str, Any]:
     """Sync batches with the sequencer."""
     zdb.insert_sequenced_batches(
@@ -206,9 +206,9 @@ def sync_with_sequencer(
 
 
 def check_censorship(
-        app_name: str,
-        initialized_batches: dict[str, Any],
-        sequencer_response: dict[str, Any],
+    app_name: str,
+    initialized_batches: dict[str, Any],
+    sequencer_response: dict[str, Any],
 ) -> dict[str, Any]:
     """Check for censorship and update missed batches."""
     sequenced_hashes: set[str] = set(
@@ -242,12 +242,12 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     )
     batch = batch_record.get("batch", {})
     if (
-            any(
-                batch.get(key) != sync_point[key]
-                for key in ["app_name", "hash", "chaining_hash"]
-            )
-            or batch_record["state"] != sync_point["state"]
-            or batch_record["index"] != sync_point["index"]
+        any(
+            batch.get(key) != sync_point[key]
+            for key in ["app_name", "hash", "chaining_hash"]
+        )
+        or batch_record["state"] != sync_point["state"]
+        or batch_record["index"] != sync_point["index"]
     ):
         return ""
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
@@ -268,7 +268,7 @@ async def gather_disputes() -> dict[str, Any] | None:
     results = []
     pending_tasks = list(dispute_tasks.keys())
     stake_percent = (
-            100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
+        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
     )
     while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
         done, pending_tasks = await asyncio.wait(
@@ -343,8 +343,8 @@ async def send_dispute_requests() -> None:
 
 
 async def send_dispute_request(
-        node: dict[str, Any],
-        is_sequencer_down: bool,
+    node: dict[str, Any],
+    is_sequencer_down: bool,
 ) -> dict[str, Any] | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
@@ -361,9 +361,9 @@ async def send_dispute_request(
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                    url=url,
-                    data=data,
-                    headers=zconfig.HEADERS,
+                url=url,
+                data=data,
+                headers=zconfig.HEADERS,
             ) as response:
                 response_json: dict[str, Any] = await response.json()
                 if response_json["status"] == "success":
