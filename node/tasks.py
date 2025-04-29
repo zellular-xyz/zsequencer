@@ -22,7 +22,6 @@ from node.rate_limit import (
     try_acquire_rate_limit_of_self_node,
 )
 from node.switch import send_switch_requests, switch_sequencer_async
-from common.bls import is_sync_point_signature_verified
 
 
 def send_batches() -> None:
@@ -168,21 +167,11 @@ def sync_with_sequencer(
         "locked",
     ).get("index", 0)
     if sequencer_response["locked"]["index"] > last_locked_index:
-        if is_sync_point_signature_verified(
-                app_name=app_name,
-                state="sequenced",
-                index=sequencer_response["locked"]["index"],
-                batch_hash=sequencer_response["locked"]["hash"],
-                chaining_hash=sequencer_response["locked"]["chaining_hash"],
-                tag=sequencer_response["locked"]["tag"],
-                signature_hex=sequencer_response["locked"]["signature"],
-                nonsigners=sequencer_response["locked"]["nonsigners"],
-        ):
-            zdb.lock_batches(
-                app_name=app_name,
-                signature_data=sequencer_response["locked"],
-            )
-        else:
+        locking_result = zdb.lock_batches(
+            app_name=app_name,
+            signature_data=sequencer_response["locked"],
+        )
+        if not locking_result:
             zlogger.error("Invalid locking signature received from sequencer")
 
     last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
@@ -190,21 +179,11 @@ def sync_with_sequencer(
         "finalized",
     ).get("index", 0)
     if sequencer_response["finalized"]["index"] > last_finalized_index:
-        if is_sync_point_signature_verified(
-                app_name=app_name,
-                state="locked",
-                index=sequencer_response["finalized"]["index"],
-                batch_hash=sequencer_response["finalized"]["hash"],
-                chaining_hash=sequencer_response["finalized"]["chaining_hash"],
-                tag=sequencer_response["finalized"]["tag"],
-                signature_hex=sequencer_response["finalized"]["signature"],
-                nonsigners=sequencer_response["finalized"]["nonsigners"],
-        ):
-            zdb.finalize_batches(
-                app_name=app_name,
-                signature_data=sequencer_response["finalized"],
-            )
-        else:
+        finalizing_result = zdb.finalize_batches(
+            app_name=app_name,
+            signature_data=sequencer_response["finalized"],
+        )
+        if not finalizing_result:
             zlogger.error("Invalid finalizing signature received from sequencer")
 
     current_time = int(time.time())
