@@ -10,7 +10,7 @@ from common import utils
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
-from common.db import zdb
+from common.db import zdb, SignatureData
 from common.logger import zlogger
 from config import zconfig
 
@@ -174,6 +174,68 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             zdb.pause_node.clear()
 
 
+def _prepare_batches(batch_bodies: list[str],
+                     app_name: str,
+                     after_index: int,
+                     peer_node_id: str,
+                     first_chaining_hash: str,
+                     locked_signature_info: SignatureData,
+                     finalized_signature_info: SignatureData) -> list[Batch]:
+
+    chaining_hash = first_chaining_hash
+    batches: list[Batch] = []
+
+    for idx, batch_body in enumerate(batch_bodies):
+        batch_hash = utils.gen_hash(batch_body)
+        if idx > 0:
+            chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
+        batches.append(
+            dict(
+                app_name=app_name,
+                node_id=peer_node_id,
+                body=batch_body,
+                hash=batch_hash,
+                chaining_hash=chaining_hash,
+            )
+        )
+
+    # put signatures on corresponding batches, they are already verified
+    if locked_signature_info:
+        locked_signature_idx = (
+            locked_signature_info.get("index")
+            if after_index == 0
+            else locked_signature_info.get("index") - (after_index + 1)
+        )
+        batches[locked_signature_idx] = {
+            **batches[locked_signature_idx],
+            "lock_signature": locked_signature_info.get("signature"),
+            "locked_nonsigners": locked_signature_info.get(
+                "nonsigners"
+            ),
+            "locked_tag": locked_signature_info.get("tag"),
+        }
+
+    if finalized_signature_info:
+        finalized_signature_idx = (
+            finalized_signature_info.get("index")
+            if after_index == 0
+            else finalized_signature_info.get("index")
+                 - (after_index + 1)
+        )
+        batches[finalized_signature_idx] = {
+            **batches[finalized_signature_idx],
+            "finalization_signature": finalized_signature_info.get(
+                "signature"
+            ),
+            "finalized_nonsigners": finalized_signature_info.get(
+                "nonsigners"
+            ),
+            "finalized_tag": finalized_signature_info.get("tag"),
+        }
+
+    return batches
+
+
 async def _sync_with_peer_node(
     peer_node_id: str,
     app_name: str,
@@ -221,54 +283,14 @@ async def _sync_with_peer_node(
                     )
                     zlogger.warning(f"{after_index}, {chaining_hash}")
 
-                    batches: list[Batch] = []
-                    for idx, batch_body in enumerate(batch_bodies):
-                        batch_hash = utils.gen_hash(batch_body)
-                        if idx > 0:
-                            chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
-                        batches.append(
-                            dict(
-                                app_name=app_name,
-                                node_id=peer_node_id,
-                                body=batch_body,
-                                hash=batch_hash,
-                                chaining_hash=chaining_hash,
-                            )
-                        )
-
-                    # put signatures on corresponding batches, they are already verified
-                    if locked_signature_info:
-                        locked_signature_idx = (
-                            locked_signature_info.get("index")
-                            if after_index == 0
-                            else locked_signature_info.get("index") - (after_index + 1)
-                        )
-                        batches[locked_signature_idx] = {
-                            **batches[locked_signature_idx],
-                            "lock_signature": locked_signature_info.get("signature"),
-                            "locked_nonsigners": locked_signature_info.get(
-                                "nonsigners"
-                            ),
-                            "locked_tag": locked_signature_info.get("tag"),
-                        }
-
-                    if finalized_signature_info:
-                        finalized_signature_idx = (
-                            finalized_signature_info.get("index")
-                            if after_index == 0
-                            else finalized_signature_info.get("index")
-                            - (after_index + 1)
-                        )
-                        batches[finalized_signature_idx] = {
-                            **batches[finalized_signature_idx],
-                            "finalization_signature": finalized_signature_info.get(
-                                "signature"
-                            ),
-                            "finalized_nonsigners": finalized_signature_info.get(
-                                "nonsigners"
-                            ),
-                            "finalized_tag": finalized_signature_info.get("tag"),
-                        }
+                    batches = _prepare_batches(
+                        batch_bodies=batch_bodies,
+                        app_name=app_name,
+                        after_index=after_index,
+                        peer_node_id=peer_node_id,
+                        first_chaining_hash=chaining_hash,
+                        locked_signature_info=locked_signature_info,
+                        finalized_signature_info=finalized_signature_info)
 
                     if last_page and not locked_signature_info:
                         zlogger.warning(
