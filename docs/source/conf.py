@@ -1,5 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 
+import subprocess
+
 # -- Project information
 
 project = "Zellular Sequencer"
@@ -36,9 +38,20 @@ html_theme = "sphinx_rtd_theme"
 # -- Options for EPUB output
 epub_show_urls = "footnote"
 
+def get_current_git_branch():
+    try:
+        return (
+            subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+            .strip()
+            .decode("utf-8")
+        )
+    except Exception:
+        return "main"
+
+current_branch = get_current_git_branch()
 extlinks = {
     "src": (
-        "https://github.com/zellular-xyz/zsequencer/tree/add-health-monitoring-example/examples/%s",
+        f"https://github.com/zellular-xyz/zsequencer/tree/{current_branch}/examples/%s",
         " %s",
     )
 }
