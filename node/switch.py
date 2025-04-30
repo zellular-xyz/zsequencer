@@ -393,16 +393,14 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
 
     # Query all nodes concurrently
     async with aiohttp.ClientSession() as session:
-        tasks_with_node_ids = [
-            (node_id, _fetch_node_last_locked_batch_records_or_none(session, node_id))
+        tasks_with_node_ids = {
+            node_id: _fetch_node_last_locked_batch_records_or_none(session, node_id)
             for node_id in nodes_to_query
-        ]
-        results = await asyncio.gather(*(task for _, task in tasks_with_node_ids))
+        }
+        results = await asyncio.gather(*tasks_with_node_ids.values())
 
     # Process results and add to records, filtering out None responses
-    for node_id, node_records in zip(
-        [node_id for node_id, _ in tasks_with_node_ids], results
-    ):
+    for node_id, node_records in zip(tasks_with_node_ids.keys(), results):
         if node_records is None:  # Skip None responses
             continue
 
