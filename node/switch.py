@@ -288,16 +288,7 @@ async def _sync_with_peer_node(
                     if locked_signature_info:
                         locking_result = zdb.lock_batches(
                             app_name=app_name,
-                            signature_data=dict(
-                                index=locked_signature_info.get("index"),
-                                chaining_hash=locked_signature_info.get(
-                                    "chaining_hash"
-                                ),
-                                hash=locked_signature_info.get("hash"),
-                                signature=locked_signature_info.get("signature"),
-                                nonsigners=locked_signature_info.get("nonsigners"),
-                                tag=locked_signature_info.get("tag"),
-                            ),
+                            signature_data=locked_signature_info,
                         )
                         if not locking_result:
                             zlogger.warning(
@@ -307,16 +298,7 @@ async def _sync_with_peer_node(
                     if finalized_signature_info:
                         finalizing_result = zdb.finalize_batches(
                             app_name=app_name,
-                            signature_data=dict(
-                                index=finalized_signature_info.get("index"),
-                                chaining_hash=finalized_signature_info.get(
-                                    "chaining_hash"
-                                ),
-                                hash=finalized_signature_info.get("hash"),
-                                signature=finalized_signature_info.get("signature"),
-                                nonsigners=finalized_signature_info.get("nonsigners"),
-                                tag=finalized_signature_info.get("tag"),
-                            ),
+                            signature_data=finalized_signature_info,
                         )
                         if not finalizing_result:
                             zlogger.warning(
