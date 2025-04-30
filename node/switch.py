@@ -190,13 +190,13 @@ def _prepare_batches(
         if idx > 0:
             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
         batches.append(
-            dict(
-                app_name=app_name,
-                node_id=peer_node_id,
-                body=batch_body,
-                hash=batch_hash,
-                chaining_hash=chaining_hash,
-            )
+            {
+                "app_name": app_name,
+                "node_id": peer_node_id,
+                "body": batch_body,
+                "hash": batch_hash,
+                "chaining_hash": chaining_hash,
+            }
         )
 
     # put signatures on corresponding batches, they are already verified
