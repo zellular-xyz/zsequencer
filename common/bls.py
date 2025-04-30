@@ -200,9 +200,36 @@ def is_sync_point_signature_verified(
     signature_hex: str,
     nonsigners: list[str],
 ) -> bool:
-    """Should first load the state of network nodes info using signature tag
+    """
+    Verify the BLS signature of a synchronization point in the network.
 
-    Verify the BLS signature of a synchronization point.
+    This function verifies whether a given BLS signature is valid for a synchronization point
+    by checking the quorum of signers and validating the signature against the aggregated
+    public key of all signing nodes.
+
+    Args:
+        app_name (str): The name of the application for which the sync point is being verified
+        state (str): The state of the sync point (e.g., "locked", "finalized")
+        index (int): The index of the batch in the sequence
+        batch_hash (str): The hash of the batch content
+        chaining_hash (str): The hash that chains this batch to previous batches
+        tag (int): The network status tag used to identify the correct network state
+        signature_hex (str): The hexadecimal representation of the BLS signature to verify
+        nonsigners (list[str]): List of node IDs that did not participate in signing
+
+    Returns:
+        bool: True if the signature is valid and meets the quorum requirements,
+              False otherwise
+
+    Note:
+        - The function first loads the network state using the provided tag
+        - Verifies that the stake of non-signers doesn't exceed the allowed threshold
+        - Computes the aggregated public key by removing non-signers' public keys
+        - Generates the message hash from the sync point data
+        - Verifies the signature using BLS verification
+
+    Raises:
+        No explicit exceptions are raised, but failures in verification return False
     """
     network_state = zconfig.get_network_state(tag=tag)
     nodes_info = network_state.nodes
