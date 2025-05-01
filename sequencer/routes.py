@@ -36,6 +36,11 @@ sequencer_blueprint = Blueprint("sequencer", __name__)
 )
 def put_batches() -> Response:
     """Endpoint to handle the PUT request for batches."""
+    if zdb.pause_node.is_set():
+        return error_response(
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
+        )
+
     req_data: dict[str, Any] = request.get_json(silent=True) or {}
     initializing_batches = req_data["batches"]
     if not try_acquire_rate_limit_of_other_nodes(
@@ -86,6 +91,7 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
         app_name=req_data["app_name"],
         state="finalized",
     )
+    last_finalized_index = last_finalized_batch_record.get("index", 0)
     last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=req_data["app_name"],
         state="locked",
@@ -131,11 +137,11 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     # TODO: remove (create issue for testing)
     # if zconfig.NODE["id"] == "1":
     #     txs = {}
-
     last_finalized_batch = last_finalized_batch_record.get("batch", {})
     last_locked_batch = last_locked_batch_record.get("batch", {})
     return {
         "batches": batch_sequence.batches(),
+        "last_finalized_index": last_finalized_index,
         "finalized": {
             "index": last_finalized_batch_record.get("index", 0),
             "chaining_hash": last_finalized_batch.get("chaining_hash", ""),

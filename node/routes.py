@@ -27,6 +27,11 @@ node_blueprint = Blueprint("node", __name__)
 @utils.is_synced
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
+    if zdb.pause_node.is_set():
+        return error_response(
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
+        )
+
     batches_mapping = request.get_json()
     valid_apps = set(zconfig.APPS)
     filtered_batches_mapping = {
@@ -55,6 +60,11 @@ def put_bulk_batches() -> Response:
 @utils.is_synced
 def put_batches(app_name: str) -> Response:
     """Put a new batch into the database."""
+    if zdb.pause_node.is_set():
+        return error_response(
+            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
+        )
+
     if not app_name:
         return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
     if app_name not in list(zconfig.APPS):
@@ -198,32 +208,45 @@ def get_state() -> Response:
     return success_response(data=data)
 
 
-@node_blueprint.route("/<string:app_name>/batches/finalized/last", methods=["GET"])
+@node_blueprint.route("/<string:app_name>/batches/<string:state>/last", methods=["GET"])
 @utils.validate_version
-def get_last_finalized_batch(app_name: str) -> Response:
-    """Get the last finalized batch record for a given app."""
+def get_last_batch_by_state(app_name: str, state: str) -> Response:
+    """Get the last batch record for a given app and state."""
     if app_name not in list(zconfig.APPS):
         return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
-    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+
+    if state not in ["locked", "finalized"]:
+        return error_response(
+            ErrorCodes.INVALID_REQUEST,
+            "Invalid state. Must be 'locked' or 'finalized'.",
+        )
+
+    last_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name,
-        "finalized",
+        state,
     )
     return success_response(
-        data=batch_record_to_stateful_batch(last_finalized_batch_record),
+        data=batch_record_to_stateful_batch(last_batch_record),
     )
 
 
-@node_blueprint.route("/batches/finalized/last", methods=["GET"])
+@node_blueprint.route("/batches/<string:state>/last", methods=["GET"])
 @utils.validate_version
-def get_last_finalized_batches_in_bulk_mode() -> Response:
-    """Get the last finalized batch record for all apps."""
-    last_finalized_batch_records = {
+def get_last_batches_in_bulk_mode(state: str) -> Response:
+    """Get the last batch record for all apps for a given state."""
+    if state not in ["locked", "finalized"]:
+        return error_response(
+            ErrorCodes.INVALID_REQUEST,
+            "Invalid state. Must be 'locked' or 'finalized'.",
+        )
+
+    last_batch_records = {
         app_name: batch_record_to_stateful_batch(
-            zdb.get_last_operational_batch_record_or_empty(app_name, "finalized")
+            zdb.get_last_operational_batch_record_or_empty(app_name, state)
         )
         for app_name in zconfig.APPS
     }
-    return success_response(data=last_finalized_batch_records)
+    return success_response(data=last_batch_records)
 
 
 @node_blueprint.route("/<string:app_name>/batches/<string:state>", methods=["GET"])
@@ -263,10 +286,27 @@ def get_batches(app_name: str, state: str) -> Response:
         {},
     )
 
+    locked = next(
+        (
+            {
+                "signature": batch_record["batch"]["lock_signature"],
+                "hash": batch_record["batch"]["hash"],
+                "chaining_hash": batch_record["batch"]["chaining_hash"],
+                "nonsigners": batch_record["batch"]["locked_nonsigners"],
+                "index": batch_record["index"],
+                "tag": batch_record["batch"]["locked_tag"],
+            }
+            for batch_record in batch_sequence.records(reverse=True)
+            if "lock_signature" in batch_record["batch"]
+        ),
+        {},
+    )
+
     return success_response(
         data={
             "batches": [batch["body"] for batch in batch_sequence.batches()],
             "first_chaining_hash": first_chaining_hash,
             "finalized": finalized,
+            "locked": locked,
         },
     )
