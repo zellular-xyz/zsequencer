@@ -10,7 +10,7 @@ from common import utils
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
-from common.db import zdb, SignatureData
+from common.db import SignatureData, zdb
 from common.logger import zlogger
 from config import zconfig
 
@@ -173,14 +173,15 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             zdb.pause_node.clear()
 
 
-def _prepare_batches(batch_bodies: list[str],
-                     app_name: str,
-                     after_index: int,
-                     peer_node_id: str,
-                     first_chaining_hash: str,
-                     locked_signature_info: SignatureData,
-                     finalized_signature_info: SignatureData) -> list[Batch]:
-
+def _prepare_batches(
+    batch_bodies: list[str],
+    app_name: str,
+    after_index: int,
+    peer_node_id: str,
+    first_chaining_hash: str,
+    locked_signature_info: SignatureData,
+    finalized_signature_info: SignatureData,
+) -> list[Batch]:
     chaining_hash = first_chaining_hash
     batches: list[Batch] = []
 
@@ -208,9 +209,7 @@ def _prepare_batches(batch_bodies: list[str],
         batches[locked_signature_idx] = {
             **batches[locked_signature_idx],
             "lock_signature": locked_signature_info.get("signature"),
-            "locked_nonsigners": locked_signature_info.get(
-                "nonsigners"
-            ),
+            "locked_nonsigners": locked_signature_info.get("nonsigners"),
             "locked_tag": locked_signature_info.get("tag"),
         }
 
@@ -218,17 +217,12 @@ def _prepare_batches(batch_bodies: list[str],
         finalized_signature_idx = (
             finalized_signature_info.get("index")
             if after_index == 0
-            else finalized_signature_info.get("index")
-                 - (after_index + 1)
+            else finalized_signature_info.get("index") - (after_index + 1)
         )
         batches[finalized_signature_idx] = {
             **batches[finalized_signature_idx],
-            "finalization_signature": finalized_signature_info.get(
-                "signature"
-            ),
-            "finalized_nonsigners": finalized_signature_info.get(
-                "nonsigners"
-            ),
+            "finalization_signature": finalized_signature_info.get("signature"),
+            "finalized_nonsigners": finalized_signature_info.get("nonsigners"),
             "finalized_tag": finalized_signature_info.get("tag"),
         }
 
@@ -276,9 +270,9 @@ async def _sync_with_peer_node(
                 locked_signature_info = data["data"]["locked"]
                 finalized_signature_info = data["data"]["finalized"]
                 last_page = (
-                        after_index
-                        <= target_locked_index
-                        <= after_index + len(batch_bodies)
+                    after_index
+                    <= target_locked_index
+                    <= after_index + len(batch_bodies)
                 )
                 zlogger.warning(f"{after_index}, {chaining_hash}")
 
@@ -289,7 +283,8 @@ async def _sync_with_peer_node(
                     peer_node_id=peer_node_id,
                     first_chaining_hash=chaining_hash,
                     locked_signature_info=locked_signature_info,
-                    finalized_signature_info=finalized_signature_info)
+                    finalized_signature_info=finalized_signature_info,
+                )
 
                 if last_page and not locked_signature_info:
                     zlogger.warning(
@@ -335,7 +330,9 @@ async def _sync_with_peer_node(
 
                 after_index += len(batches)
             except Exception as e:
-                zlogger.warning(f"Error occurred while fetching batches from {peer_node_socket}: {e}")
+                zlogger.warning(
+                    f"Error occurred while fetching batches from {peer_node_socket}: {e}"
+                )
                 return False
 
 
