@@ -208,14 +208,14 @@ def is_sync_point_signature_verified(
     public key of all signing nodes.
 
     Args:
-        app_name (str): The name of the application for which the sync point is being verified
-        state (str): The state of the sync point (e.g., "locked", "finalized")
-        index (int): The index of the batch in the sequence
-        batch_hash (str): The hash of the batch content
-        chaining_hash (str): The hash that chains this batch to previous batches
-        tag (int): The network status tag used to identify the correct network state
-        signature_hex (str): The hexadecimal representation of the BLS signature to verify
-        nonsigners (list[str]): List of node IDs that did not participate in signing
+        app_name: The name of the application for which the sync point is being verified
+        state: "sequenced" for locking signatures and "lock" for finalizing signatures
+        index: The index of the batch in the sequence
+        batch_hash: The hash of the batch content
+        chaining_hash: The hash that chains this batch to previous batches
+        tag: The network status tag used to identify the correct network state
+        signature_hex: The hexadecimal representation of the BLS signature to verify
+        nonsigners: List of node IDs that did not participate in signing
 
     Returns:
         bool: True if the signature is valid and meets the quorum requirements,
