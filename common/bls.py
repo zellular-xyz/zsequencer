@@ -69,7 +69,7 @@ async def gather_signatures(
 
     except Exception as error:
         if not isinstance(error, ValueError):  # For empty list
-            zlogger.exception(f"An unexpected error occurred: {error}")
+            zlogger.error(f"An unexpected error occurred: {error}")
     return completed_results, stake_percent
 
 
@@ -117,7 +117,7 @@ async def gather_and_aggregate_signatures(
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
     except TimeoutError:
-        zlogger.exception(
+        zlogger.error(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return None
@@ -188,3 +188,98 @@ def gen_aggregated_signature(signatures: list[dict[str, Any] | None]) -> str:
         aggregated_signature = aggregated_signature + sig
 
     return aggregated_signature.getStr(10).decode("utf-8")
+
+
+def is_sync_point_signature_verified(
+    app_name: str,
+    state: str,
+    index: int,
+    batch_hash: str,
+    chaining_hash: str,
+    tag: int,
+    signature_hex: str,
+    nonsigners: list[str],
+) -> bool:
+    """
+    Verify the BLS signature of a synchronization point in the network.
+
+    This function verifies whether a given BLS signature is valid for a synchronization point
+    by checking the quorum of signers and validating the signature against the aggregated
+    public key of all signing nodes.
+
+    Args:
+        app_name: The name of the application for which the sync point is being verified
+        state: "sequenced" for locking signatures and "lock" for finalizing signatures
+        index: The index of the batch in the sequence
+        batch_hash: The hash of the batch content
+        chaining_hash: The hash that chains this batch to previous batches
+        tag: The network status tag used to identify the correct network state
+        signature_hex: The hexadecimal representation of the BLS signature to verify
+        nonsigners: List of node IDs that did not participate in signing
+
+    Returns:
+        bool: True if the signature is valid and meets the quorum requirements,
+              False otherwise
+
+    Note:
+        - The function first loads the network state using the provided tag
+        - Verifies that the stake of non-signers doesn't exceed the allowed threshold
+        - Computes the aggregated public key by removing non-signers' public keys
+        - Generates the message hash from the sync point data
+        - Verifies the signature using BLS verification
+
+    Raises:
+        No explicit exceptions are raised, but failures in verification return False
+    """
+    network_state = zconfig.get_network_state(tag=tag)
+    nodes_info = network_state.nodes
+
+    nonsigners_stake = sum(
+        [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners],
+    )
+    agg_pub_key = compute_signature_public_key(
+        nodes_info,
+        network_state.aggregated_public_key,
+        nonsigners,
+    )
+
+    if not has_quorum(nonsigners_stake, network_state.total_stake):
+        zlogger.error(
+            f"Signature with invalid stake from sequencer tag: {tag}, index: {index}, nonsigners stake: {nonsigners_stake}, total stake: {zconfig.TOTAL_STAKE}",
+        )
+        return False
+
+    data: str = json.dumps(
+        {
+            "app_name": app_name,
+            "state": state,
+            "index": index,
+            "hash": batch_hash,
+            "chaining_hash": chaining_hash,
+        },
+        sort_keys=True,
+    )
+    message: str = utils.gen_hash(data)
+    zlogger.info(
+        f"tag: {tag}, data: {data}, message: {message}, nonsigners: {nonsigners}",
+    )
+    return is_bls_sig_verified(
+        signature_hex=signature_hex,
+        message=message,
+        public_key=agg_pub_key,
+    )
+
+
+def has_quorum(nonsigners_stake: int, total_stake: int):
+    return 100 * nonsigners_stake / total_stake <= 100 - zconfig.THRESHOLD_PERCENT
+
+
+def compute_signature_public_key(
+    nodes_info,
+    agg_pub_key,
+    non_signers: list[str],
+) -> attestation.G2Point:
+    aggregated_public_key: attestation.G2Point = agg_pub_key
+    for node_id in non_signers:
+        aggregated_public_key -= nodes_info[node_id]["public_key_g2"]
+    return aggregated_public_key

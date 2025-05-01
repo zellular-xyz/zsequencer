@@ -75,6 +75,9 @@ class Config:
         self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
         self.REMOTE_HOST_CHECKER_BASE_URL = node_config.remote_host_checker_base_url
         self.CHECK_REACHABILITY_OF_NODE_URL = node_config.check_reachability_of_node_url
+        self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (
+            node_config.sequencer_setup_deadline_time_in_seconds
+        )
         self.HEADERS = {
             "Content-Type": "application/json",
             "Version": node_config.version,
@@ -121,9 +124,12 @@ class Config:
             )
 
         for address, node_data in nodes_data.items():
-            public_key_g2: str = node_data["public_key_g2"]
-            node_data["public_key_g2"] = attestation.new_zero_g2_point()
-            node_data["public_key_g2"].setStr(public_key_g2.encode("utf-8"))
+            node_data["public_key_g2"] = attestation.G2Point(
+                node_data["pubkeyG2_X"][0],
+                node_data["pubkeyG2_X"][1],
+                node_data["pubkeyG2_Y"][0],
+                node_data["pubkeyG2_Y"][1],
+            )
 
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node["stake"] for node in nodes_data.values()])

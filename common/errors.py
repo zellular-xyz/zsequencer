@@ -22,6 +22,7 @@ class ErrorCodes:
     INVALID_NODE_VERSION: str = "invalid_node_version"
     NOT_SYNCED: str = "not_synced"
     IS_SEQUENCER: str = "is_sequencer"
+    IS_PAUSED: str = "is_paused"
     IS_NOT_SEQUENCER: str = "is_not_sequencer"
     INVALID_SEQUENCER: str = "invalid_sequencer"
     ISSUE_NOT_FOUND: str = "issue_not_found"
@@ -43,6 +44,7 @@ class ErrorMessages:
     )
     NOT_SYNCED: str = "The node is not synced with the sequencer."
     IS_SEQUENCER: str = "This node is the sequencer."
+    IS_PAUSED: str = "This node is paused."
     IS_NOT_SEQUENCER: str = "This node is not the sequencer."
     INVALID_SEQUENCER: str = "The sequencer ID is invalid."
     ISSUE_NOT_FOUND: str = "The specified issue was not found."

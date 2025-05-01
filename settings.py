@@ -19,7 +19,7 @@ class SequencerSabotageSimulation(BaseSettings):
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.17")
+    version: str = Field(default="v0.0.18")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -69,6 +69,8 @@ class NodeConfig(BaseSettings):
         default="https://portchecker.io/api/{host}/{port}"
     )
     check_reachability_of_node_url: bool = Field(default=True)
+
+    sequencer_setup_deadline_time_in_seconds: int = Field(default=20)
 
     class Config:
         env_prefix = "ZSEQUENCER_"
