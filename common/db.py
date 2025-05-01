@@ -415,8 +415,8 @@ class InMemoryDB:
 
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
-                f"The chaining hash on the locking signature does not match the corrosponding batch"
-                "in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
+                "The chaining hash on the locking signature does not match the corrosponding batch"
+                f"in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
             )
             return False
 
@@ -475,8 +475,8 @@ class InMemoryDB:
         ).get("batch", {})
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
-                f"The chaining hash on the finalizing signature does not match the corrosponding batch"
-                "in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
+                "The chaining hash on the finalizing signature does not match the corrosponding batch"
+                f"in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
             )
             return False
 
