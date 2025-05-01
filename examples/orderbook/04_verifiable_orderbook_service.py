@@ -12,7 +12,7 @@ from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from zellular import Zellular
+from zellular import Zellular, EigenlayerNetwork
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -30,7 +30,11 @@ NODE_PRIVATE_KEY, PORT = (
 sk = PrivateKey.from_bytes(bytes.fromhex(NODE_PRIVATE_KEY))
 
 # Zellular setup
-zellular = Zellular("orderbook", "http://37.27.41.237:6001/", threshold_percent=1)
+network = EigenlayerNetwork(
+    subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
+    threshold_percent=40,
+)
+zellular = Zellular("orderbook", network)
 
 # In-memory balances
 balances: dict[str, dict[str, float]] = {

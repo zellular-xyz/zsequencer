@@ -8,7 +8,7 @@ from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
-from zellular import Zellular
+from zellular import Zellular, EigenlayerNetwork
 
 app = FastAPI()
 
@@ -17,7 +17,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Initialize Zellular
-zellular = Zellular("token", "http://37.27.41.237:6001/", threshold_percent=1)
+network = EigenlayerNetwork(
+    subgraph_url="https://api.studio.thegraph.com/query/95922/avs-subgraph/version/latest",
+    threshold_percent=40,
+)
+zellular = Zellular("token", network)
 
 # Simulated Balances
 balances: dict[str, int] = {"0xc66F8Fba940064B5bA8d437d6fF829E60134230E": 100}
