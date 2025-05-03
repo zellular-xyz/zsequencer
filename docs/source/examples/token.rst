@@ -235,6 +235,8 @@ Why This Matters
 
 In Step 4, we’ll introduce **verifiable reads**: users can query balances and verify the response using aggregated BLS signatures from the token replicas.
 
+.. _signed-balance-token-service:
+
 Step 4: Signed Balance Token Service
 ------------------------------------
 
@@ -274,6 +276,8 @@ Each node signs its ``/balance`` response using BLS:
 
 In Step 5, we’ll show how to **aggregate** these signed responses from multiple nodes to produce a **single verifiable proof** that a quorum attested to the same value.
 
+.. _verifiable-token-service:
+
 Step 5: Verifiable Token Service
 --------------------------------
 
@@ -287,20 +291,22 @@ Key Concepts
 - Aggregator node queries multiple replicas for their signed balances
 - Only responses that match the expected value are included in the quorum
 - The resulting BLS signatures are **aggregated into a single proof**
-- Clients can verify the aggregate signature using the **aggregated public key** (with excluded non-signers)
+- Clients can verify the aggregated signature using the **aggregated public key** (with excluded non-signers)
 
 Why Signature Aggregation?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When multiple nodes attest to the same state (e.g., `balance = 10`), their signatures can be **cryptographically combined** into a compact BLS aggregate signature.
+In a decentralized token system, it's not enough for individual nodes to return signed balances. What matters is whether a **majority of them agree** on the same value.
 
-This provides:
+Step 5 introduces **signature aggregation**, allowing clients to:
 
-- **Proof that a quorum of nodes agrees** on the returned value
-- **Efficiency**: One signature instead of N
-- **Verifiability**: Clients can confirm that the signature is valid, without trusting any single node
+- Collect individual BLS-signed balance responses
+- Aggregate them into a **single compact proof**
+- Verify that a **quorum of nodes attested** to the same balance
 
-This model allows applications such as bridges, staking reward systems, or governance logic to rely on **verifiable offchain consensus**.
+This is especially important for **external independent services** — such as cross-chain bridges or decentralized exchanges — that consume balance data from the token service. These services need **cryptographic assurance** that a balance was not only signed, but also **agreed upon by a majority of nodes**, without trusting any single replica.
+
+By verifying the aggregated signature, clients can confirm not only the value itself but that **a threshold of honest nodes agrees** with it — enabling **trustless interoperability** across decentralized infrastructure.
 
 Aggregation Logic
 ~~~~~~~~~~~~~~~~~
@@ -334,8 +340,13 @@ To verify the aggregated signature, clients subtract non-signers' public keys fr
 
 .. literalinclude:: ../../../examples/token/verify_aggregated_signature.py
    :language: python
-   :start-after: -- start: verifying aggregated signature --
-   :end-before: -- end: verifying aggregated signature --
+   :start-after: -- start: subtracting non-signers --
+   :end-before: -- end: subtracting non-signers --
+
+.. literalinclude:: ../../../examples/token/verify_aggregated_signature.py
+   :language: python
+   :start-after: -- start: verifying signature --
+   :end-before: -- end: verifying signature --
 
 Why This Matters
 ~~~~~~~~~~~~~~~~
@@ -344,4 +355,4 @@ Why This Matters
 - Promotes **interoperability** with other offchain or onchain systems
 - Reduces trust assumptions to **cryptographic validation**
 
-You now have a fully decentralized, consistent, and **verifiable token service** built with Zellular.
+You now have a fully replicated, consistent, and **deterministic orderbook service** built with Zellular.

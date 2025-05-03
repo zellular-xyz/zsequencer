@@ -254,42 +254,14 @@ Why This Matters
 - Enables fault-tolerant execution — any node can recover from sequenced history
 - Prevents divergence even when nodes join or restart at different times
 
-In the next step, we will introduce **verifiable reads** by having each node sign its `/balance` response, making it possible to verify what data was returned and by whom.
+.. note::
 
-Step 4: Verifiable Balance Reads
---------------------------------
+   If you want to make balance queries in the orderbook verifiable, you can follow the same pattern explained in
+   :ref:`signed-balance-token-service` and :ref:`verifiable-token-service` of the token example.
 
-In this step, we enhance the orderbook service by making **balance queries verifiable**. When a client queries `/balance`, the response is signed using the node’s BLS private key.
+   This involves signing each balance response with a BLS key, allowing clients to verify
+   that a node reported a specific value — useful for trustless withdrawals,
+   cross-chain messaging, or secure offchain accounting.
 
-📄 File: :src:`orderbook/04_verifiable_orderbook_service.py`
-
-Key Concepts
-~~~~~~~~~~~~
-
-- Each node has a unique BLS private key
-- The `/balance` endpoint returns a signed message
-- The signature proves that the node confirmed this balance
-- No authentication or sessions are required for reading balances
-
-Why Verifiable Balances?
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-When external systems — such as blockchains or other verifiable services — rely on the orderbook, they must be able to **independently confirm user balances** without trusting any single node.
-
-By signing balance responses, the service provides cryptographic proof that a node attested to a specific value. This is essential for secure withdrawals, cross-chain communication, and trustless integration between decentralized services.
-
-Balance Endpoint
-~~~~~~~~~~~~~~~~
-
-The `/balance` endpoint now accepts both an address and token:
-
-
-.. literalinclude:: ../../../examples/orderbook/04_verifiable_orderbook_service.py
-   :language: python
-   :start-after: -- start: checking balance --
-   :end-before: -- end: checking balance --
-
-The message is signed using the BLS POP (Proof of Possession) scheme from the blspy library and the resulting signature is included in the API response.
-
-For now, this step ensures that every balance query is individually signed and verifiable. In the :doc:`Signature Aggregation and Verification <verification>` section, we’ll explore how an aggregator can collect signed responses from multiple nodes, combine them into a single BLS signature, and how clients or external services can verify that a quorum of replicas attested to the same value.
-
+This completes the replicated orderbook service. From here, you can extend the system with verifiable queries, 
+settlement bridges, or additional order types — all while maintaining consistency and decentralization.
