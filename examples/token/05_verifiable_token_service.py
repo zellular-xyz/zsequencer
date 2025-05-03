@@ -1,12 +1,11 @@
+import asyncio
 import json
 import logging
-import aiohttp
-import asyncio
-
 from threading import Thread
 from typing import Any
 
-from blspy import PopSchemeMPL, PrivateKey, G1Element, G2Element
+import aiohttp
+from blspy import G1Element, G2Element, PopSchemeMPL, PrivateKey
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
@@ -162,7 +161,10 @@ async def query_nodes_for_balance(address: str):
             if node_id != SELF_NODE_ID
         ]
         return await asyncio.gather(*tasks)
+
+
 # -- end: querying nodes for signed balances --
+
 
 # -- start: aggregating matching signatures --
 def aggregate_signatures(
@@ -177,9 +179,7 @@ def aggregate_signatures(
             continue
 
         try:
-            pubkey = G1Element.from_bytes(
-                bytes.fromhex(NODES[node_id]["pubkey"])
-            )
+            pubkey = G1Element.from_bytes(bytes.fromhex(NODES[node_id]["pubkey"]))
             sig = G2Element.from_bytes(bytes.fromhex(sig_hex))
             if PopSchemeMPL.verify(pubkey, message, sig):
                 valid_sigs.append(sig)
@@ -192,7 +192,10 @@ def aggregate_signatures(
         raise ValueError("Not enough valid signatures to reach threshold")
 
     return PopSchemeMPL.aggregate(valid_sigs), non_signers
+
+
 # -- end: aggregating matching signatures --
+
 
 # -- start: balance aggregation endpoint --
 @app.get("/aggregate_balance")
@@ -221,6 +224,8 @@ async def aggregate_balance(address: str):
         "aggregated_signature": str(aggregated_sig),
         "non_signing_nodes": non_signers,
     }
+
+
 # -- end: balance aggregation endpoint --
 
 if __name__ == "__main__":

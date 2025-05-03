@@ -11,7 +11,7 @@ from eth_account.messages import encode_defunct
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from zellular import Zellular, EigenlayerNetwork
+from zellular import EigenlayerNetwork, Zellular
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
