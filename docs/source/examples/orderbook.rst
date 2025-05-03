@@ -254,6 +254,8 @@ Why This Matters
 - Enables fault-tolerant execution — any node can recover from sequenced history
 - Prevents divergence even when nodes join or restart at different times
 
+You now have a fully replicated, consistent, and **deterministic orderbook service** built with Zellular.
+
 .. note::
 
    If you want to make balance queries in the orderbook verifiable, you can follow the same pattern explained in
@@ -263,5 +265,3 @@ Why This Matters
    that a node reported a specific value — useful for trustless withdrawals,
    cross-chain messaging, or secure offchain accounting.
 
-This completes the replicated orderbook service. From here, you can extend the system with verifiable queries, 
-settlement bridges, or additional order types — all while maintaining consistency and decentralization.
