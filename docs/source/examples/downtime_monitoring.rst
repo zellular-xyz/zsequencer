@@ -261,3 +261,4 @@ Key Concepts and Implementation Details
    :start-after: -- start: downtime aggregation endpoint --
    :end-before: -- end: downtime aggregation endpoint --
 
+You now have a fully replicated, tamper-proof, and **verifiably auditable downtime monitoring system** built with Zellular.

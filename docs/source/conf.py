@@ -38,6 +38,7 @@ html_theme = "sphinx_rtd_theme"
 # -- Options for EPUB output
 epub_show_urls = "footnote"
 
+
 def get_current_git_branch():
     try:
         return (
@@ -47,6 +48,7 @@ def get_current_git_branch():
         )
     except Exception:
         return "main"
+
 
 current_branch = get_current_git_branch()
 extlinks = {
