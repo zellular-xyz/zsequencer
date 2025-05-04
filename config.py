@@ -143,6 +143,9 @@ class Config:
         )
 
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
+        if self.NETWORK_STATUS_TAG is None or int(tag) > int(self.NETWORK_STATUS_TAG):
+            self.NETWORK_STATUS_TAG = tag
+
         return network_state
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -161,7 +164,6 @@ class Config:
         # TODO: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
-        self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
         if self.ADDRESS in nodes_data:

@@ -135,13 +135,6 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         if not censored_batches:
             zdb.clear_missed_batches(app_name)
 
-            seq_tag = max(
-                sequencer_resp["locked"]["tag"],
-                sequencer_resp["finalized"]["tag"],
-            )
-            if seq_tag != 0:
-                zconfig.NETWORK_STATUS_TAG = seq_tag
-
     except Exception as e:
         zlogger.error(
             f"An unexpected error occurred, while sending batches to sequencer: {e}",
