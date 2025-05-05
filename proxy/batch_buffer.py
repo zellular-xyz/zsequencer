@@ -52,7 +52,7 @@ class BatchBuffer:
                     headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
-            except httpx.RequestError as e:
+            except Exception as e:
                 self._logger.error(f"Error sending batches: {e}")
                 for app_name, batches in batches_mapping.items():
                     for batch in batches:
