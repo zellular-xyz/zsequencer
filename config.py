@@ -91,9 +91,6 @@ class Config:
     def set_synced_flag(self):
         self._SYNCED_FLAG = True
 
-    def unset_synced_flag(self):
-        self._SYNCED_FLAG = False
-
     def get_mode(self):
         return self._MODE
 

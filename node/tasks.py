@@ -37,7 +37,6 @@ def send_batches() -> None:
             continue
 
         single_iteration_apps_sync = False
-        zconfig.unset_synced_flag()
 
         while True:
             finish_condition = send_app_batches_iteration(app_name=app_name)
