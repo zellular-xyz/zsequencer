@@ -9,7 +9,7 @@ MODE_TEST = "test"
 SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
-class SequencerSabotageSimulation(BaseSettings):
+class OutOfReachSimulation(BaseSettings):
     timeseries_nodes_state_file: str = Field("")
     out_of_reach_simulation: bool = Field(default=False)
 
