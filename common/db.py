@@ -537,7 +537,8 @@ class InMemoryDB:
         return [
             node_info
             for address, node_info in self.apps[app_name]["nodes_state"].items()
-            if address in list(zconfig.NODES.keys())
+            if address in zconfig.NODES
+            and "attesting" in zconfig.NODES[address]["roles"]
         ]
 
     def upsert_locked_sync_point(

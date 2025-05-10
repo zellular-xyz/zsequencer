@@ -51,7 +51,12 @@ async def gather_signatures(
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
-    stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
+
+    if "attesting" in zconfig.NODE["roles"]:
+        stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
+    else:
+        stake_percent = 0
+
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
             done, pending_tasks = await asyncio.wait(
@@ -82,20 +87,22 @@ async def gather_and_aggregate_signatures(
     """
     tag = zconfig.NETWORK_STATUS_TAG
     network_state = zconfig.get_network_state(tag)
-    node_info, network_nodes_info, total_stake = (
+    node_info, attesting_nodes_info, total_stake = (
         zconfig.NODE,
-        network_state.nodes,
+        network_state.attesting_nodes,
         network_state.total_stake,
     )
 
     stake = (
-        sum([network_nodes_info[node_id]["stake"] for node_id in node_ids])
+        sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids])
         + node_info["stake"]
+        if "attesting" in node_info["roles"]
+        else 0
     )
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
 
-    if not node_ids.issubset(set(network_nodes_info.keys())):
+    if not node_ids.issubset(set(attesting_nodes_info.keys())):
         return None
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
@@ -103,7 +110,7 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f"{network_nodes_info[node_id]['socket']}/node/sign_sync_point",
+                url=f"{attesting_nodes_info[node_id]['socket']}/node/sign_sync_point",
                 data=data,
                 message=message,
                 timeout=120,
@@ -128,7 +135,7 @@ async def gather_and_aggregate_signatures(
     data["signature"] = bls_sign(message)
     signatures[node_info["id"]] = data
 
-    nonsigners = list(set(network_nodes_info.keys()) - set(signatures.keys()))
+    nonsigners = list(set(attesting_nodes_info.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(list(signatures.values()))
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return {

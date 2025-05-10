@@ -127,14 +127,28 @@ class Config:
                 node_data["pubkeyG2_Y"][0],
                 node_data["pubkeyG2_Y"][1],
             )
+            if "roles" not in node_data:
+                node_data["roles"] = ("posting", "sequencing", "attesting")
 
-        aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
-        total_stake = sum([node["stake"] for node in nodes_data.values()])
+        get_nodes_with_role = lambda role: {
+            address: node_data
+            for address, node_data in nodes_data.items()
+            if role in node_data["roles"]
+        }
+        aggregated_public_key = utils.get_aggregated_public_key(
+            get_nodes_with_role("attesting")
+        )
+        total_stake = sum(
+            [node["stake"] for node in get_nodes_with_role("attesting").values()]
+        )
 
         network_state = NetworkState(
             tag=tag,
             timestamp=int(time.time()),
             nodes=nodes_data,
+            attesting_nodes=get_nodes_with_role("attesting"),
+            sequencing_nodes=get_nodes_with_role("sequencing"),
+            posting_nodes=get_nodes_with_role("posting"),
             aggregated_public_key=aggregated_public_key,
             total_stake=total_stake,
         )
@@ -283,7 +297,9 @@ class Config:
 
     @property
     def node_send_limit_per_window_size_kb(self) -> float:
-        return self.BANDWIDTH_KB_PER_WINDOW / (len(self.NODES) ** 2)
+        return self.node_receive_limit_per_window_size_kb / len(
+            self.last_state.posting_nodes
+        )
 
     @property
     def node_receive_limit_per_window_size_kb(self) -> float:
