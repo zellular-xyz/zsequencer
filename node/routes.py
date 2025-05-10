@@ -27,6 +27,12 @@ node_blueprint = Blueprint("node", __name__)
 @utils.is_synced
 def put_bulk_batches() -> Response:
     """Put a new batch into the database."""
+    if "posting" not in zconfig.NODE:
+        return error_response(
+            error_code=ErrorCodes.IS_NOT_POSTING_NODE,
+            error_message=ErrorMessages.IS_NOT_POSTING_NODE,
+        )
+
     if zdb.pause_node.is_set():
         return error_response(
             error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
@@ -63,6 +69,12 @@ def put_batches(app_name: str) -> Response:
     if zdb.pause_node.is_set():
         return error_response(
             error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
+        )
+
+    if "posting" not in zconfig.NODE:
+        return error_response(
+            error_code=ErrorCodes.IS_NOT_POSTING_NODE,
+            error_message=ErrorMessages.IS_NOT_POSTING_NODE,
         )
 
     if not app_name:
