@@ -9,6 +9,9 @@ class NetworkState(BaseModel):
     tag: int
     timestamp: int
     nodes: dict
+    attesting_nodes: dict
+    sequencing_nodes: dict
+    posting_nodes: dict
     aggregated_public_key: Any
     total_stake: float
 
