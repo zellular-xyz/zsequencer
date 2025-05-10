@@ -93,11 +93,8 @@ async def gather_and_aggregate_signatures(
         network_state.total_stake,
     )
 
-    stake = (
-        sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids])
-        + node_info["stake"]
-        if "attesting" in node_info["roles"]
-        else 0
+    stake = sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids]) + (
+        node_info["stake"] if "attesting" in node_info["roles"] else 0
     )
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
@@ -132,8 +129,9 @@ async def gather_and_aggregate_signatures(
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None
 
-    data["signature"] = bls_sign(message)
-    signatures[node_info["id"]] = data
+    if "attesting" in node_info["roles"]:
+        data["signature"] = bls_sign(message)
+        signatures[node_info["id"]] = data
 
     nonsigners = list(set(attesting_nodes_info.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(list(signatures.values()))
@@ -239,8 +237,7 @@ def is_sync_point_signature_verified(
         No explicit exceptions are raised, but failures in verification return False
     """
     network_state = zconfig.get_network_state(tag=tag)
-    nodes_info = network_state.nodes
-
+    nodes_info = network_state.attesting_nodes
     nonsigners_stake = sum(
         [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners],
     )
