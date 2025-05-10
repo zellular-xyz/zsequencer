@@ -205,7 +205,9 @@ def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
     """Get the ID of the next sequencer in a circular sorted list."""
-    sorted_nodes = sorted(zconfig.NODES.values(), key=lambda x: x["id"])
+    sorted_nodes = sorted(
+        zconfig.last_state.sequencing_nodes.values(), key=lambda x: x["id"]
+    )
 
     ids = [node["id"] for node in sorted_nodes]
 
