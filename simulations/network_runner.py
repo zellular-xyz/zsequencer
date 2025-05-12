@@ -38,7 +38,9 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         env_variables['ZSEQUENCER_ECDSA_KEY_FILE']: '/app/ecdsa_key.json',
         env_variables['ZSEQUENCER_SNAPSHOT_PATH']: '/db',
         env_variables['ZSEQUENCER_APPS_FILE']: '/app/app.json',
-        env_variables['ZSEQUENCER_NODES_FILE']: '/app/nodes.json'
+        env_variables['ZSEQUENCER_NODES_FILE']: '/app/nodes.json',
+        env_variables[
+            'ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE']: '/app/sabotage_simulation_timeseries.json',
     }
 
     # Prepare environment variables as a dictionary
@@ -48,7 +50,8 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         'ZSEQUENCER_ECDSA_KEY_FILE': '/app/ecdsa_key.json',
         'ZSEQUENCER_SNAPSHOT_PATH': '/db',
         'ZSEQUENCER_APPS_FILE': '/app/app.json',
-        'ZSEQUENCER_NODES_FILE': '/app/nodes.json'
+        'ZSEQUENCER_NODES_FILE': '/app/nodes.json',
+        'ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE': '/app/sabotage_simulation_timeseries.json'
     }
 
     # Construct docker run command
@@ -102,6 +105,7 @@ def main(network_nodes_num=NETWORK_NODES_COUNT):
     ensure_docker_network()
 
     simulation_conf = SimulationConfig(
+        OUT_OF_REACH_SIMULATION=True,
         ZSEQUENCER_NODES_SOURCE="file",
         BASE_PORT=6005,
         ZSEQUENCER_BANDWIDTH_KB_PER_WINDOW=1000_000,
@@ -111,6 +115,7 @@ def main(network_nodes_num=NETWORK_NODES_COUNT):
     sequencer_address, network_keys = simulations_utils.generate_network_keys(network_nodes_num=network_nodes_num)
     nodes_execution_args = {}
     nodes_info = {}
+    sabotage_timeseries_nodes = {}
 
     for idx, key_data in enumerate(network_keys):
         simulation_conf.prepare_node(node_idx=idx, keys=key_data.keys)
@@ -120,12 +125,14 @@ def main(network_nodes_num=NETWORK_NODES_COUNT):
             key_data=key_data,
             node_host=container_name
         ).dict()
+        sabotage_timeseries_nodes[key_data.address] = [{"time_duration": 100, "up": True}]
 
         # Update the environment variables to use container name instead of localhost
         env_vars = simulation_conf.to_dict(
             node_idx=idx,
             sequencer_initial_address=sequencer_address
         )
+
         # Update the host in ZSEQUENCER_HOST if it exists
         if 'ZSEQUENCER_HOST' in env_vars:
             env_vars['ZSEQUENCER_HOST'] = container_name
@@ -137,6 +144,10 @@ def main(network_nodes_num=NETWORK_NODES_COUNT):
     # Writing nodes info on host disk
     with open(simulation_conf.nodes_file, "w") as file:
         json.dump(nodes_info, file, indent=4)
+
+    # Writing sabotage nodes time-series info on host disk
+    with open(simulation_conf.sabotage_timeseries_nodes_state_file, "w") as file:
+        json.dump(sabotage_timeseries_nodes, file, indent=4)
 
     # Writing apps info on host disk
     with open(simulation_conf.apps_file, "w") as file:
