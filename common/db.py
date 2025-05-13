@@ -347,10 +347,10 @@ class InMemoryDB:
         self,
         app_name: str,
         batches: list[Batch],
-    ) -> bool:
+    ) -> None:
         """Upsert sequenced batches."""
         if not batches:
-            return True
+            return
 
         chaining_hash = (
             self.apps[app_name]["operational_batch_sequence"]
@@ -358,13 +358,11 @@ class InMemoryDB:
             .get("batch", {})
             .get("chaining_hash", "")
         )
+
         for batch in batches:
             chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             if batch["chaining_hash"] != chaining_hash:
-                zlogger.warning(
-                    f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}",
-                )
-                return False
+                raise ValueError(f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}")
 
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
@@ -373,8 +371,6 @@ class InMemoryDB:
             self.apps[app_name]["operational_batch_hash_index_map"][batch["hash"]] = (
                 batch_index
             )
-
-        return True
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """Update batches to 'locked' state up to a specified index."""
@@ -388,6 +384,9 @@ class InMemoryDB:
             signature_hex=signature_data.get("signature"),
             nonsigners=signature_data.get("nonsigners"),
         ):
+            zlogger.warning(
+                f"The locking {signature_data=} can not be verified.",
+            )
             return False
 
         if signature_data["index"] <= self.apps[app_name][
@@ -396,6 +395,9 @@ class InMemoryDB:
             "locked",
             default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
         ):
+            zlogger.warning(
+                f"The locking {signature_data=} is old.",
+            )
             return False
 
         if (
@@ -444,6 +446,9 @@ class InMemoryDB:
             signature_hex=signature_data.get("signature"),
             nonsigners=signature_data.get("nonsigners"),
         ):
+            zlogger.warning(
+                f"The finalizing {signature_data=} can not be verified.",
+            )
             return False
 
         signature_finalized_index = signature_data.get(
@@ -457,6 +462,9 @@ class InMemoryDB:
 
         # Skip if already finalized or batch not found
         if signature_finalized_index <= last_finalized_index:
+            zlogger.warning(
+                f"The finalizing {signature_data=} is old.",
+            )
             return False
 
         if (

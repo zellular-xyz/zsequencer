@@ -89,6 +89,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             )
 
             for app_name, entries in network_last_locked_batch_entries.items():
+                zdb.reinitialize_batches(app_name=app_name)
                 self_node_last_locked_record = (
                     zdb.get_last_operational_batch_record_or_empty(
                         app_name=app_name, state="locked"
