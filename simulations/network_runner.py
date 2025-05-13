@@ -1,6 +1,6 @@
+import hashlib
 import json
 import os
-import secrets
 import subprocess
 import time
 from typing import Dict, List, Tuple, Any
@@ -54,10 +54,19 @@ def load_env_shared():
     return env_vars
 
 
-def generate_keys() -> Keys:
-    bls_private_key: str = secrets.token_hex(32)
-    bls_key_pair: attestation.KeyPair = attestation.new_key_pair_from_string(bls_private_key)
-    ecdsa_private_key: str = secrets.token_hex(32)
+def generate_keys(idx: int) -> Keys:
+    """Generate deterministic keys based on the provided index."""
+    # Create a deterministic seed based on the index
+    seed = f"zsequencer_node_{idx}".encode()
+
+    # Use SHA256 to generate deterministic bytes
+    hash_obj = hashlib.sha256(seed)
+    deterministic_bytes = hash_obj.digest()
+
+    # Generate deterministic private keys
+    bls_private_key = deterministic_bytes[:32].hex()
+    bls_key_pair = attestation.new_key_pair_from_string(bls_private_key)
+    ecdsa_private_key = deterministic_bytes[32:].hex()
 
     return Keys(bls_private_key=bls_private_key,
                 bls_key_pair=bls_key_pair,
