@@ -362,7 +362,9 @@ class InMemoryDB:
         for batch in batches:
             chaining_hash = utils.gen_hash(chaining_hash + batch["hash"])
             if batch["chaining_hash"] != chaining_hash:
-                raise ValueError(f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}")
+                raise ValueError(
+                    f"Invalid chaining hash: expected {chaining_hash} got {batch['chaining_hash']}"
+                )
 
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(

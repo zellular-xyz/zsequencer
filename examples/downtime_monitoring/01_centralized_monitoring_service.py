@@ -1,12 +1,13 @@
-import random
-import time
-import threading
 import logging
+import random
+import threading
+import time
 from typing import Any
+
 import requests
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-import uvicorn
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

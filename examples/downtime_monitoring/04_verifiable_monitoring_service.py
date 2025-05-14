@@ -1,18 +1,18 @@
-import random
-import time
-import threading
-import json
 import asyncio
+import json
 import logging
+import random
+import threading
+import time
 from typing import Any
-import requests
+
 import aiohttp
+import requests
+import uvicorn
+from blspy import G1Element, G2Element, PopSchemeMPL, PrivateKey
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-import uvicorn
-from zellular import Zellular, EigenlayerNetwork
-from blspy import PrivateKey, G1Element, G2Element, PopSchemeMPL
-
+from zellular import EigenlayerNetwork, Zellular
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
