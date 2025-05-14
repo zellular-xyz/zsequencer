@@ -12,7 +12,7 @@ class NetworkState(BaseModel):
     aggregated_public_key: Any
     total_stake: float
 
-    def get_nodes_with_role(self, role) -> dict[str, dict[str, Any]]:
+    def _get_nodes_with_role(self, role: str) -> dict[str, dict[str, Any]]:
         return {
             address: node_data
             for address, node_data in self.nodes.items()
@@ -21,11 +21,11 @@ class NetworkState(BaseModel):
 
     @property
     def sequencing_nodes(self) -> dict[str, dict[str, Any]]:
-        return self.get_nodes_with_role("sequencing")
+        return self._get_nodes_with_role("sequencing")
 
     @property
     def posting_nodes(self) -> dict[str, dict[str, Any]]:
-        return self.get_nodes_with_role("posting")
+        return self._get_nodes_with_role("posting")
 
     @property
     def attesting_nodes(self) -> dict[str, dict[str, Any]]:
