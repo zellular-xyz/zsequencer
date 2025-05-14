@@ -128,27 +128,15 @@ class Config:
                 node_data["pubkeyG2_Y"][1],
             )
             if "roles" not in node_data:
-                node_data["roles"] = ("posting", "sequencing", "attesting")
+                node_data["roles"] = ("posting", "sequencing")
 
-        get_nodes_with_role = lambda role: {
-            address: node_data
-            for address, node_data in nodes_data.items()
-            if role in node_data["roles"]
-        }
-        aggregated_public_key = utils.get_aggregated_public_key(
-            get_nodes_with_role("attesting")
-        )
-        total_stake = sum(
-            [node["stake"] for node in get_nodes_with_role("attesting").values()]
-        )
+        aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
+        total_stake = sum([node["stake"] for node in nodes_data.values()])
 
         network_state = NetworkState(
             tag=tag,
             timestamp=int(time.time()),
             nodes=nodes_data,
-            attesting_nodes=get_nodes_with_role("attesting"),
-            sequencing_nodes=get_nodes_with_role("sequencing"),
-            posting_nodes=get_nodes_with_role("posting"),
             aggregated_public_key=aggregated_public_key,
             total_stake=total_stake,
         )
@@ -204,8 +192,8 @@ class Config:
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
-        attesting_nodes = self.last_state.attesting_nodes
         sequencing_nodes = self.last_state.sequencing_nodes
+        attesting_nodes = self.last_state.attesting_nodes
 
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
@@ -225,10 +213,7 @@ class Config:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if (
-            100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT
-            and sequencers_stake[max_stake_id] > self.NODE["stake"]
-        ):
+        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)

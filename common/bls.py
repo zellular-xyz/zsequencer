@@ -52,10 +52,7 @@ async def gather_signatures(
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
 
-    if "attesting" in zconfig.NODE["roles"]:
-        stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
-    else:
-        stake_percent = 0
+    stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
 
     try:
         while stake_percent < zconfig.THRESHOLD_PERCENT:
@@ -93,8 +90,9 @@ async def gather_and_aggregate_signatures(
         network_state.total_stake,
     )
 
-    stake = sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids]) + (
-        node_info["stake"] if "attesting" in node_info["roles"] else 0
+    stake = (
+        sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids])
+        + node_info["stake"]
     )
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
@@ -129,7 +127,7 @@ async def gather_and_aggregate_signatures(
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None
 
-    if "attesting" in node_info["roles"]:
+    if node_info["stake"] > 0:
         data["signature"] = bls_sign(message)
         signatures[node_info["id"]] = data
 

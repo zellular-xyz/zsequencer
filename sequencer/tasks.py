@@ -28,8 +28,7 @@ def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
             if s["sequenced_index"] >= state["sequenced_index"]
         }
         stake = sum([zconfig.NODES[node_id]["stake"] for node_id in party])
-        if "attesting" in zconfig.NODE["roles"]:
-            stake += zconfig.NODE["stake"]
+        stake += zconfig.NODE["stake"]
         if 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT:
             return {"state": state, "party": party}
     return None
