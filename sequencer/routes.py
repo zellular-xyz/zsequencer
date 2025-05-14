@@ -66,7 +66,7 @@ def put_batches() -> Response:
     )
     if (
         not is_eth_sig_verified
-        or str(req_data["node_id"]) not in list(zconfig.NODES.keys())
+        or str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys())
         or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
@@ -82,7 +82,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
             app_name=req_data["app_name"],
             initializing_batches=req_data["batches"],
         )
-
     batch_sequence = zdb.get_global_operational_batch_sequence(
         app_name=req_data["app_name"],
         after=req_data["sequenced_index"],
@@ -120,7 +119,6 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
                 ),
                 {},
             )
-
     zdb.upsert_node_state(
         {
             "app_name": req_data["app_name"],

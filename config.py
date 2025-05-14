@@ -127,6 +127,8 @@ class Config:
                 node_data["pubkeyG2_Y"][0],
                 node_data["pubkeyG2_Y"][1],
             )
+            if "roles" not in node_data:
+                node_data["roles"] = ("posting", "sequencing")
 
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node["stake"] for node in nodes_data.values()])
@@ -190,34 +192,28 @@ class Config:
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
-        current_network_nodes = self.HISTORICAL_NETWORK_STATE[
-            self.NETWORK_STATUS_TAG
-        ].nodes
+        sequencing_nodes = self.last_state.sequencing_nodes
+        attesting_nodes = self.last_state.attesting_nodes
+
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
-        sequencers_stake: dict[str, Any] = dict.fromkeys(
-            list(current_network_nodes.keys()), 0
-        )
-        for node_id in list(current_network_nodes.keys()):
+        sequencers_stake: dict[str, Any] = dict.fromkeys(sequencing_nodes, 0)
+        for node_id in attesting_nodes:
             if node_id == self.NODE["id"]:
                 continue
-            url: str = f"{current_network_nodes[node_id]['socket']}/node/state"
+            url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
             try:
                 response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += current_network_nodes[node_id][
-                    "stake"
-                ]
+                if sequencer_id in sequencing_nodes:
+                    sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if (
-            100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT
-            and sequencers_stake[max_stake_id] > self.NODE["stake"]
-        ):
+        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
@@ -283,7 +279,9 @@ class Config:
 
     @property
     def node_send_limit_per_window_size_kb(self) -> float:
-        return self.BANDWIDTH_KB_PER_WINDOW / (len(self.NODES) ** 2)
+        return self.node_receive_limit_per_window_size_kb / len(
+            self.last_state.posting_nodes
+        )
 
     @property
     def node_receive_limit_per_window_size_kb(self) -> float:
