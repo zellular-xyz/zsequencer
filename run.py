@@ -8,7 +8,8 @@ import threading
 import time
 
 import requests
-from flask import Flask, redirect, url_for
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -19,24 +20,20 @@ from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
-from node.routes import node_blueprint
+from node.routers import router as node_router
 from sequencer import tasks as sequencer_tasks
+from sequencer.routers import router as sequencer_router
 from sequencer.routes import sequencer_blueprint
 
+app = FastAPI()
 
-def create_app() -> Flask:
-    """Create and configure the Flask application."""
-    app: Flask = Flask(__name__)
-    app.secret_key = secrets.token_hex(32)
+app.include_router(node_router, prefix="/node")
+app.include_router(sequencer_router, prefix="/sequencer")
 
-    app.register_blueprint(node_blueprint, url_prefix="/node")
-    app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
 
-    @app.route("/", methods=["GET"])
-    def base_redirect():
-        return redirect(url_for("node.get_state"))
-
-    return app
+@app.get("/", include_in_schema=False)
+def base_redirect():
+    return RedirectResponse(url="/node/state")
 
 
 def run_node_tasks() -> None:
@@ -107,7 +104,6 @@ def check_node_reachability() -> None:
 
 def main() -> None:
     """Main entry point for running the Zellular Node."""
-    app: Flask = create_app()
 
     # Start periodic tasks in threads
     sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks)
@@ -125,15 +121,6 @@ def main() -> None:
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
     zlogger.info("Starting flask on port %s", zconfig.PORT)
-
-    # Run Flask directly in the main thread - this is a blocking call
-    app.run(
-        host="0.0.0.0",
-        port=zconfig.PORT,
-        debug=False,
-        threaded=False,
-        use_reloader=False,
-    )
 
 
 if __name__ == "__main__":

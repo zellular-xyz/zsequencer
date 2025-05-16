@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from flask import Blueprint, Response, request
+from fastapi import APIRouter, Depends, Request, Response
 
 from common import utils
 from common.batch import get_batch_size_kb
@@ -12,37 +12,43 @@ from common.response_utils import error_response, success_response
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
-sequencer_blueprint = Blueprint("sequencer", __name__)
+router = APIRouter()
 
 
-@sequencer_blueprint.route("/batches", methods=["PUT"])
-@utils.sequencer_only
-@utils.sequencer_simulation_malfunction
-@utils.validate_version
-@utils.validate_body_keys(
-    required_keys=[
-        "app_name",
-        "batches",
-        "node_id",
-        "signature",
-        "sequenced_index",
-        "sequenced_hash",
-        "sequenced_chaining_hash",
-        "locked_index",
-        "locked_hash",
-        "locked_chaining_hash",
-        "timestamp",
-    ]
+@router.put(
+    "/batches",
+    dependencies=[
+        Depends(utils.sequencer_only),
+        Depends(utils.sequencer_simulation_malfunction),
+        Depends(utils.validate_version),
+        Depends(
+            utils.validate_body_keys(
+                required_keys=[
+                    "app_name",
+                    "batches",
+                    "node_id",
+                    "signature",
+                    "sequenced_index",
+                    "sequenced_hash",
+                    "sequenced_chaining_hash",
+                    "locked_index",
+                    "locked_hash",
+                    "locked_chaining_hash",
+                    "timestamp",
+                ]
+            )
+        ),
+    ],
 )
-def put_batches() -> Response:
-    """Endpoint to handle the PUT request for batches."""
+async def put_batches(request: Request) -> Response:
     if zdb.pause_node.is_set():
         return error_response(
             error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
         )
 
-    req_data: dict[str, Any] = request.get_json(silent=True) or {}
+    req_data = await request.json()
     initializing_batches = req_data["batches"]
+
     if not try_acquire_rate_limit_of_other_nodes(
         node_id=req_data["node_id"], batches=initializing_batches
     ):
@@ -58,12 +64,13 @@ def put_batches() -> Response:
                 error_message=ErrorMessages.BATCH_SIZE_EXCEEDED,
             )
 
-    concat_hash: str = "".join(batch["hash"] for batch in req_data["batches"])
-    is_eth_sig_verified: bool = utils.is_eth_sig_verified(
+    concat_hash = "".join(batch["hash"] for batch in req_data["batches"])
+    is_eth_sig_verified = utils.is_eth_sig_verified(
         signature=req_data["signature"],
         node_id=req_data["node_id"],
         message=concat_hash,
     )
+
     if (
         not is_eth_sig_verified
         or str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys())
@@ -71,7 +78,7 @@ def put_batches() -> Response:
     ):
         return error_response(ErrorCodes.PERMISSION_DENIED)
 
-    data: dict[str, Any] = _put_batches(req_data)
+    data = _put_batches(req_data)
     return success_response(data=data)
 
 

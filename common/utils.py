@@ -5,11 +5,12 @@ from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, Awaitable, TypeVar, Union, cast
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
-from flask import Response, request
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from web3 import Account
 
 from config import zconfig
@@ -17,21 +18,21 @@ from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 
 from . import errors, response_utils
 
-Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
-F = TypeVar("F", bound=Callable[..., Any])
+Decorator = Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]
+F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
 
-def sequencer_simulation_malfunction(func: Callable[..., Any]) -> Decorator:
+def sequencer_simulation_malfunction(func: F) -> F:
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         if sequencer_sabotage_simulation_state.out_of_reach:
             return response_utils.error_response(
-                error_code=errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
-                error_message=errors.ErrorMessages.SEQUENCER_OUT_OF_REACH,
+                errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
+                errors.ErrorMessages.SEQUENCER_OUT_OF_REACH,
             )
-        return func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, wrapper)
 
 
 def conditional_decorator(
@@ -50,41 +51,37 @@ def conditional_decorator(
     """
 
     def decorator_factory(func: F) -> F:
-        # Evaluate the condition
         should_decorate = condition() if callable(condition) else condition
-
-        if should_decorate:
-            return decorator(func)
-        return func
+        return decorator(func) if should_decorate else func
 
     return decorator_factory
 
 
-def sequencer_only(func: Callable[..., Any]) -> Decorator:
+def sequencer_only(func: F) -> F:
     """Decorator to restrict access to sequencer-only functions."""
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
-        return func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, wrapper)
 
 
-def not_sequencer(func: Callable[..., Any]) -> Decorator:
+def not_sequencer(func: F) -> F:
     """Decorator to restrict access to non-sequencer functions."""
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
             return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
-        return func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, wrapper)
 
 
-def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
+def validate_version(func: F) -> F:
     """Decorator to validate the 'Version' header against the expected version.
 
     Checks if the request's 'Version' header matches zconfig.VERSION for endpoints
@@ -92,57 +89,50 @@ def validate_version(func: Callable[..., Response]) -> Callable[..., Response]:
     """
 
     @wraps(func)
-    def decorated_function(*args: Any, **kwargs: Any) -> Response:
-        # Get version from headers (default to empty string if missing)
+    async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
         version = request.headers.get("Version", "")
+        endpoint = request.scope.get("endpoint", "")
 
-        if (not version or version != zconfig.VERSION) and request.endpoint.startswith(
-            "sequencer",
+        if (not version or version != zconfig.VERSION) and endpoint.startswith(
+            "sequencer"
         ):
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_NODE_VERSION,
                 errors.ErrorMessages.INVALID_NODE_VERSION,
             )
-        if (version and version != zconfig.VERSION) and request.endpoint.startswith(
-            "node",
-        ):
+        if version and version != zconfig.VERSION and endpoint.startswith("node"):
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_NODE_VERSION,
                 errors.ErrorMessages.INVALID_NODE_VERSION,
             )
+        return await func(request, *args, **kwargs)
 
-        # Proceed to the original function
-        return func(*args, **kwargs)
-
-    return decorated_function
+    return cast(F, wrapper)
 
 
-def is_synced(func: Callable[..., Response]) -> Callable[..., Response]:
+def is_synced(func: F) -> F:
     """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Response:
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         if not zconfig.get_synced_flag():
             return response_utils.error_response(
                 errors.ErrorCodes.NOT_SYNCED,
                 errors.ErrorMessages.NOT_SYNCED,
             )
+        return await func(*args, **kwargs)
 
-        return func(*args, **kwargs)
-
-    return wrapper
+    return cast(F, wrapper)
 
 
-def validate_body_keys(
-    required_keys: list[str],
-) -> Callable[[Callable[..., Response]], Callable[..., Response]]:
+def validate_body_keys(required_keys: list[str]) -> Callable[[F], F]:
     """Decorator to validate required keys in the request JSON body."""
 
-    def decorator(func: Callable[..., Response]) -> Callable[..., Response]:
+    def decorator(func: F) -> F:
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Response:
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
             try:
-                req_data = request.get_json()
+                req_data = await request.json()
                 if not isinstance(req_data, dict):
                     return response_utils.error_response(
                         errors.ErrorCodes.INVALID_REQUEST,
@@ -155,17 +145,15 @@ def validate_body_keys(
                 )
 
             if all(key in req_data for key in required_keys):
-                return func(*args, **kwargs)  # Proceed if all keys are present
+                return await func(request, *args, **kwargs)
 
-            # Build error message for missing keys
-            missing_keys = [key for key in required_keys if key not in req_data]
-            message = "Required keys are missing: " + ", ".join(missing_keys)
+            missing = [key for key in required_keys if key not in req_data]
             return response_utils.error_response(
                 errors.ErrorCodes.INVALID_REQUEST,
-                message,
+                f"Required keys are missing: {', '.join(missing)}",
             )
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator
 
@@ -192,15 +180,6 @@ def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
         return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
     except Exception:
         return False
-
-
-def validate_keys(req_data: dict[str, Any], required_keys: list[str]) -> str:
-    """Validate a request by checking if required keys are present."""
-    if all(key in req_data for key in required_keys):
-        return ""
-    missing_keys: list[str] = [key for key in required_keys if key not in req_data]
-    message: str = "Required keys are missing: " + ", ".join(missing_keys)
-    return message
 
 
 def get_next_sequencer_id(old_sequencer_id: str) -> str:
