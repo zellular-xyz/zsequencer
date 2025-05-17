@@ -1,4 +1,4 @@
-"""This module defines the Flask blueprint for sequencer-related routes."""
+"""This module defines the FastAPI router for sequencer."""
 
 from typing import Any
 

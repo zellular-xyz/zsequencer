@@ -1,4 +1,4 @@
-"""This module defines the Flask blueprint for node-related routes."""
+"""This module defines the FastAPI router for node."""
 
 import threading
 import time

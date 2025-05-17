@@ -72,7 +72,7 @@ async def run_sequencer_tasks_async() -> None:
 
 def check_node_reachability() -> None:
     """Check node reachability"""
-    time.sleep(5)  # Give Flask time to start
+    time.sleep(5)  # Give the server time to start
 
     try:
         host, port = (
