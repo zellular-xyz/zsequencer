@@ -125,7 +125,7 @@ def main() -> None:
         host="0.0.0.0",
         port=zconfig.PORT,
         reload=False,
-        log_level="info",
+        log_level="warning",
     )
 
 
