@@ -5,14 +5,13 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
 
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
-from common.errors import ErrorCodes, ErrorMessages
+from common.errors import ErrorCodes, ErrorMessages, HttpErrorCodes
 from common.logger import zlogger
-from common.response_utils import error_response, success_response
+from common.response_utils import AppException, success_response
 from config import zconfig
 from node import switch
 from settings import MODE_PROD
@@ -25,22 +24,18 @@ router = APIRouter()
 @router.put(
     "/batches",
     dependencies=[
-        Depends(utils.validate_version),
+        Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(utils.not_paused),
     ],
 )
 async def put_bulk_batches(request: Request):
     if "posting" not in zconfig.NODE["roles"]:
-        return error_response(
+        raise AppException(
             error_code=ErrorCodes.IS_NOT_POSTING_NODE,
             error_message=ErrorMessages.IS_NOT_POSTING_NODE,
-        )
-
-    if zdb.pause_node.is_set():
-        return error_response(
-            error_code=ErrorCodes.IS_PAUSED,
-            error_message=ErrorMessages.IS_PAUSED,
+            status_code=HttpErrorCodes.IS_NOT_POSTING_NODE,
         )
 
     batches_mapping = await request.json()
@@ -68,38 +63,41 @@ async def put_bulk_batches(request: Request):
 @router.put(
     "/{app_name}/batches",
     dependencies=[
-        Depends(utils.validate_version),
+        Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(utils.not_paused),
     ],
 )
 async def put_batches(app_name: str, request: Request):
-    if zdb.pause_node.is_set():
-        return error_response(
-            error_code=ErrorCodes.IS_PAUSED,
-            error_message=ErrorMessages.IS_PAUSED,
-        )
-
     if "posting" not in zconfig.NODE["roles"]:
-        return error_response(
+        raise AppException(
             error_code=ErrorCodes.IS_NOT_POSTING_NODE,
             error_message=ErrorMessages.IS_NOT_POSTING_NODE,
+            status_code=HttpErrorCodes.IS_NOT_POSTING_NODE,
         )
 
     if not app_name:
-        return error_response(ErrorCodes.INVALID_REQUEST, "app_name is required")
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message="app_name is required.",
+        )
 
     if app_name not in list(zconfig.APPS):
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message=f"Invalid app name: {app_name}.",
+        )
 
     # Read raw body bytes, decode Latin-1
     body_bytes = await request.body()
     data = body_bytes.decode("latin-1")
 
     if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
-        return error_response(
+        raise AppException(
             error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
             error_message=ErrorMessages.BATCH_SIZE_EXCEEDED,
+            status_code=HttpErrorCodes.BATCH_SIZE_EXCEEDED,
         )
 
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
@@ -107,18 +105,23 @@ async def put_batches(app_name: str, request: Request):
     return success_response(data={}, message="The batch is received successfully.")
 
 
-@node_blueprint.route("/sign_sync_point", methods=["POST"])
-@utils.validate_version
-@utils.not_sequencer
-@utils.is_synced
-@utils.validate_body_keys(
-    required_keys=["app_name", "state", "index", "hash", "chaining_hash"],
+@router.post(
+    "/sign_sync_point",
+    dependencies=[
+        Depends(utils.validate_version("node")),
+        Depends(utils.not_sequencer),
+        Depends(utils.is_synced),
+        Depends(
+            utils.validate_body_keys(
+                required_keys=["app_name", "state", "index", "hash", "chaining_hash"]
+            )
+        ),
+    ],
 )
-def post_sign_sync_point() -> Response:
-    """Sign a batch."""
-    # TODO: only the sequencer should be able to call this route
-    req_data: dict[str, Any] = request.get_json(silent=True) or {}
+async def post_sign_sync_point(request: Request):
+    req_data: dict[str, Any] = await request.json()
 
+    # TODO: only the sequencer should be able to call this route
     req_data["signature"] = tasks.sign_sync_point(req_data)
     return success_response(data=req_data)
 
@@ -126,7 +129,7 @@ def post_sign_sync_point() -> Response:
 @router.post(
     "/dispute",
     dependencies=[
-        Depends(utils.validate_version),
+        Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(
@@ -145,7 +148,11 @@ async def post_dispute(request: Request):
     req_data: dict[str, Any] = await request.json()
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
-        return error_response(ErrorCodes.INVALID_SEQUENCER)
+        raise AppException(
+            error_code=ErrorCodes.INVALID_SEQUENCER,
+            error_message=ErrorMessages.INVALID_SEQUENCER,
+            status_code=HttpErrorCodes.INVALID_SEQUENCER,
+        )
 
     if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
@@ -158,17 +165,22 @@ async def post_dispute(request: Request):
         }
         return success_response(data=data)
 
+    # fixme: why init missed batches here?
     for app_name, missed_batches in req_data["apps_missed_batches"].items():
         batches = [batch["body"] for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
 
-    return error_response(ErrorCodes.ISSUE_NOT_FOUND)
+    raise AppException(
+        error_code=ErrorCodes.ISSUE_NOT_FOUND,
+        error_message=ErrorMessages.ISSUE_NOT_FOUND,
+        status_code=HttpErrorCodes.ISSUE_NOT_FOUND,
+    )
 
 
 @router.post(
     "/switch",
     dependencies=[
-        Depends(utils.validate_version),
+        Depends(utils.validate_version("node")),
         Depends(utils.validate_body_keys(required_keys=["timestamp", "proofs"])),
     ],
 )
@@ -177,7 +189,11 @@ async def post_switch_sequencer(request: Request):
     proofs = req_data["proofs"]
 
     if not utils.is_switch_approved(proofs):
-        return error_response(ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED)
+        raise AppException(
+            error_code=ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED,
+            error_message=ErrorMessages.SEQUENCER_CHANGE_NOT_APPROVED,
+            status_code=HttpErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED,
+        )
 
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
@@ -198,7 +214,11 @@ async def get_state():
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
     ):
-        return error_response(errors.ErrorCodes.IS_SEQUENCER)
+        raise AppException(
+            error_code=ErrorCodes.IS_SEQUENCER,
+            error_message=ErrorMessages.IS_SEQUENCER,
+            status_code=HttpErrorCodes.IS_SEQUENCER,
+        )
 
     data: dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
@@ -241,28 +261,34 @@ async def get_state():
 
 
 @router.get(
-    "/{app_name}/batches/{state}/last", dependencies=[Depends(utils.validate_version)]
+    "/{app_name}/batches/{state}/last",
+    dependencies=[Depends(utils.validate_version("node"))],
 )
 async def get_last_batch_by_state(app_name: str, state: str):
     if app_name not in zconfig.APPS:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message="Invalid app name.",
+        )
 
     if state not in {"locked", "finalized"}:
-        return error_response(
-            ErrorCodes.INVALID_REQUEST,
-            "Invalid state. Must be 'locked' or 'finalized'.",
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message="Invalid state. Must be 'locked' or 'finalized'.",
         )
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
     return success_response(data=batch_record_to_stateful_batch(last_batch_record))
 
 
-@router.get("/batches/{state}/last", dependencies=[Depends(utils.validate_version)])
+@router.get(
+    "/batches/{state}/last", dependencies=[Depends(utils.validate_version("node"))]
+)
 async def get_last_batches_in_bulk_mode(state: str):
     if state not in {"locked", "finalized"}:
-        return error_response(
-            ErrorCodes.INVALID_REQUEST,
-            "Invalid state. Must be 'locked' or 'finalized'.",
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message="Invalid state. Must be 'locked' or 'finalized'.",
         )
 
     last_batch_records = {
@@ -275,11 +301,15 @@ async def get_last_batches_in_bulk_mode(state: str):
 
 
 @router.get(
-    "/{app_name}/batches/{state}", dependencies=[Depends(utils.validate_version)]
+    "/{app_name}/batches/{state}",
+    dependencies=[Depends(utils.validate_version("node"))],
 )
 async def get_batches(app_name: str, state: str, after: int = Query(0, ge=0)):
     if app_name not in zconfig.APPS:
-        return error_response(ErrorCodes.INVALID_REQUEST, "Invalid app name.")
+        raise AppException(
+            error_code=ErrorCodes.INVALID_REQUEST,
+            error_message="Invalid app name.",
+        )
 
     batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
     if not batch_sequence:

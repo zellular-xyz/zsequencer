@@ -4,158 +4,119 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from functools import wraps
-from typing import Any, Awaitable, TypeVar, Union, cast
+from typing import Any
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
 from fastapi import Request
-from fastapi.responses import JSONResponse
 from web3 import Account
 
 from config import zconfig
 from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 
-from . import errors, response_utils
-
-Decorator = Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]
-F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
+from .errors import ErrorCodes, ErrorMessages, HttpErrorCodes
+from .response_utils import AppException
 
 
-def sequencer_simulation_malfunction(func: F) -> F:
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if sequencer_sabotage_simulation_state.out_of_reach:
-            return response_utils.error_response(
-                errors.ErrorCodes.SEQUENCER_OUT_OF_REACH,
-                errors.ErrorMessages.SEQUENCER_OUT_OF_REACH,
-            )
-        return await func(*args, **kwargs)
-
-    return cast(F, wrapper)
+def sequencer_simulation_malfunction(request: Request) -> None:
+    if sequencer_sabotage_simulation_state.out_of_reach:
+        return AppException(
+            error_code=ErrorCodes.SEQUENCER_OUT_OF_REACH,
+            error_message=ErrorMessages.SEQUENCER_OUT_OF_REACH,
+            status_code=HttpErrorCodes.SEQUENCER_OUT_OF_REACH,
+        )
 
 
-def conditional_decorator(
-    condition: bool | Callable[[], bool],
-    decorator: Callable[[F], F],
-) -> Callable[[F], F]:
-    """A decorator that applies another decorator only if a condition is True.
-
-    Args:
-        condition: A boolean or a callable that returns a boolean.
-        decorator: The decorator to apply if the condition is True.
-
-    Returns:
-        A decorator that conditionally applies the provided decorator.
-
-    """
-
-    def decorator_factory(func: F) -> F:
-        should_decorate = condition() if callable(condition) else condition
-        return decorator(func) if should_decorate else func
-
-    return decorator_factory
-
-
-def sequencer_only(func: F) -> F:
+def sequencer_only(request: Request) -> None:
     """Decorator to restrict access to sequencer-only functions."""
-
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-            return response_utils.error_response(errors.ErrorCodes.IS_NOT_SEQUENCER)
-        return await func(*args, **kwargs)
-
-    return cast(F, wrapper)
+    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+        raise AppException(
+            error_code=ErrorCodes.IS_NOT_SEQUENCER,
+            error_message=ErrorMessages.IS_NOT_SEQUENCER,
+            status_code=HttpErrorCodes.IS_NOT_SEQUENCER,
+        )
 
 
-def not_sequencer(func: F) -> F:
+def not_sequencer(request: Request) -> None:
     """Decorator to restrict access to non-sequencer functions."""
-
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
-            return response_utils.error_response(errors.ErrorCodes.IS_SEQUENCER)
-        return await func(*args, **kwargs)
-
-    return cast(F, wrapper)
+    if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+        raise AppException(
+            error_code=ErrorCodes.IS_SEQUENCER,
+            error_message=ErrorMessages.IS_SEQUENCER,
+            status_code=HttpErrorCodes.IS_SEQUENCER,
+        )
 
 
-def validate_version(func: F) -> F:
+def validate_version(role: str) -> Callable[[Request], None]:
     """Decorator to validate the 'Version' header against the expected version.
 
     Checks if the request's 'Version' header matches zconfig.VERSION for endpoints
     starting with 'sequencer' or 'node'. Returns an error response if validation fails.
     """
 
-    @wraps(func)
-    async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+    def validator(request: Request) -> None:
         version = request.headers.get("Version", "")
-        endpoint = request.scope.get("endpoint", "")
-
-        if (not version or version != zconfig.VERSION) and endpoint.startswith(
-            "sequencer"
-        ):
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_NODE_VERSION,
-                errors.ErrorMessages.INVALID_NODE_VERSION,
+        cond1 = (not version or version != zconfig.VERSION) and role == "sequencer"
+        cond2 = version and version != zconfig.VERSION and role == "node"
+        if cond1 or cond2:
+            raise AppException(
+                error_code=ErrorCodes.INVALID_NODE_VERSION,
+                error_message=ErrorMessages.INVALID_NODE_VERSION,
+                status_code=HttpErrorCodes.INVALID_NODE_VERSION,
             )
-        if version and version != zconfig.VERSION and endpoint.startswith("node"):
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_NODE_VERSION,
-                errors.ErrorMessages.INVALID_NODE_VERSION,
-            )
-        return await func(request, *args, **kwargs)
 
-    return cast(F, wrapper)
+    return validator
 
 
-def is_synced(func: F) -> F:
+def is_synced(request: Request) -> None:
     """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
-
-    @wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if not zconfig.get_synced_flag():
-            return response_utils.error_response(
-                errors.ErrorCodes.NOT_SYNCED,
-                errors.ErrorMessages.NOT_SYNCED,
-            )
-        return await func(*args, **kwargs)
-
-    return cast(F, wrapper)
+    if not zconfig.get_synced_flag():
+        raise AppException(
+            error_code=ErrorCodes.NOT_SYNCED,
+            error_message=ErrorMessages.NOT_SYNCED,
+            status_code=HttpErrorCodes.NOT_SYNCED,
+        )
 
 
-def validate_body_keys(required_keys: list[str]) -> Callable[[F], F]:
+def not_paused(request: Request) -> None:
+    """Decorator to ensure the service is not paused."""
+    if zconfig.is_paused:
+        raise AppException(
+            error_code=ErrorCodes.IS_PAUSED,
+            error_message=ErrorMessages.IS_PAUSED,
+            status_code=HttpErrorCodes.IS_PAUSED,
+        )
+
+
+def validate_body_keys(required_keys: list[str]) -> Callable[[Request], None]:
     """Decorator to validate required keys in the request JSON body."""
 
-    def decorator(func: F) -> F:
-        @wraps(func)
-        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
-            try:
-                req_data = await request.json()
-                if not isinstance(req_data, dict):
-                    return response_utils.error_response(
-                        errors.ErrorCodes.INVALID_REQUEST,
-                        "Request body must be a JSON object",
-                    )
-            except Exception:
-                return response_utils.error_response(
-                    errors.ErrorCodes.INVALID_REQUEST,
-                    "Failed to parse JSON request body",
+    async def validator(request: Request) -> None:
+        try:
+            req_data = await request.json()
+            if not isinstance(req_data, dict):
+                raise AppException(
+                    error_code=ErrorCodes.INVALID_REQUEST,
+                    error_message="Request body must be a JSON object",
+                    status_code=HttpErrorCodes.INVALID_REQUEST,
                 )
 
-            if all(key in req_data for key in required_keys):
-                return await func(request, *args, **kwargs)
-
-            missing = [key for key in required_keys if key not in req_data]
-            return response_utils.error_response(
-                errors.ErrorCodes.INVALID_REQUEST,
-                f"Required keys are missing: {', '.join(missing)}",
+        except Exception:
+            raise AppException(
+                error_code=ErrorCodes.INVALID_REQUEST,
+                error_message="Failed to parse JSON request body",
+                status_code=HttpErrorCodes.INVALID_REQUEST,
             )
 
-        return cast(F, wrapper)
+        if not all(key in req_data for key in required_keys):
+            missing = [key for key in required_keys if key not in req_data]
+            raise AppException(
+                error_code=ErrorCodes.INVALID_REQUEST,
+                error_message=f"Required keys are missing: {', '.join(missing)}",
+                status_code=HttpErrorCodes.INVALID_REQUEST,
+            )
 
-    return decorator
+    return validator
 
 
 def eth_sign(message: str) -> str:

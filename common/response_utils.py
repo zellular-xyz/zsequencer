@@ -2,9 +2,8 @@
 
 from typing import Any
 
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-
-from .errors import ErrorMessages, HttpErrorCodes
 
 
 def success_response(
@@ -22,18 +21,11 @@ def success_response(
     )
 
 
-def error_response(error_code: str, error_message: str = "") -> JSONResponse:
-    if not error_message:
-        error_message = getattr(ErrorMessages, error_code, "An unknown error occurred.")
-    http_status = getattr(HttpErrorCodes, error_code, 500)
-    return JSONResponse(
-        content={
-            "status": "error",
-            "error": {
-                "code": error_code,
-                "message": error_message,
-            },
-            "data": None,
-        },
-        status_code=http_status,
-    )
+class AppException(HTTPException):
+    def __init__(self, error_code: str, error_message: str, status_code: int = 400):
+        self.error_code = error_code
+        self.error_message = error_message
+        super().__init__(
+            status_code=status_code,
+            detail={"code": error_code, "message": error_message},
+        )

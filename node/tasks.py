@@ -279,7 +279,7 @@ async def gather_disputes() -> dict[str, Any] | None:
 async def send_dispute_requests() -> None:
     """Send dispute requests if there are missed batches."""
     is_not_synced = not zconfig.get_synced_flag()
-    is_paused = zdb.pause_node.is_set()
+    is_paused = zconfig.is_paused
 
     no_missed_batches = not zdb.has_missed_batches()
     no_delayed_batches = not zdb.has_delayed_batches()

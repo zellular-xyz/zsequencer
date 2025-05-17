@@ -8,13 +8,12 @@ import threading
 import time
 
 import requests
+import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-import secrets
 
 from common.db import zdb
 from common.logger import zlogger
@@ -23,7 +22,6 @@ from node import tasks as node_tasks
 from node.routers import router as node_router
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
-from sequencer.routes import sequencer_blueprint
 
 app = FastAPI()
 
@@ -39,7 +37,7 @@ def base_redirect():
 def run_node_tasks() -> None:
     """Periodically run node tasks."""
     while True:
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
+        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             time.sleep(0.1)
             continue
         if not zdb.is_node_reachable:
@@ -66,7 +64,7 @@ async def run_sequencer_tasks_async() -> None:
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
-        if zdb.pause_node.is_set():
+        if zconfig.is_paused:
             continue
 
         await sequencer_tasks.sync()
@@ -120,7 +118,15 @@ def main() -> None:
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
-    zlogger.info("Starting flask on port %s", zconfig.PORT)
+    zlogger.info("Starting service on port %s", zconfig.PORT)
+
+    uvicorn.run(
+        "run:app",
+        host="0.0.0.0",
+        port=zconfig.PORT,
+        reload=False,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":

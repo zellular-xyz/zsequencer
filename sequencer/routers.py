@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from common import utils
 from common.batch import get_batch_size_kb
 from common.db import zdb
-from common.errors import ErrorCodes, ErrorMessages
-from common.response_utils import error_response, success_response
+from common.errors import ErrorCodes, ErrorMessages, HttpErrorCodes
+from common.response_utils import AppException, success_response
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
@@ -19,8 +19,9 @@ router = APIRouter()
     "/batches",
     dependencies=[
         Depends(utils.sequencer_only),
+        Depends(utils.not_paused),
         Depends(utils.sequencer_simulation_malfunction),
-        Depends(utils.validate_version),
+        Depends(utils.validate_version("sequencer")),
         Depends(
             utils.validate_body_keys(
                 required_keys=[
@@ -41,27 +42,24 @@ router = APIRouter()
     ],
 )
 async def put_batches(request: Request) -> Response:
-    if zdb.pause_node.is_set():
-        return error_response(
-            error_code=ErrorCodes.IS_PAUSED, error_message=ErrorMessages.IS_PAUSED
-        )
-
     req_data = await request.json()
     initializing_batches = req_data["batches"]
 
     if not try_acquire_rate_limit_of_other_nodes(
         node_id=req_data["node_id"], batches=initializing_batches
     ):
-        return error_response(
+        raise AppException(
             error_code=ErrorCodes.BATCHES_LIMIT_EXCEEDED,
             error_message=ErrorMessages.BATCHES_LIMIT_EXCEEDED,
+            status_code=HttpErrorCodes.BATCHES_LIMIT_EXCEEDED,
         )
 
     for batch in initializing_batches:
         if get_batch_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
-            return error_response(
+            raise AppException(
                 error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
                 error_message=ErrorMessages.BATCH_SIZE_EXCEEDED,
+                status_code=HttpErrorCodes.BATCH_SIZE_EXCEEDED,
             )
 
     concat_hash = "".join(batch["hash"] for batch in req_data["batches"])
@@ -76,7 +74,11 @@ async def put_batches(request: Request) -> Response:
         or str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys())
         or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
-        return error_response(ErrorCodes.PERMISSION_DENIED)
+        raise AppException(
+            error_code=ErrorCodes.PERMISSION_DENIED,
+            error_message=ErrorMessages.PERMISSION_DENIED,
+            status_code=HttpErrorCodes.PERMISSION_DENIED,
+        )
 
     data = _put_batches(req_data)
     return success_response(data=data)

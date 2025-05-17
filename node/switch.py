@@ -80,7 +80,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
         return
 
     with switch_lock:
-        zdb.pause_node.set()
+        zconfig.pause()
 
         try:
             zconfig.update_sequencer(new_sequencer_id)
@@ -171,7 +171,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)
         finally:
-            zdb.pause_node.clear()
+            zconfig.unpause()
 
 
 def _prepare_batches(

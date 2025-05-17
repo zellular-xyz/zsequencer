@@ -6,6 +6,7 @@ import json
 import os
 import pstats
 import sys
+import threading
 import time
 from random import randbytes
 from typing import Any
@@ -36,6 +37,7 @@ class Config:
         self.ADDRESS = None
 
         self._SYNCED_FLAG = False
+        self._PAUSED = threading.Event()
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -84,6 +86,16 @@ class Config:
         }
         # Init node encryption and networks configurations
         self._init_node()
+
+    @property
+    def is_paused(self):
+        return self._PAUSED.is_set()
+
+    def pause(self):
+        return self._PAUSED.set()
+
+    def unpause(self):
+        return self._PAUSED.clear()
 
     def get_synced_flag(self):
         return self._SYNCED_FLAG

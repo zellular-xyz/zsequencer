@@ -13,6 +13,13 @@ class HttpErrorCodes:
     SEQUENCER_CHANGE_NOT_APPROVED: int = 403
     PERMISSION_DENIED: int = 403
     NOT_FOUND: int = 404
+    SEQUENCER_OUT_OF_REACH: int = 503
+    INVALID_NODE_VERSION: int = 400
+    NOT_SYNCED: int = 503
+    IS_PAUSED: int = 503
+    BATCHES_LIMIT_EXCEEDED: int = 429
+    BATCH_SIZE_EXCEEDED: int = 429
+    IS_NOT_POSTING_NODE: 403
 
 
 class ErrorCodes:
