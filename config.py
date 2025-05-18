@@ -88,22 +88,22 @@ class Config:
         self._init_node()
 
     @property
-    def is_paused(self):
+    def is_paused(self) -> bool:
         return self._PAUSED.is_set()
 
-    def pause(self):
-        return self._PAUSED.set()
+    def pause(self) -> None:
+        self._PAUSED.set()
 
-    def unpause(self):
-        return self._PAUSED.clear()
+    def unpause(self) -> None:
+        self._PAUSED.clear()
 
-    def get_synced_flag(self):
+    def get_synced_flag(self) -> bool:
         return self._SYNCED_FLAG
 
-    def set_synced_flag(self):
+    def set_synced_flag(self) -> None:
         self._SYNCED_FLAG = True
 
-    def get_mode(self):
+    def get_mode(self) -> str:
         return self._MODE
 
     @staticmethod
