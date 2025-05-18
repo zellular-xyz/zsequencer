@@ -52,11 +52,6 @@ class IssueNotFound(BaseHTTPException):
     message = "The specified issue was not found."
 
 
-class PKAlreadySet(BaseHTTPException):
-    status_code = status.HTTP_403_FORBIDDEN
-    message = "The public shares have already been set."
-
-
 class SequencerChangeNotApproved(BaseHTTPException):
     status_code = status.HTTP_403_FORBIDDEN
     message = "The sequencer change request is not approved."
@@ -65,11 +60,6 @@ class SequencerChangeNotApproved(BaseHTTPException):
 class PermissionDenied(BaseHTTPException):
     status_code = status.HTTP_403_FORBIDDEN
     message = "Permission denied."
-
-
-class NotFound(BaseHTTPException):
-    status_code = status.HTTP_404_NOT_FOUND
-    message = "Not found."
 
 
 class SequencerOutOfReach(BaseHTTPException):
