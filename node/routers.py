@@ -9,9 +9,17 @@ from fastapi import APIRouter, Depends, Query, Request
 from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
-from common.errors import ErrorCodes, ErrorMessages, HttpErrorCodes
+from common.errors import (
+    BatchSizeExceeded,
+    InvalidRequest,
+    InvalidSequencer,
+    IsNotPostingNode,
+    IsSequencer,
+    IssueNotFound,
+    SequencerChangeNotApproved,
+)
 from common.logger import zlogger
-from common.response_utils import AppException, success_response
+from common.response_utils import success_response
 from config import zconfig
 from node import switch
 from settings import MODE_PROD
@@ -32,11 +40,7 @@ router = APIRouter()
 )
 async def put_bulk_batches(request: Request):
     if "posting" not in zconfig.NODE["roles"]:
-        raise AppException(
-            error_code=ErrorCodes.IS_NOT_POSTING_NODE,
-            error_message=ErrorMessages.IS_NOT_POSTING_NODE,
-            status_code=HttpErrorCodes.IS_NOT_POSTING_NODE,
-        )
+        raise IsNotPostingNode()
 
     batches_mapping = await request.json()
     valid_apps = set(zconfig.APPS)
@@ -71,34 +75,20 @@ async def put_bulk_batches(request: Request):
 )
 async def put_batches(app_name: str, request: Request):
     if "posting" not in zconfig.NODE["roles"]:
-        raise AppException(
-            error_code=ErrorCodes.IS_NOT_POSTING_NODE,
-            error_message=ErrorMessages.IS_NOT_POSTING_NODE,
-            status_code=HttpErrorCodes.IS_NOT_POSTING_NODE,
-        )
+        raise IsNotPostingNode()
 
     if not app_name:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message="app_name is required.",
-        )
+        raise InvalidRequest("app_name is required.")
 
     if app_name not in list(zconfig.APPS):
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message=f"Invalid app name: {app_name}.",
-        )
+        raise InvalidRequest(f"Invalid app name: {app_name}.")
 
     # Read raw body bytes, decode Latin-1
     body_bytes = await request.body()
     data = body_bytes.decode("latin-1")
 
     if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
-        raise AppException(
-            error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
-            error_message=ErrorMessages.BATCH_SIZE_EXCEEDED,
-            status_code=HttpErrorCodes.BATCH_SIZE_EXCEEDED,
-        )
+        raise BatchSizeExceeded()
 
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
@@ -148,11 +138,7 @@ async def post_dispute(request: Request):
     req_data: dict[str, Any] = await request.json()
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_SEQUENCER,
-            error_message=ErrorMessages.INVALID_SEQUENCER,
-            status_code=HttpErrorCodes.INVALID_SEQUENCER,
-        )
+        raise InvalidSequencer()
 
     if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
@@ -170,11 +156,7 @@ async def post_dispute(request: Request):
         batches = [batch["body"] for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
 
-    raise AppException(
-        error_code=ErrorCodes.ISSUE_NOT_FOUND,
-        error_message=ErrorMessages.ISSUE_NOT_FOUND,
-        status_code=HttpErrorCodes.ISSUE_NOT_FOUND,
-    )
+    raise IssueNotFound()
 
 
 @router.post(
@@ -189,11 +171,7 @@ async def post_switch_sequencer(request: Request):
     proofs = req_data["proofs"]
 
     if not utils.is_switch_approved(proofs):
-        raise AppException(
-            error_code=ErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED,
-            error_message=ErrorMessages.SEQUENCER_CHANGE_NOT_APPROVED,
-            status_code=HttpErrorCodes.SEQUENCER_CHANGE_NOT_APPROVED,
-        )
+        raise SequencerChangeNotApproved()
 
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
@@ -214,11 +192,7 @@ async def get_state():
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
     ):
-        raise AppException(
-            error_code=ErrorCodes.IS_SEQUENCER,
-            error_message=ErrorMessages.IS_SEQUENCER,
-            status_code=HttpErrorCodes.IS_SEQUENCER,
-        )
+        raise IsSequencer()
 
     data: dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
@@ -266,16 +240,10 @@ async def get_state():
 )
 async def get_last_batch_by_state(app_name: str, state: str):
     if app_name not in zconfig.APPS:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message="Invalid app name.",
-        )
+        raise InvalidRequest("Invalid app name.")
 
     if state not in {"locked", "finalized"}:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message="Invalid state. Must be 'locked' or 'finalized'.",
-        )
+        raise InvalidRequest("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
     return success_response(data=batch_record_to_stateful_batch(last_batch_record))
@@ -286,10 +254,7 @@ async def get_last_batch_by_state(app_name: str, state: str):
 )
 async def get_last_batches_in_bulk_mode(state: str):
     if state not in {"locked", "finalized"}:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message="Invalid state. Must be 'locked' or 'finalized'.",
-        )
+        raise InvalidRequest("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_records = {
         app_name: batch_record_to_stateful_batch(
@@ -306,10 +271,7 @@ async def get_last_batches_in_bulk_mode(state: str):
 )
 async def get_batches(app_name: str, state: str, after: int = Query(0, ge=0)):
     if app_name not in zconfig.APPS:
-        raise AppException(
-            error_code=ErrorCodes.INVALID_REQUEST,
-            error_message="Invalid app name.",
-        )
+        raise InvalidRequest("Invalid app name.")
 
     batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
     if not batch_sequence:

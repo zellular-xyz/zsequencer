@@ -14,7 +14,6 @@ import requests
 from common import bls, utils
 from common.batch_sequence import BatchSequence
 from common.db import zdb
-from common.errors import ErrorCodes, ErrorMessages
 from common.logger import zlogger
 from config import zconfig
 from node.rate_limit import (
@@ -110,14 +109,14 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     try:
         response = requests.put(url=url, data=data, headers=zconfig.HEADERS).json()
         if response["status"] == "error":
-            if response["error"]["code"] == ErrorCodes.INVALID_NODE_VERSION:
+            if response["error"]["code"] == "InvalidNodeVersion":
                 zlogger.warning(response["error"]["message"])
                 return {}
-            if response["error"]["code"] == ErrorCodes.SEQUENCER_OUT_OF_REACH:
+            if response["error"]["code"] == "SequencerOutOfReach":
                 zlogger.warning(response["error"]["message"])
                 response["data"] = {}
-                raise Exception(ErrorMessages.SEQUENCER_OUT_OF_REACH)
-            if response["error"]["code"] == ErrorCodes.BATCHES_LIMIT_EXCEEDED:
+                raise Exception(response["error"]["message"])
+            if response["error"]["code"] == "BatchesLimitExceeded":
                 zlogger.warning(response["error"]["message"])
             zdb.add_missed_batches(app_name, initialized_batches.values())
             return {}

@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from common import utils
 from common.batch import get_batch_size_kb
 from common.db import zdb
-from common.errors import ErrorCodes, ErrorMessages, HttpErrorCodes
-from common.response_utils import AppException, success_response
+from common.errors import BatchesLimitExceeded, BatchSizeExceeded, PermissionDenied
+from common.response_utils import success_response
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
@@ -48,19 +48,11 @@ async def put_batches(request: Request) -> Response:
     if not try_acquire_rate_limit_of_other_nodes(
         node_id=req_data["node_id"], batches=initializing_batches
     ):
-        raise AppException(
-            error_code=ErrorCodes.BATCHES_LIMIT_EXCEEDED,
-            error_message=ErrorMessages.BATCHES_LIMIT_EXCEEDED,
-            status_code=HttpErrorCodes.BATCHES_LIMIT_EXCEEDED,
-        )
+        raise BatchesLimitExceeded()
 
     for batch in initializing_batches:
         if get_batch_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
-            raise AppException(
-                error_code=ErrorCodes.BATCH_SIZE_EXCEEDED,
-                error_message=ErrorMessages.BATCH_SIZE_EXCEEDED,
-                status_code=HttpErrorCodes.BATCH_SIZE_EXCEEDED,
-            )
+            raise BatchSizeExceeded()
 
     concat_hash = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified = utils.is_eth_sig_verified(
@@ -74,11 +66,7 @@ async def put_batches(request: Request) -> Response:
         or str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys())
         or req_data["app_name"] not in list(zconfig.APPS.keys())
     ):
-        raise AppException(
-            error_code=ErrorCodes.PERMISSION_DENIED,
-            error_message=ErrorMessages.PERMISSION_DENIED,
-            status_code=HttpErrorCodes.PERMISSION_DENIED,
-        )
+        raise PermissionDenied()
 
     data = _put_batches(req_data)
     return success_response(data=data)
