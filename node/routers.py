@@ -21,10 +21,8 @@ from common.errors import (
 from common.logger import zlogger
 from common.response_utils import success_response
 from config import zconfig
-from node import switch
+from node import switch, tasks
 from settings import MODE_PROD
-
-from node import tasks
 
 router = APIRouter()
 

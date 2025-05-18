@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Request, Response
 from common import utils
 from common.batch import get_batch_size_kb
 from common.db import zdb
-from common.errors import BatchesLimitExceeded, BatchSizeExceeded, PermissionDenied
+from common.errors import (
+    BatchesLimitExceeded,
+    BatchSizeExceeded,
+    InvalidRequest,
+    PermissionDenied,
+)
 from common.response_utils import success_response
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
@@ -61,12 +66,12 @@ async def put_batches(request: Request) -> Response:
         message=concat_hash,
     )
 
-    if (
-        not is_eth_sig_verified
-        or str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys())
-        or req_data["app_name"] not in list(zconfig.APPS.keys())
-    ):
-        raise PermissionDenied()
+    if not is_eth_sig_verified:
+        raise PermissionDenied(f"the sig on the {req_data=} can not be verified.")
+    if str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys()):
+        raise PermissionDenied(f"{req_data['node_id']} is not a posting node.")
+    if req_data["app_name"] not in list(zconfig.APPS.keys()):
+        raise InvalidRequest(f"{req_data["app_name"]} is not a valid app name.")
 
     data = _put_batches(req_data)
     return success_response(data=data)
