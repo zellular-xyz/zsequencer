@@ -2,17 +2,8 @@
 
 from fastapi import HTTPException, status
 
-from common.logger import zlogger
 
-
-class LoggingMixin:
-    def log(self):
-        zlogger.error(
-            f"Error occurred: Code: {self.__class__.__name__}, Status: {self.status_code}, Message: {self.message}"
-        )
-
-
-class BaseHTTPException(LoggingMixin, HTTPException):
+class BaseHTTPException(HTTPException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     message = "An error occurred"
 
@@ -27,7 +18,6 @@ class BaseHTTPException(LoggingMixin, HTTPException):
                 },
             },
         )
-        self.log()
 
 
 class InvalidRequest(BaseHTTPException):
