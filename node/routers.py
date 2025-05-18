@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 
 from common import utils
 from common.batch import batch_record_to_stateful_batch
@@ -36,7 +37,7 @@ router = APIRouter()
         Depends(utils.not_paused),
     ],
 )
-async def put_bulk_batches(request: Request):
+async def put_bulk_batches(request: Request) -> JSONResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNode()
 
@@ -71,7 +72,7 @@ async def put_bulk_batches(request: Request):
         Depends(utils.not_paused),
     ],
 )
-async def put_batches(app_name: str, request: Request):
+async def put_batches(app_name: str, request: Request) -> JSONResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNode()
 
@@ -106,7 +107,7 @@ async def put_batches(app_name: str, request: Request):
         ),
     ],
 )
-async def post_sign_sync_point(request: Request):
+async def post_sign_sync_point(request: Request) -> JSONResponse:
     req_data: dict[str, Any] = await request.json()
 
     # TODO: only the sequencer should be able to call this route
@@ -132,7 +133,7 @@ async def post_sign_sync_point(request: Request):
         ),
     ],
 )
-async def post_dispute(request: Request):
+async def post_dispute(request: Request) -> JSONResponse:
     req_data: dict[str, Any] = await request.json()
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
@@ -164,7 +165,7 @@ async def post_dispute(request: Request):
         Depends(utils.validate_body_keys(required_keys=["timestamp", "proofs"])),
     ],
 )
-async def post_switch_sequencer(request: Request):
+async def post_switch_sequencer(request: Request) -> JSONResponse:
     req_data: dict[str, Any] = await request.json()
     proofs = req_data["proofs"]
 
@@ -185,7 +186,7 @@ async def post_switch_sequencer(request: Request):
 
 
 @router.get("/state")
-async def get_state():
+async def get_state() -> JSONResponse:
     if (
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
@@ -236,7 +237,7 @@ async def get_state():
     "/{app_name}/batches/{state}/last",
     dependencies=[Depends(utils.validate_version("node"))],
 )
-async def get_last_batch_by_state(app_name: str, state: str):
+async def get_last_batch_by_state(app_name: str, state: str) -> JSONResponse:
     if app_name not in zconfig.APPS:
         raise InvalidRequest("Invalid app name.")
 
@@ -250,7 +251,7 @@ async def get_last_batch_by_state(app_name: str, state: str):
 @router.get(
     "/batches/{state}/last", dependencies=[Depends(utils.validate_version("node"))]
 )
-async def get_last_batches_in_bulk_mode(state: str):
+async def get_last_batches_in_bulk_mode(state: str) -> JSONResponse:
     if state not in {"locked", "finalized"}:
         raise InvalidRequest("Invalid state. Must be 'locked' or 'finalized'.")
 
@@ -267,7 +268,9 @@ async def get_last_batches_in_bulk_mode(state: str):
     "/{app_name}/batches/{state}",
     dependencies=[Depends(utils.validate_version("node"))],
 )
-async def get_batches(app_name: str, state: str, after: int = Query(0, ge=0)):
+async def get_batches(
+    app_name: str, state: str, after: int = Query(0, ge=0)
+) -> JSONResponse:
     if app_name not in zconfig.APPS:
         raise InvalidRequest("Invalid app name.")
 

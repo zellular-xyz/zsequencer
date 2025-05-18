@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 
 from common import utils
 from common.batch import get_batch_size_kb
@@ -46,7 +47,7 @@ router = APIRouter()
         ),
     ],
 )
-async def put_batches(request: Request) -> Response:
+async def put_batches(request: Request) -> JSONResponse:
     req_data = await request.json()
     initializing_batches = req_data["batches"]
 
@@ -68,10 +69,10 @@ async def put_batches(request: Request) -> Response:
 
     if not is_eth_sig_verified:
         raise PermissionDenied(f"the sig on the {req_data=} can not be verified.")
-    if str(req_data["node_id"]) not in list(zconfig.last_state.posting_nodes.keys()):
+    if str(req_data["node_id"]) not in zconfig.last_state.posting_nodes:
         raise PermissionDenied(f"{req_data['node_id']} is not a posting node.")
-    if req_data["app_name"] not in list(zconfig.APPS.keys()):
-        raise InvalidRequest(f"{req_data["app_name"]} is not a valid app name.")
+    if req_data["app_name"] not in zconfig.APPS:
+        raise InvalidRequest(f"{req_data['app_name']} is not a valid app name.")
 
     data = _put_batches(req_data)
     return success_response(data=data)
