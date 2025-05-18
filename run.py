@@ -31,12 +31,12 @@ app.include_router(sequencer_router, prefix="/sequencer")
 
 
 @app.exception_handler(BaseHTTPException)
-async def base_http_exception_handler(request: Request, exc: BaseHTTPException):
+async def base_http_exception_handler(request: Request, exc: BaseHTTPException) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 
 @app.get("/", include_in_schema=False)
-def base_redirect():
+def base_redirect() -> RedirectResponse:
     return RedirectResponse(url="/node/state")
 
 

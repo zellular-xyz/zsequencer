@@ -174,7 +174,7 @@ async def post_switch_sequencer(request: Request) -> JSONResponse:
 
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
-    def run_switch_sequencer():
+    def run_switch_sequencer() -> None:
         switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
 
     zlogger.info(
