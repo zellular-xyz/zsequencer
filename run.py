@@ -9,13 +9,14 @@ import time
 
 import requests
 import uvicorn
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from common.db import zdb
+from common.errors import BaseHTTPException
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
@@ -27,6 +28,11 @@ app = FastAPI()
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
+
+
+@app.exception_handler(BaseHTTPException)
+async def base_http_exception_handler(request: Request, exc: BaseHTTPException):
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 
 @app.get("/", include_in_schema=False)

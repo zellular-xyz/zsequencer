@@ -20,8 +20,11 @@ class BaseHTTPException(LoggingMixin, HTTPException):
         super().__init__(
             status_code=self.status_code,
             detail={
-                "code": self.__class__.__name__,
-                "message": message or self.message,
+                "status": "error",
+                "error": {
+                    "code": self.__class__.__name__,
+                    "message": message or self.message,
+                },
             },
         )
         self.log()
