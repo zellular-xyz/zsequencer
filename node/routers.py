@@ -24,7 +24,7 @@ from config import zconfig
 from node import switch
 from settings import MODE_PROD
 
-from . import tasks
+from node import tasks
 
 router = APIRouter()
 
