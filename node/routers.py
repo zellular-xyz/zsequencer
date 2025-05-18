@@ -11,13 +11,13 @@ from common import utils
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
 from common.errors import (
-    BatchSizeExceeded,
-    InvalidRequest,
-    InvalidSequencer,
-    IsNotPostingNode,
-    IsSequencer,
-    IssueNotFound,
-    SequencerChangeNotApproved,
+    BatchSizeExceededError,
+    InvalidRequestError,
+    InvalidSequencerError,
+    IsNotPostingNodeError,
+    IsSequencerError,
+    IssueNotFoundError,
+    SequencerChangeNotApprovedError,
 )
 from common.logger import zlogger
 from common.response_utils import success_response
@@ -39,7 +39,7 @@ router = APIRouter()
 )
 async def put_bulk_batches(request: Request) -> JSONResponse:
     if "posting" not in zconfig.NODE["roles"]:
-        raise IsNotPostingNode()
+        raise IsNotPostingNodeError()
 
     batches_mapping = await request.json()
     valid_apps = set(zconfig.APPS)
@@ -74,20 +74,20 @@ async def put_bulk_batches(request: Request) -> JSONResponse:
 )
 async def put_batches(app_name: str, request: Request) -> JSONResponse:
     if "posting" not in zconfig.NODE["roles"]:
-        raise IsNotPostingNode()
+        raise IsNotPostingNodeError()
 
     if not app_name:
-        raise InvalidRequest("app_name is required.")
+        raise InvalidRequestError("app_name is required.")
 
     if app_name not in list(zconfig.APPS):
-        raise InvalidRequest(f"Invalid app name: {app_name}.")
+        raise InvalidRequestError(f"Invalid app name: {app_name}.")
 
     # Read raw body bytes, decode Latin-1
     body_bytes = await request.body()
     data = body_bytes.decode("latin-1")
 
     if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
-        raise BatchSizeExceeded()
+        raise BatchSizeExceededError()
 
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
@@ -137,7 +137,7 @@ async def post_dispute(request: Request) -> JSONResponse:
     req_data: dict[str, Any] = await request.json()
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
-        raise InvalidSequencer()
+        raise InvalidSequencerError()
 
     if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
@@ -155,7 +155,7 @@ async def post_dispute(request: Request) -> JSONResponse:
         batches = [batch["body"] for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
 
-    raise IssueNotFound()
+    raise IssueNotFoundError()
 
 
 @router.post(
@@ -170,7 +170,7 @@ async def post_switch_sequencer(request: Request) -> JSONResponse:
     proofs = req_data["proofs"]
 
     if not utils.is_switch_approved(proofs):
-        raise SequencerChangeNotApproved()
+        raise SequencerChangeNotApprovedError()
 
     old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
 
@@ -191,7 +191,7 @@ async def get_state() -> JSONResponse:
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
     ):
-        raise IsSequencer()
+        raise IsSequencerError()
 
     data: dict[str, Any] = {
         "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
@@ -239,10 +239,10 @@ async def get_state() -> JSONResponse:
 )
 async def get_last_batch_by_state(app_name: str, state: str) -> JSONResponse:
     if app_name not in zconfig.APPS:
-        raise InvalidRequest("Invalid app name.")
+        raise InvalidRequestError("Invalid app name.")
 
     if state not in {"locked", "finalized"}:
-        raise InvalidRequest("Invalid state. Must be 'locked' or 'finalized'.")
+        raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
     return success_response(data=batch_record_to_stateful_batch(last_batch_record))
@@ -253,7 +253,7 @@ async def get_last_batch_by_state(app_name: str, state: str) -> JSONResponse:
 )
 async def get_last_batches_in_bulk_mode(state: str) -> JSONResponse:
     if state not in {"locked", "finalized"}:
-        raise InvalidRequest("Invalid state. Must be 'locked' or 'finalized'.")
+        raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_records = {
         app_name: batch_record_to_stateful_batch(
@@ -272,7 +272,7 @@ async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)
 ) -> JSONResponse:
     if app_name not in zconfig.APPS:
-        raise InvalidRequest("Invalid app name.")
+        raise InvalidRequestError("Invalid app name.")
 
     batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
     if not batch_sequence:

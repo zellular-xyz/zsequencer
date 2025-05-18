@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from common.db import zdb
-from common.errors import BaseHTTPException
+from common.errors import BaseHTTPError
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
@@ -30,8 +30,10 @@ app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
 
 
-@app.exception_handler(BaseHTTPException)
-async def base_http_exception_handler(request: Request, exc: BaseHTTPException) -> JSONResponse:
+@app.exception_handler(BaseHTTPError)
+async def base_http_exception_handler(
+    request: Request, exc: BaseHTTPError
+) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 

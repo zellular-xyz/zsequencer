@@ -12,13 +12,13 @@ from fastapi import Request
 from web3 import Account
 
 from common.errors import (
-    InvalidNodeVersion,
-    InvalidRequest,
-    IsNotSequencer,
-    IsPaused,
-    IsSequencer,
-    NotSynced,
-    SequencerOutOfReach,
+    InvalidNodeVersionError,
+    InvalidRequestError,
+    IsNotSequencerError,
+    IsPausedError,
+    IsSequencerError,
+    NotSyncedError,
+    SequencerOutOfReachError,
 )
 from config import zconfig
 from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
@@ -26,19 +26,19 @@ from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
 
 def sequencer_simulation_malfunction(request: Request) -> None:
     if sequencer_sabotage_simulation_state.out_of_reach:
-        raise SequencerOutOfReach()
+        raise SequencerOutOfReachError()
 
 
 def sequencer_only(request: Request) -> None:
     """Decorator to restrict access to sequencer-only functions."""
     if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-        raise IsNotSequencer()
+        raise IsNotSequencerError()
 
 
 def not_sequencer(request: Request) -> None:
     """Decorator to restrict access to non-sequencer functions."""
     if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
-        raise IsSequencer()
+        raise IsSequencerError()
 
 
 def validate_version(role: str) -> Callable[[Request], None]:
@@ -53,7 +53,7 @@ def validate_version(role: str) -> Callable[[Request], None]:
         cond1 = (not version or version != zconfig.VERSION) and role == "sequencer"
         cond2 = version and version != zconfig.VERSION and role == "node"
         if cond1 or cond2:
-            raise InvalidNodeVersion()
+            raise InvalidNodeVersionError()
 
     return validator
 
@@ -61,13 +61,13 @@ def validate_version(role: str) -> Callable[[Request], None]:
 def is_synced(request: Request) -> None:
     """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
     if not zconfig.get_synced_flag():
-        raise NotSynced()
+        raise NotSyncedError()
 
 
 def not_paused(request: Request) -> None:
     """Decorator to ensure the service is not paused."""
     if zconfig.is_paused:
-        raise IsPaused()
+        raise IsPausedError()
 
 
 def validate_body_keys(required_keys: list[str]) -> Callable[[Request], None]:
@@ -77,14 +77,16 @@ def validate_body_keys(required_keys: list[str]) -> Callable[[Request], None]:
         try:
             req_data = await request.json()
             if not isinstance(req_data, dict):
-                raise InvalidRequest("Request body must be a JSON object")
+                raise InvalidRequestError("Request body must be a JSON object")
 
         except Exception:
-            raise InvalidRequest("Failed to parse JSON request body")
+            raise InvalidRequestError("Failed to parse JSON request body")
 
         if not all(key in req_data for key in required_keys):
             missing = [key for key in required_keys if key not in req_data]
-            raise InvalidRequest(f"Required keys are missing: {', '.join(missing)}")
+            raise InvalidRequestError(
+                f"Required keys are missing: {', '.join(missing)}"
+            )
 
     return validator
 

@@ -3,7 +3,7 @@
 from fastapi import HTTPException, status
 
 
-class BaseHTTPException(HTTPException):
+class BaseHTTPError(HTTPException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     message = "An error occurred"
 
@@ -20,73 +20,73 @@ class BaseHTTPException(HTTPException):
         )
 
 
-class InvalidRequest(BaseHTTPException):
+class InvalidRequestError(BaseHTTPError):
     status_code = status.HTTP_400_BAD_REQUEST
     message = "The request is invalid."
 
 
-class IsSequencer(BaseHTTPException):
+class IsSequencerError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = (
         "This node is the sequencer and this route is not available on the sequencer."
     )
 
 
-class IsNotSequencer(BaseHTTPException):
+class IsNotSequencerError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = "This node is not the sequencer and this route is only available on the sequencer."
 
 
-class NotSynced(BaseHTTPException):
+class NotSyncedError(BaseHTTPError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     message = "The node is not synced with the sequencer."
 
 
-class InvalidSequencer(BaseHTTPException):
+class InvalidSequencerError(BaseHTTPError):
     status_code = status.HTTP_400_BAD_REQUEST
     message = "The sequencer ID is invalid."
 
 
-class IssueNotFound(BaseHTTPException):
+class IssueNotFoundError(BaseHTTPError):
     status_code = status.HTTP_404_NOT_FOUND
     message = "The specified issue was not found."
 
 
-class SequencerChangeNotApproved(BaseHTTPException):
+class SequencerChangeNotApprovedError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = "The sequencer change request is not approved."
 
 
-class PermissionDenied(BaseHTTPException):
+class PermissionDeniedError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = "Permission denied."
 
 
-class SequencerOutOfReach(BaseHTTPException):
+class SequencerOutOfReachError(BaseHTTPError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     message = "The sequencer is out of reach."
 
 
-class InvalidNodeVersion(BaseHTTPException):
+class InvalidNodeVersionError(BaseHTTPError):
     status_code = status.HTTP_400_BAD_REQUEST
     message = "Invalid node version. Please get the latest version of node."
 
 
-class IsPaused(BaseHTTPException):
+class IsPausedError(BaseHTTPError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     message = "This node is paused."
 
 
-class IsNotPostingNode(BaseHTTPException):
+class IsNotPostingNodeError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = "This node does not have posting role."
 
 
-class BatchesLimitExceeded(BaseHTTPException):
+class BatchesLimitExceededError(BaseHTTPError):
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     message = "Batches limit volume exceeded."
 
 
-class BatchSizeExceeded(BaseHTTPException):
+class BatchSizeExceededError(BaseHTTPError):
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     message = "The batch exceeds the maximum allowed size."

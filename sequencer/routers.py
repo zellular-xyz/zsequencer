@@ -9,10 +9,10 @@ from common import utils
 from common.batch import get_batch_size_kb
 from common.db import zdb
 from common.errors import (
-    BatchesLimitExceeded,
-    BatchSizeExceeded,
-    InvalidRequest,
-    PermissionDenied,
+    BatchesLimitExceededError,
+    BatchSizeExceededError,
+    InvalidRequestError,
+    PermissionDeniedError,
 )
 from common.response_utils import success_response
 from config import zconfig
@@ -54,11 +54,11 @@ async def put_batches(request: Request) -> JSONResponse:
     if not try_acquire_rate_limit_of_other_nodes(
         node_id=req_data["node_id"], batches=initializing_batches
     ):
-        raise BatchesLimitExceeded()
+        raise BatchesLimitExceededError()
 
     for batch in initializing_batches:
         if get_batch_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
-            raise BatchSizeExceeded()
+            raise BatchSizeExceededError()
 
     concat_hash = "".join(batch["hash"] for batch in req_data["batches"])
     is_eth_sig_verified = utils.is_eth_sig_verified(
@@ -68,11 +68,11 @@ async def put_batches(request: Request) -> JSONResponse:
     )
 
     if not is_eth_sig_verified:
-        raise PermissionDenied(f"the sig on the {req_data=} can not be verified.")
+        raise PermissionDeniedError(f"the sig on the {req_data=} can not be verified.")
     if str(req_data["node_id"]) not in zconfig.last_state.posting_nodes:
-        raise PermissionDenied(f"{req_data['node_id']} is not a posting node.")
+        raise PermissionDeniedError(f"{req_data['node_id']} is not a posting node.")
     if req_data["app_name"] not in zconfig.APPS:
-        raise InvalidRequest(f"{req_data['app_name']} is not a valid app name.")
+        raise InvalidRequestError(f"{req_data['app_name']} is not a valid app name.")
 
     data = _put_batches(req_data)
     return success_response(data=data)
