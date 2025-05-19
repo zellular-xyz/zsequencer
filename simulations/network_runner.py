@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple, Any
 from eigensdk.crypto.bls import attestation
 from pydantic import BaseModel
 from web3 import Account
+from dotenv import dotenv_values
 
 # Constants
 NETWORK_NODES_COUNT = 4
@@ -44,14 +45,8 @@ class ExecutionData(BaseModel):
 
 # Load environment variables from .env.shared
 def load_env_shared():
-    env_vars = {}
-    with open('.env.shared', 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                key, value = line.split('=', 1)
-                env_vars[key.strip()] = value.strip()
-    return env_vars
+    """Load environment variables from .env.shared file."""
+    return dotenv_values(".env.shared")
 
 
 def generate_keys(idx: int) -> Keys:
@@ -59,14 +54,15 @@ def generate_keys(idx: int) -> Keys:
     # Create a deterministic seed based on the index
     seed = f"zsequencer_node_{idx}".encode()
 
-    # Use SHA256 to generate deterministic bytes
+    # Use SHA256 to generate deterministic hex string for BLS key
     hash_obj = hashlib.sha256(seed)
-    deterministic_bytes = hash_obj.digest()
-
-    # Generate deterministic private keys
-    bls_private_key = deterministic_bytes[:32].hex()
+    bls_private_key = hash_obj.hexdigest()
     bls_key_pair = attestation.new_key_pair_from_string(bls_private_key)
-    ecdsa_private_key = deterministic_bytes[32:].hex()
+    
+    # Use a different seed for ECDSA key to avoid using the same key
+    ecdsa_seed = f"zsequencer_ecdsa_{idx}".encode()
+    ecdsa_hash = hashlib.sha256(ecdsa_seed)
+    ecdsa_private_key = ecdsa_hash.hexdigest()
 
     return Keys(bls_private_key=bls_private_key,
                 bls_key_pair=bls_key_pair,
@@ -195,8 +191,8 @@ def prepare_simulation_files(node_idx: int, keys: Keys):
 
 def get_node_env_variables(node_idx: int, node_dir: str, sequencer_address: str) -> dict:
     """Generate environment variables for a node."""
-    shared_env = load_env_shared()
-
+    shared_env = dotenv_values(".env.shared")
+    
     return {
         **shared_env,
         "ZSEQUENCER_APPS_FILE": os.path.join(SIMULATION_DATA_DIR, "apps.json"),
