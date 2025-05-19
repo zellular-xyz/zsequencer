@@ -5,9 +5,27 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
 
 from common import utils
+from common.api_models import (
+    AppState,
+    BatchSignatureInfo,
+    DisputeData,
+    DisputeRequest,
+    DisputeResponse,
+    EmptyResponse,
+    GetAppLastBatchResponse,
+    GetAppsLastBatchResponse,
+    GetBatchesData,
+    GetBatchesResponse,
+    NodeStateData,
+    NodeStateResponse,
+    SignSyncPointData,
+    SignSyncPointRequest,
+    SignSyncPointResponse,
+    StatefulBatch,
+    SwitchRequest,
+)
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
 from common.errors import (
@@ -20,7 +38,6 @@ from common.errors import (
     SequencerChangeNotApprovedError,
 )
 from common.logger import zlogger
-from common.response_utils import success_response
 from config import zconfig
 from node import switch, tasks
 from settings import MODE_PROD
@@ -36,8 +53,9 @@ router = APIRouter()
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
+    response_model=EmptyResponse,
 )
-async def put_bulk_batches(request: Request) -> JSONResponse:
+async def put_bulk_batches(request: Request) -> EmptyResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
@@ -60,7 +78,7 @@ async def put_bulk_batches(request: Request) -> JSONResponse:
         )
         zdb.init_batches(app_name, valid_batches)
 
-    return success_response(data={}, message="The batch is received successfully.")
+    return EmptyResponse(message="The batches are received successfully.")
 
 
 @router.put(
@@ -71,8 +89,9 @@ async def put_bulk_batches(request: Request) -> JSONResponse:
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
+    response_model=EmptyResponse,
 )
-async def put_batches(app_name: str, request: Request) -> JSONResponse:
+async def put_batches(app_name: str, request: Request) -> EmptyResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
@@ -91,7 +110,8 @@ async def put_batches(app_name: str, request: Request) -> JSONResponse:
 
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
     zdb.init_batches(app_name, [data])
-    return success_response(data={}, message="The batch is received successfully.")
+
+    return EmptyResponse(message="The batch is received successfully.")
 
 
 @router.post(
@@ -106,13 +126,23 @@ async def put_batches(app_name: str, request: Request) -> JSONResponse:
             )
         ),
     ],
+    response_model=SignSyncPointResponse,
 )
-async def post_sign_sync_point(request: Request) -> JSONResponse:
+async def post_sign_sync_point(request: Request) -> SignSyncPointResponse:
     req_data: dict[str, Any] = await request.json()
 
     # TODO: only the sequencer should be able to call this route
-    req_data["signature"] = tasks.sign_sync_point(req_data)
-    return success_response(data=req_data)
+    signature = tasks.sign_sync_point(req_data)
+    response_data = SignSyncPointData(
+        app_name=req_data["app_name"],
+        state=req_data["state"],
+        index=req_data["index"],
+        hash=req_data["hash"],
+        chaining_hash=req_data["chaining_hash"],
+        signature=signature,
+    )
+
+    return SignSyncPointResponse(data=response_data)
 
 
 @router.post(
@@ -132,8 +162,9 @@ async def post_sign_sync_point(request: Request) -> JSONResponse:
             )
         ),
     ],
+    response_model=DisputeResponse,
 )
-async def post_dispute(request: Request) -> JSONResponse:
+async def post_dispute(request: Request) -> DisputeResponse:
     req_data: dict[str, Any] = await request.json()
 
     if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
@@ -141,14 +172,17 @@ async def post_dispute(request: Request) -> JSONResponse:
 
     if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
         timestamp: int = int(time.time())
-        data: dict[str, Any] = {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
-            "timestamp": timestamp,
-            "signature": utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
-        }
-        return success_response(data=data)
+        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}")
+
+        response_data = DisputeData(
+            node_id=zconfig.NODE["id"],
+            old_sequencer_id=zconfig.SEQUENCER["id"],
+            new_sequencer_id=utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
+            timestamp=timestamp,
+            signature=signature,
+        )
+
+        return DisputeResponse(data=response_data)
 
     # fixme: why init missed batches here?
     for app_name, missed_batches in req_data["apps_missed_batches"].items():
@@ -164,8 +198,9 @@ async def post_dispute(request: Request) -> JSONResponse:
         Depends(utils.validate_version("node")),
         Depends(utils.validate_body_keys(required_keys=["timestamp", "proofs"])),
     ],
+    response_model=EmptyResponse,
 )
-async def post_switch_sequencer(request: Request) -> JSONResponse:
+async def post_switch_sequencer(request: Request) -> EmptyResponse:
     req_data: dict[str, Any] = await request.json()
     proofs = req_data["proofs"]
 
@@ -182,28 +217,21 @@ async def post_switch_sequencer(request: Request) -> JSONResponse:
     )
     threading.Thread(target=run_switch_sequencer).start()
 
-    return success_response(data={})
+    return EmptyResponse(message="Sequencer switch initiated successfully.")
 
 
-@router.get("/state")
-async def get_state() -> JSONResponse:
+@router.get(
+    "/state",
+    response_model=NodeStateResponse,
+)
+async def get_state() -> NodeStateResponse:
     if (
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
     ):
         raise IsSequencerError()
 
-    data: dict[str, Any] = {
-        "sequencer": zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
-        "version": zconfig.VERSION,
-        "sequencer_id": zconfig.SEQUENCER["id"],
-        "node_id": zconfig.NODE["id"],
-        "pubkeyG2_X": zconfig.NODE["pubkeyG2_X"],
-        "pubkeyG2_Y": zconfig.NODE["pubkeyG2_Y"],
-        "address": zconfig.NODE["address"],
-        "apps": {},
-    }
-
+    app_states = {}
     for app_name in list(zconfig.APPS.keys()):
         last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
             app_name, "sequenced"
@@ -215,29 +243,39 @@ async def get_state() -> JSONResponse:
             app_name, "finalized"
         )
 
-        data["apps"][app_name] = {
-            "last_sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "last_sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
+        app_states[app_name] = AppState(
+            last_sequenced_index=last_sequenced_batch_record.get("index", 0),
+            last_sequenced_hash=last_sequenced_batch_record.get("batch", {}).get(
                 "hash", ""
             ),
-            "last_locked_index": last_locked_batch_record.get("index", 0),
-            "last_locked_hash": last_locked_batch_record.get("batch", {}).get(
+            last_locked_index=last_locked_batch_record.get("index", 0),
+            last_locked_hash=last_locked_batch_record.get("batch", {}).get("hash", ""),
+            last_finalized_index=last_finalized_batch_record.get("index", 0),
+            last_finalized_hash=last_finalized_batch_record.get("batch", {}).get(
                 "hash", ""
             ),
-            "last_finalized_index": last_finalized_batch_record.get("index", 0),
-            "last_finalized_hash": last_finalized_batch_record.get("batch", {}).get(
-                "hash", ""
-            ),
-        }
+        )
 
-    return success_response(data=data)
+    node_state = NodeStateData(
+        sequencer=zconfig.NODE["id"] == zconfig.SEQUENCER["id"],
+        version=zconfig.VERSION,
+        sequencer_id=zconfig.SEQUENCER["id"],
+        node_id=zconfig.NODE["id"],
+        pubkeyG2_X=zconfig.NODE["pubkeyG2_X"],
+        pubkeyG2_Y=zconfig.NODE["pubkeyG2_Y"],
+        address=zconfig.NODE["address"],
+        apps=app_states,
+    )
+
+    return NodeStateResponse(data=node_state)
 
 
 @router.get(
     "/{app_name}/batches/{state}/last",
     dependencies=[Depends(utils.validate_version("node"))],
+    response_model=GetAppLastBatchResponse,
 )
-async def get_last_batch_by_state(app_name: str, state: str) -> JSONResponse:
+async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchResponse:
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 
@@ -245,38 +283,48 @@ async def get_last_batch_by_state(app_name: str, state: str) -> JSONResponse:
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
-    return success_response(data=batch_record_to_stateful_batch(last_batch_record))
+    stateful_batch_dict = batch_record_to_stateful_batch(last_batch_record)
+    stateful_batch = StatefulBatch.from_typed_dict(stateful_batch_dict)
+
+    return GetAppLastBatchResponse(data=stateful_batch)
 
 
 @router.get(
-    "/batches/{state}/last", dependencies=[Depends(utils.validate_version("node"))]
+    "/batches/{state}/last",
+    dependencies=[Depends(utils.validate_version("node"))],
+    response_model=GetAppsLastBatchResponse,
 )
-async def get_last_batches_in_bulk_mode(state: str) -> JSONResponse:
+async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
     if state not in {"locked", "finalized"}:
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
+    # Create a dictionary of app_name -> StatefulBatch (Pydantic models)
     last_batch_records = {
-        app_name: batch_record_to_stateful_batch(
-            zdb.get_last_operational_batch_record_or_empty(app_name, state)
+        app_name: StatefulBatch.from_typed_dict(
+            batch_record_to_stateful_batch(
+                zdb.get_last_operational_batch_record_or_empty(app_name, state)
+            )
         )
         for app_name in zconfig.APPS
     }
-    return success_response(data=last_batch_records)
+
+    return GetAppsLastBatchResponse(data=last_batch_records)
 
 
 @router.get(
     "/{app_name}/batches/{state}",
     dependencies=[Depends(utils.validate_version("node"))],
+    response_model=GetBatchesResponse,
 )
 async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)
-) -> JSONResponse:
+) -> GetBatchesResponse:
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 
     batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
     if not batch_sequence:
-        return success_response(data=None)
+        return GetBatchesResponse(data=None)
 
     for i, batch_record in enumerate(batch_sequence.records()):
         assert batch_record["index"] == after + i + 1, (
@@ -289,41 +337,41 @@ async def get_batches(
 
     finalized = next(
         (
-            {
-                "signature": b["batch"]["finalization_signature"],
-                "hash": b["batch"]["hash"],
-                "chaining_hash": b["batch"]["chaining_hash"],
-                "nonsigners": b["batch"]["finalized_nonsigners"],
-                "index": b["index"],
-                "tag": b["batch"]["finalized_tag"],
-            }
+            BatchSignatureInfo(
+                signature=b["batch"]["finalization_signature"],
+                hash=b["batch"]["hash"],
+                chaining_hash=b["batch"]["chaining_hash"],
+                nonsigners=b["batch"]["finalized_nonsigners"],
+                index=b["index"],
+                tag=b["batch"]["finalized_tag"],
+            )
             for b in batch_sequence.records(reverse=True)
             if "finalization_signature" in b["batch"]
         ),
-        {},
+        BatchSignatureInfo(),
     )
 
     locked = next(
         (
-            {
-                "signature": b["batch"]["lock_signature"],
-                "hash": b["batch"]["hash"],
-                "chaining_hash": b["batch"]["chaining_hash"],
-                "nonsigners": b["batch"]["locked_nonsigners"],
-                "index": b["index"],
-                "tag": b["batch"]["locked_tag"],
-            }
+            BatchSignatureInfo(
+                signature=b["batch"]["lock_signature"],
+                hash=b["batch"]["hash"],
+                chaining_hash=b["batch"]["chaining_hash"],
+                nonsigners=b["batch"]["locked_nonsigners"],
+                index=b["index"],
+                tag=b["batch"]["locked_tag"],
+            )
             for b in batch_sequence.records(reverse=True)
             if "lock_signature" in b["batch"]
         ),
-        {},
+        BatchSignatureInfo(),
     )
 
-    return success_response(
-        data={
-            "batches": [b["body"] for b in batch_sequence.batches()],
-            "first_chaining_hash": first_chaining_hash,
-            "finalized": finalized,
-            "locked": locked,
-        }
+    response_data = GetBatchesData(
+        batches=[b["body"] for b in batch_sequence.batches()],
+        first_chaining_hash=first_chaining_hash,
+        finalized=finalized,
+        locked=locked,
     )
+
+    return GetBatchesResponse(data=response_data)

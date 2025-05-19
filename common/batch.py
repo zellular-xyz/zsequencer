@@ -34,7 +34,6 @@ class BatchRecord(TypedDict, total=False):
 class StatefulBatch(TypedDict, total=False):
     app_name: str
     node_id: str
-    timestamp: int
     body: str
     hash: str
     chaining_hash: str

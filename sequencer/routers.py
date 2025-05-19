@@ -3,9 +3,13 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
 
 from common import utils
+from common.api_models import (
+    BatchSignatureInfo,
+    SequencerPutBatchesResponse,
+    SequencerPutBatchesResponseData,
+)
 from common.batch import get_batch_size_kb
 from common.db import zdb
 from common.errors import (
@@ -14,7 +18,6 @@ from common.errors import (
     InvalidRequestError,
     PermissionDeniedError,
 )
-from common.response_utils import success_response
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
@@ -46,8 +49,9 @@ router = APIRouter()
             )
         ),
     ],
+    response_model=SequencerPutBatchesResponse,
 )
-async def put_batches(request: Request) -> JSONResponse:
+async def put_batches(request: Request) -> SequencerPutBatchesResponse:
     req_data = await request.json()
     initializing_batches = req_data["batches"]
 
@@ -74,12 +78,11 @@ async def put_batches(request: Request) -> JSONResponse:
     if req_data["app_name"] not in zconfig.APPS:
         raise InvalidRequestError(f"{req_data['app_name']} is not a valid app name.")
 
-    data = _put_batches(req_data)
-    return success_response(data=data)
+    response_data = _put_batches(req_data)
+    return SequencerPutBatchesResponse(data=response_data)
 
 
-def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
-    """Process the batches data."""
+def _put_batches(req_data: dict[str, Any]) -> SequencerPutBatchesResponseData:
     with zdb.sequencer_put_batches_lock:
         zdb.sequencer_init_batches(
             app_name=req_data["app_name"],
@@ -140,23 +143,24 @@ def _put_batches(req_data: dict[str, Any]) -> dict[str, Any]:
     #     txs = {}
     last_finalized_batch = last_finalized_batch_record.get("batch", {})
     last_locked_batch = last_locked_batch_record.get("batch", {})
-    return {
-        "batches": batch_sequence.batches(),
-        "last_finalized_index": last_finalized_index,
-        "finalized": {
-            "index": last_finalized_batch_record.get("index", 0),
-            "chaining_hash": last_finalized_batch.get("chaining_hash", ""),
-            "hash": last_finalized_batch.get("hash", ""),
-            "signature": last_finalized_batch.get("finalization_signature", ""),
-            "nonsigners": last_finalized_batch.get("finalized_nonsigners", []),
-            "tag": last_finalized_batch.get("finalized_tag", 0),
-        },
-        "locked": {
-            "index": last_locked_batch_record.get("index", 0),
-            "chaining_hash": last_locked_batch.get("chaining_hash", ""),
-            "hash": last_locked_batch.get("hash", ""),
-            "signature": last_locked_batch.get("lock_signature", ""),
-            "nonsigners": last_locked_batch.get("locked_nonsigners", []),
-            "tag": last_locked_batch.get("locked_tag", 0),
-        },
-    }
+
+    return SequencerPutBatchesResponseData(
+        batches=batch_sequence.batches(),
+        last_finalized_index=last_finalized_index,
+        finalized=BatchSignatureInfo(
+            index=last_finalized_batch_record.get("index", 0),
+            chaining_hash=last_finalized_batch.get("chaining_hash", ""),
+            hash=last_finalized_batch.get("hash", ""),
+            signature=last_finalized_batch.get("finalization_signature", ""),
+            nonsigners=last_finalized_batch.get("finalized_nonsigners", []),
+            tag=last_finalized_batch.get("finalized_tag", 0),
+        ),
+        locked=BatchSignatureInfo(
+            index=last_locked_batch_record.get("index", 0),
+            chaining_hash=last_locked_batch.get("chaining_hash", ""),
+            hash=last_locked_batch.get("hash", ""),
+            signature=last_locked_batch.get("lock_signature", ""),
+            nonsigners=last_locked_batch.get("locked_nonsigners", []),
+            tag=last_locked_batch.get("locked_tag", 0),
+        ),
+    )
