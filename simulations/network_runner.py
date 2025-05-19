@@ -72,8 +72,8 @@ def generate_keys(idx: int) -> Keys:
 def generate_network_keys(network_nodes_num: int) -> Tuple[str, List[KeyData]]:
     network_keys = []
 
-    for _ in range(network_nodes_num):
-        keys = generate_keys()
+    for idx in range(network_nodes_num):
+        keys = generate_keys(idx)  # Pass the index to generate_keys
         address = Account().from_key(keys.ecdsa_private_key).address.lower()
         network_keys.append(KeyData(keys=keys, address=address))
 
