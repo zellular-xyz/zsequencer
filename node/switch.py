@@ -293,14 +293,7 @@ async def _sync_with_peer_node(
                     )
                     return False
 
-                result = zdb.insert_sequenced_batches(
-                    app_name=app_name, batches=batches
-                )
-                if not result:
-                    zlogger.warning(
-                        f"Error while upserting sequenced batches, app_name:{app_name}, peer_node_id:{peer_node_id}"
-                    )
-                    return False
+                zdb.insert_sequenced_batches(app_name=app_name, batches=batches)
 
                 if locked_signature_info:
                     locking_result = zdb.lock_batches(

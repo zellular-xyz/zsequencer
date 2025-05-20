@@ -25,12 +25,12 @@ class StatefulBatch(BaseModel):
     body: str
     hash: str
     chaining_hash: str
-    lock_signature: str
-    locked_nonsigners: list[str]
-    locked_tag: int
-    finalization_signature: str
-    finalized_nonsigners: list[str]
-    finalized_tag: int
+    lock_signature: str | None
+    locked_nonsigners: list[str] | None
+    locked_tag: int | None
+    finalization_signature: str | None
+    finalized_nonsigners: list[str] | None
+    finalized_tag: int | None
     index: int
     state: OperationalState  # "sequenced" | "locked" | "finalized"
 
@@ -56,6 +56,36 @@ class BatchResponse(SuccessResponse):
     """Response model for batch operations."""
 
     data: dict = Field(default_factory=dict)
+
+
+# Request Models
+
+
+class BatchData(BaseModel):
+    """Model for a single batch in a request."""
+
+    hash: str
+    body: str
+    node_id: str
+
+
+class SequencerPutBatchesRequest(BaseModel):
+    """Request model for the sequencer's put_batches endpoint."""
+
+    app_name: str
+    batches: list[BatchData]
+    node_id: str
+    signature: str
+    sequenced_index: int
+    sequenced_hash: str
+    sequenced_chaining_hash: str
+    locked_index: int
+    locked_hash: str
+    locked_chaining_hash: str
+    timestamp: int
+
+
+# Response Models
 
 
 class SignSyncPointRequest(BaseModel):
@@ -197,8 +227,8 @@ class GetBatchesData(BaseModel):
 
     batches: list[str]
     first_chaining_hash: str
-    finalized: BatchSignatureInfo
-    locked: BatchSignatureInfo
+    finalized: BatchSignatureInfo | None = None
+    locked: BatchSignatureInfo | None = None
 
 
 class GetBatchesResponse(SuccessResponse):

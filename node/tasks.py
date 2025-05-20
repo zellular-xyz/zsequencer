@@ -17,9 +17,11 @@ from common.db import zdb
 from common.errors import (
     BatchesLimitExceededError,
     InvalidNodeVersionError,
+    InvalidRequestError,
     SequencerOutOfReachError,
 )
 from common.logger import zlogger
+from common.state import is_state_before_or_equal
 from config import zconfig
 from node.rate_limit import (
     get_remaining_capacity_kb_of_self_node,
@@ -140,7 +142,7 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
 
     except Exception as e:
         zlogger.error(
-            f"An unexpected error occurred, while sending batches to sequencer: {e}",
+            f"An unexpected error occurred, while sending batches to sequencer: {e=}, {response=}",
         )
         zdb.add_missed_batches(app_name, initialized_batches.values())
         zdb.is_sequencer_down = True
@@ -238,14 +240,11 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     )
     batch = batch_record.get("batch", {})
     if (
-        any(
-            batch.get(key) != sync_point[key]
-            for key in ["app_name", "hash", "chaining_hash"]
-        )
-        or batch_record["state"] != sync_point["state"]
+        any(batch.get(key) != sync_point[key] for key in ["hash", "chaining_hash"])
+        or not is_state_before_or_equal(sync_point["state"], batch_record["state"])
         or batch_record["index"] != sync_point["index"]
     ):
-        return ""
+        raise InvalidRequestError(f"Invalid sync point. {sync_point=}, {batch_record=}")
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature

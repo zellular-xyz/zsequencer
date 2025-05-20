@@ -299,14 +299,13 @@ async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     # Create a dictionary of app_name -> StatefulBatch (Pydantic models)
-    last_batch_records = {
-        app_name: StatefulBatch.from_typed_dict(
-            batch_record_to_stateful_batch(
-                zdb.get_last_operational_batch_record_or_empty(app_name, state)
+    last_batch_records = {}
+    for app_name in zconfig.APPS:
+        last_batch = zdb.get_last_operational_batch_record_or_empty(app_name, state)
+        if last_batch:
+            last_batch_records[app_name] = StatefulBatch.from_typed_dict(
+                batch_record_to_stateful_batch(app_name, last_batch)
             )
-        )
-        for app_name in zconfig.APPS
-    }
 
     return GetAppsLastBatchResponse(data=last_batch_records)
 
@@ -346,9 +345,9 @@ async def get_batches(
                 tag=b["batch"]["finalized_tag"],
             )
             for b in batch_sequence.records(reverse=True)
-            if "finalization_signature" in b["batch"]
+            if b["batch"].get("finalization_signature")
         ),
-        BatchSignatureInfo(),
+        None,
     )
 
     locked = next(
@@ -362,9 +361,9 @@ async def get_batches(
                 tag=b["batch"]["locked_tag"],
             )
             for b in batch_sequence.records(reverse=True)
-            if "lock_signature" in b["batch"]
+            if b["batch"].get("lock_signature")
         ),
-        BatchSignatureInfo(),
+        None,
     )
 
     response_data = GetBatchesData(

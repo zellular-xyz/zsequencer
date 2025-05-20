@@ -345,7 +345,7 @@ class InMemoryDB:
         app_name: str,
         batches: list[Batch],
     ) -> None:
-        """Upsert sequenced batches."""
+        """Insert sequenced batches."""
         if not batches:
             return
 
@@ -665,7 +665,6 @@ class InMemoryDB:
             .batches()
         ):
             reinitialized_batch: Batch = {
-                "app_name": batch["app_name"],
                 "node_id": batch["node_id"],
                 "hash": batch["hash"],
                 "body": batch["body"],
