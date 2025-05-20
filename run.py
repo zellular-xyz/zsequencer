@@ -46,7 +46,6 @@ def base_redirect() -> RedirectResponse:
 def run_node_tasks() -> None:
     """Run node tasks in a loop."""
     while True:
-        time.sleep(1)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             time.sleep(0.1)
             continue
