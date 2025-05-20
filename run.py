@@ -35,8 +35,10 @@ app.include_router(sequencer_router, prefix="/sequencer")
 async def base_http_exception_handler(
     request: Request, exc: BaseHTTPError
 ) -> JSONResponse:
+    zlogger.error(
+        f"[API_ERROR] BaseHTTPError at {request.url.path}: {exc.status_code} - {exc.detail['error']['message']}"
+    )
     return JSONResponse(status_code=exc.status_code, content=exc.detail)
-
 
 @app.get("/", include_in_schema=False)
 def base_redirect() -> RedirectResponse:
