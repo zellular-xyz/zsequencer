@@ -25,7 +25,7 @@ from node.switch import send_dispute_requests
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
 
-app = FastAPI()
+app = FastAPI(title="ZSequencer")
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
@@ -39,6 +39,7 @@ async def base_http_exception_handler(
         f"[API_ERROR] BaseHTTPError at {request.url.path}: {exc.status_code} - {exc.detail['error']['message']}"
     )
     return JSONResponse(status_code=exc.status_code, content=exc.detail)
+
 
 @app.get("/", include_in_schema=False)
 def base_redirect() -> RedirectResponse:
