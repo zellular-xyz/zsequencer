@@ -1,14 +1,12 @@
 """This module handles node tasks like sending batches of transactions, synchronization with the sequencer,
-dispute handling, and switching sequencers.
+and other periodic node operations.
 """
 
-import asyncio
 import json
 import random
 import time
 from typing import Any
 
-import aiohttp
 import requests
 
 from common import bls, utils
@@ -27,7 +25,6 @@ from node.rate_limit import (
     get_remaining_capacity_kb_of_self_node,
     try_acquire_rate_limit_of_self_node,
 )
-from node.switch import send_switch_requests, switch_sequencer_async
 
 
 def send_batches() -> None:
@@ -248,120 +245,3 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature
-
-
-async def gather_disputes() -> dict[str, Any] | None:
-    """Gather dispute data from nodes until the stake of nodes reaches the threshold"""
-    dispute_tasks: dict[asyncio.Task, str] = {
-        asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
-            "id"
-        ]
-        for node in list(zconfig.NODES.values())
-        if node["id"] != zconfig.NODE["id"]
-    }
-
-    results = []
-    pending_tasks = list(dispute_tasks.keys())
-    stake_percent = (
-        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
-    )
-    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
-        done, pending_tasks = await asyncio.wait(
-            pending_tasks,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        for task in done:
-            if not task.result() or not utils.is_dispute_approved(task.result()):
-                continue
-            results.append(task.result())
-            node_id = dispute_tasks[task]
-            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
-    return results, stake_percent
-
-
-async def send_dispute_requests() -> None:
-    """Send dispute requests if there are missed batches."""
-    is_not_synced = not zconfig.get_synced_flag()
-    is_paused = zconfig.is_paused
-
-    no_missed_batches = not zdb.has_missed_batches()
-    no_delayed_batches = not zdb.has_delayed_batches()
-    sequencer_up = not zdb.is_sequencer_down
-
-    no_functionality_issue = no_missed_batches and no_delayed_batches and sequencer_up
-
-    if is_not_synced or is_paused or no_functionality_issue:
-        return
-
-    zlogger.warning(
-        f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
-    )
-    timestamp: int = int(time.time())
-    new_sequencer_id: str = utils.get_next_sequencer_id(
-        old_sequencer_id=zconfig.SEQUENCER["id"],
-    )
-    proofs: list[dict[str, Any]] = []
-    proofs.append(
-        {
-            "node_id": zconfig.NODE["id"],
-            "old_sequencer_id": zconfig.SEQUENCER["id"],
-            "new_sequencer_id": new_sequencer_id,
-            "timestamp": timestamp,
-            "signature": utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
-        },
-    )
-
-    try:
-        responses, stake_percent = await asyncio.wait_for(
-            gather_disputes(),
-            timeout=zconfig.AGGREGATION_TIMEOUT,
-        )
-    except TimeoutError:
-        zlogger.warning(
-            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
-        )
-        return
-    except Exception as error:
-        zlogger.error(f"An unexpected error occurred: {error}")
-        return
-
-    if not responses or stake_percent < zconfig.THRESHOLD_PERCENT:
-        zlogger.warning(
-            f"Not enough stake for dispute, stake_percent : {stake_percent}"
-        )
-        return
-    proofs.extend(responses)
-
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
-    await send_switch_requests(proofs)
-    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
-
-
-async def send_dispute_request(
-    node: dict[str, Any],
-    is_sequencer_down: bool,
-) -> dict[str, Any] | None:
-    """Send a dispute request to a specific node."""
-    timestamp: int = int(time.time())
-    data: str = json.dumps(
-        {
-            "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
-            "is_sequencer_down": is_sequencer_down,
-            "has_delayed_batches": zdb.has_delayed_batches(),
-            "timestamp": timestamp,
-        },
-    )
-    url: str = f"{node['socket']}/node/dispute"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                url=url,
-                data=data,
-                headers=zconfig.HEADERS,
-            ) as response:
-                response_json: dict[str, Any] = await response.json()
-                if response_json["status"] == "success":
-                    return response_json.get("data")
-    except aiohttp.ClientError as error:
-        zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")

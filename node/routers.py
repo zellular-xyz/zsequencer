@@ -2,9 +2,8 @@
 
 import threading
 import time
-from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 
 from common import utils
 from common.api_models import (
@@ -18,6 +17,8 @@ from common.api_models import (
     GetAppsLastBatchResponse,
     GetBatchesData,
     GetBatchesResponse,
+    NodePutBatchRequest,
+    NodePutBulkBatchesRequest,
     NodeStateData,
     NodeStateResponse,
     SignSyncPointData,
@@ -55,22 +56,21 @@ router = APIRouter()
     ],
     response_model=EmptyResponse,
 )
-async def put_bulk_batches(request: Request) -> EmptyResponse:
+async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
-    batches_mapping = await request.json()
     valid_apps = set(zconfig.APPS)
     filtered_batches_mapping = {
         app_name: batches
-        for app_name, batches in batches_mapping.items()
+        for app_name, batches in request.root.items()
         if app_name in valid_apps
     }
 
     for app_name, batches in filtered_batches_mapping.items():
         valid_batches = [
             str(item)
-            for item in list(batches)
+            for item in batches
             if utils.get_utf8_size_kb(str(item)) <= zconfig.MAX_BATCH_SIZE_KB
         ]
         zlogger.info(
@@ -91,7 +91,7 @@ async def put_bulk_batches(request: Request) -> EmptyResponse:
     ],
     response_model=EmptyResponse,
 )
-async def put_batches(app_name: str, request: Request) -> EmptyResponse:
+async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyResponse:
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
@@ -101,9 +101,7 @@ async def put_batches(app_name: str, request: Request) -> EmptyResponse:
     if app_name not in list(zconfig.APPS):
         raise InvalidRequestError(f"Invalid app name: {app_name}.")
 
-    # Read raw body bytes, decode Latin-1
-    body_bytes = await request.body()
-    data = body_bytes.decode("latin-1")
+    data = request.root
 
     if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
         raise BatchSizeExceededError()
@@ -120,25 +118,26 @@ async def put_batches(app_name: str, request: Request) -> EmptyResponse:
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(
-            utils.validate_body_keys(
-                required_keys=["app_name", "state", "index", "hash", "chaining_hash"]
-            )
-        ),
     ],
     response_model=SignSyncPointResponse,
 )
-async def post_sign_sync_point(request: Request) -> SignSyncPointResponse:
-    req_data: dict[str, Any] = await request.json()
-
+async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
     # TODO: only the sequencer should be able to call this route
-    signature = tasks.sign_sync_point(req_data)
+    signature = tasks.sign_sync_point(
+        {
+            "app_name": request.app_name,
+            "state": request.state,
+            "index": request.index,
+            "hash": request.hash,
+            "chaining_hash": request.chaining_hash,
+        }
+    )
     response_data = SignSyncPointData(
-        app_name=req_data["app_name"],
-        state=req_data["state"],
-        index=req_data["index"],
-        hash=req_data["hash"],
-        chaining_hash=req_data["chaining_hash"],
+        app_name=request.app_name,
+        state=request.state,
+        index=request.index,
+        hash=request.hash,
+        chaining_hash=request.chaining_hash,
         signature=signature,
     )
 
@@ -151,23 +150,11 @@ async def post_sign_sync_point(request: Request) -> SignSyncPointResponse:
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(
-            utils.validate_body_keys(
-                required_keys=[
-                    "sequencer_id",
-                    "apps_missed_batches",
-                    "is_sequencer_down",
-                    "timestamp",
-                ]
-            )
-        ),
     ],
     response_model=DisputeResponse,
 )
-async def post_dispute(request: Request) -> DisputeResponse:
-    req_data: dict[str, Any] = await request.json()
-
-    if req_data["sequencer_id"] != zconfig.SEQUENCER["id"]:
+async def post_dispute(request: DisputeRequest) -> DisputeResponse:
+    if request.sequencer_id != zconfig.SEQUENCER["id"]:
         raise InvalidSequencerError()
 
     if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
@@ -185,8 +172,8 @@ async def post_dispute(request: Request) -> DisputeResponse:
         return DisputeResponse(data=response_data)
 
     # fixme: why init missed batches here?
-    for app_name, missed_batches in req_data["apps_missed_batches"].items():
-        batches = [batch["body"] for batch in missed_batches.values()]
+    for app_name, missed_batches in request.apps_missed_batches.items():
+        batches = [batch.body for batch in missed_batches.values()]
         zdb.init_batches(app_name, batches)
 
     raise IssueNotFoundError()
@@ -196,13 +183,11 @@ async def post_dispute(request: Request) -> DisputeResponse:
     "/switch",
     dependencies=[
         Depends(utils.validate_version("node")),
-        Depends(utils.validate_body_keys(required_keys=["timestamp", "proofs"])),
     ],
     response_model=EmptyResponse,
 )
-async def post_switch_sequencer(request: Request) -> EmptyResponse:
-    req_data: dict[str, Any] = await request.json()
-    proofs = req_data["proofs"]
+async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
+    proofs = request.proofs
 
     if not utils.is_switch_approved(proofs):
         raise SequencerChangeNotApprovedError()

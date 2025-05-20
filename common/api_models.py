@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from common.batch import StatefulBatch as StatefulBatchDict
 from common.state import OperationalState
@@ -67,6 +67,20 @@ class BatchData(BaseModel):
     hash: str
     body: str
     node_id: str
+
+
+class NodePutBatchRequest(RootModel):
+    """Request model for the node's put_batch endpoint for a single batch."""
+
+    # Raw batch body as string
+    root: str
+
+
+class NodePutBulkBatchesRequest(RootModel):
+    """Request model for the node's put_bulk_batches endpoint."""
+
+    # Dictionary of app_name -> list of raw batch bodies
+    root: dict[str, list[str]]
 
 
 class SequencerPutBatchesRequest(BaseModel):

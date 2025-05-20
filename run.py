@@ -21,6 +21,7 @@ from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
+from node.switch import send_dispute_requests
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
 
@@ -43,8 +44,9 @@ def base_redirect() -> RedirectResponse:
 
 
 def run_node_tasks() -> None:
-    """Periodically run node tasks."""
+    """Run node tasks in a loop."""
     while True:
+        time.sleep(1)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             time.sleep(0.1)
             continue
@@ -52,7 +54,7 @@ def run_node_tasks() -> None:
             break
 
         node_tasks.send_batches()
-        asyncio.run(node_tasks.send_dispute_requests())
+        asyncio.run(send_dispute_requests())
 
 
 def run_sequencer_tasks() -> None:

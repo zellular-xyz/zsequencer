@@ -1,8 +1,10 @@
+"""This module implements sequencer switching and dispute resolution logic."""
+
 import asyncio
 import json
 import time
 from threading import Lock
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import aiohttp
 
@@ -14,19 +16,166 @@ from common.db import SignatureData, zdb
 from common.logger import zlogger
 from config import zconfig
 
-switch_lock: Lock = Lock()
+if TYPE_CHECKING:
+    from common.api_models import SwitchProof
 
 
+# Define types
 class LastLockedBatchEntry(TypedDict):
     node_id: str
     last_locked_batch: BatchRecord
 
 
-async def _send_switch_request(session, node, proofs):
+switch_lock: Lock = Lock()
+
+
+async def send_dispute_request(
+    node: dict[str, Any],
+    is_sequencer_down: bool,
+) -> "SwitchProof | None":
+    """Send a dispute request to a specific node."""
+    timestamp: int = int(time.time())
+    data: str = json.dumps(
+        {
+            "sequencer_id": zconfig.SEQUENCER["id"],
+            "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
+            "is_sequencer_down": is_sequencer_down,
+            "has_delayed_batches": zdb.has_delayed_batches(),
+            "timestamp": timestamp,
+        },
+    )
+    url: str = f"{node['socket']}/node/dispute"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url=url,
+                data=data,
+                headers=zconfig.HEADERS,
+            ) as response:
+                response_json: dict[str, Any] = await response.json()
+                if response_json["status"] == "success" and "data" in response_json:
+                    data = response_json["data"]
+                    return SwitchProof(
+                        node_id=data["node_id"],
+                        old_sequencer_id=data["old_sequencer_id"],
+                        new_sequencer_id=data["new_sequencer_id"],
+                        timestamp=data["timestamp"],
+                        signature=data["signature"],
+                    )
+    except aiohttp.ClientError as error:
+        zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
+
+    return None
+
+
+async def gather_disputes() -> tuple[list["SwitchProof"], float]:
+    """Gather dispute data from nodes until the stake of nodes reaches the threshold."""
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
+            "id"
+        ]
+        for node in list(zconfig.NODES.values())
+        if node["id"] != zconfig.NODE["id"]
+    }
+
+    results: list["SwitchProof"] = []
+    pending_tasks = list(dispute_tasks.keys())
+    stake_percent = (
+        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
+    )
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if not task.result() or not utils.is_dispute_approved(task.result()):
+                continue
+            results.append(task.result())
+            node_id = dispute_tasks[task]
+            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
+    return results, stake_percent
+
+
+async def send_dispute_requests() -> None:
+    """Send dispute requests if there are missed batches."""
+    is_not_synced = not zconfig.get_synced_flag()
+    is_paused = zconfig.is_paused
+
+    no_missed_batches = not zdb.has_missed_batches()
+    no_delayed_batches = not zdb.has_delayed_batches()
+    sequencer_up = not zdb.is_sequencer_down
+
+    no_functionality_issue = no_missed_batches and no_delayed_batches and sequencer_up
+
+    if is_not_synced or is_paused or no_functionality_issue:
+        return
+
+    zlogger.warning(
+        f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
+    )
+    timestamp: int = int(time.time())
+    new_sequencer_id: str = utils.get_next_sequencer_id(
+        old_sequencer_id=zconfig.SEQUENCER["id"],
+    )
+    # Create the initial SwitchProof from this node
+    proofs: list[SwitchProof] = []
+    proofs.append(
+        SwitchProof(
+            node_id=zconfig.NODE["id"],
+            old_sequencer_id=zconfig.SEQUENCER["id"],
+            new_sequencer_id=new_sequencer_id,
+            timestamp=timestamp,
+            signature=utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
+        )
+    )
+
+    try:
+        gathered_proofs, stake_percent = await asyncio.wait_for(
+            gather_disputes(),
+            timeout=zconfig.AGGREGATION_TIMEOUT,
+        )
+    except TimeoutError:
+        zlogger.warning(
+            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
+        )
+        return
+    except Exception as error:
+        import traceback
+
+        traceback.print_exc()
+        zlogger.error(f"An unexpected error occurred: {error}")
+        return
+
+    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
+        zlogger.warning(
+            f"Not enough stake for dispute, stake_percent : {stake_percent}"
+        )
+        return
+    proofs.extend(gathered_proofs)
+
+    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
+    await send_switch_requests(proofs)
+    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
+
+
+async def _send_switch_request(session, node, proofs: list["SwitchProof"]):
     """Send a single switch request to a node."""
+    # Convert SwitchProof objects to dictionaries for JSON serialization
+    proofs_dict = [
+        {
+            "node_id": proof.node_id,
+            "old_sequencer_id": proof.old_sequencer_id,
+            "new_sequencer_id": proof.new_sequencer_id,
+            "timestamp": proof.timestamp,
+            "signature": proof.signature,
+        }
+        for proof in proofs
+    ]
+
     data = json.dumps(
         {
-            "proofs": proofs,
+            "proofs": proofs_dict,
             "timestamp": int(time.time()),
         }
     )
@@ -41,7 +190,7 @@ async def _send_switch_request(session, node, proofs):
         )
 
 
-async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
+async def send_switch_requests(proofs: list["SwitchProof"]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:

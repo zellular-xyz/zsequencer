@@ -4,7 +4,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any
+from typing import TYPE_CHECKING
 
 import xxhash
 from eth_account.messages import SignableMessage, encode_defunct
@@ -22,6 +22,10 @@ from common.errors import (
 )
 from config import zconfig
 from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
+
+# Forward reference for type hints
+if TYPE_CHECKING:
+    from common.api_models import SwitchProof
 
 
 def sequencer_simulation_malfunction(request: Request) -> None:
@@ -130,40 +134,31 @@ def get_next_sequencer_id(old_sequencer_id: str) -> str:
         return ids[0]  # Default to first if old_sequencer_id is not found
 
 
-def is_switch_approved(proofs: list[dict[str, Any]]) -> bool:
+def is_switch_approved(proofs: list["SwitchProof"]) -> bool:
     """Check if the switch to a new sequencer is approved."""
-    node_ids = [proof["node_id"] for proof in proofs if is_dispute_approved(proof)]
+    node_ids = [proof.node_id for proof in proofs if is_dispute_approved(proof)]
     stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
     return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
 
 
-def is_dispute_approved(proof: dict[str, Any]) -> bool:
+def is_dispute_approved(proof: "SwitchProof") -> bool:
     """Check if a dispute is approved based on the provided proof."""
-    required_keys: list[str] = [
-        "node_id",
-        "old_sequencer_id",
-        "new_sequencer_id",
-        "timestamp",
-        "signature",
-    ]
-    if not all(key in proof for key in required_keys):
-        return False
-
-    new_sequencer_id: str = get_next_sequencer_id(zconfig.SEQUENCER["id"])
+    # Validate the proof logic
+    expected_new_sequencer_id = get_next_sequencer_id(zconfig.SEQUENCER["id"])
     if (
-        proof["old_sequencer_id"] != zconfig.SEQUENCER["id"]
-        or proof["new_sequencer_id"] != new_sequencer_id
+        proof.old_sequencer_id != zconfig.SEQUENCER["id"]
+        or proof.new_sequencer_id != expected_new_sequencer_id
     ):
         return False
 
-    now: float = time.time()
-    if not now - 600 <= proof["timestamp"] <= now + 60:
+    now = time.time()
+    if not now - 600 <= proof.timestamp <= now + 60:
         return False
 
     if not is_eth_sig_verified(
-        signature=proof["signature"],
-        node_id=proof["node_id"],
-        message=f"{zconfig.SEQUENCER['id']}{proof['timestamp']}",
+        signature=proof.signature,
+        node_id=proof.node_id,
+        message=f"{zconfig.SEQUENCER['id']}{proof.timestamp}",
     ):
         return False
 
@@ -171,17 +166,12 @@ def is_dispute_approved(proof: dict[str, Any]) -> bool:
 
 
 def get_switch_parameter_from_proofs(
-    proofs: list[dict[str, Any]],
+    proofs: list["SwitchProof"],
 ) -> tuple[str | None, str | None]:
     """Get the switch parameters from proofs."""
     sequencer_counts: Counter = Counter()
     for proof in proofs:
-        if "old_sequencer_id" in proof and "new_sequencer_id" in proof:
-            old_sequencer_id, new_sequencer_id = (
-                proof["old_sequencer_id"],
-                proof["new_sequencer_id"],
-            )
-            sequencer_counts[(old_sequencer_id, new_sequencer_id)] += 1
+        sequencer_counts[(proof.old_sequencer_id, proof.new_sequencer_id)] += 1
 
     most_common_sequencer = sequencer_counts.most_common(1)
     if most_common_sequencer:
