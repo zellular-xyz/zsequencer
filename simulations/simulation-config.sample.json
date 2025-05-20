@@ -1,0 +1,83 @@
+{
+    "shared_env_variables": {
+      "ZSEQUENCER_HISTORICAL_NODES_REGISTRY": "localhost:8000",
+      "ZSEQUENCER_REMOVE_CHUNK_BORDER": 3,
+      "ZSEQUENCER_THRESHOLD_PERCENT": 42,
+      "ZSEQUENCER_SYNC_INTERVAL": 0.05,
+      "ZSEQUENCER_FINALIZATION_TIME_BORDER": 10,
+      "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT": 5,
+      "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": 60,
+      "ZSEQUENCER_NODES_SOURCE": "file",
+      "ZSEQUENCER_MODE": "dev",
+      "ZSEQUENCER_SNAPSHOT_CHUNK_SIZE_KB": 1000,
+      "ZSEQUENCER_BANDWIDTH_KB_PER_WINDOW": 10000,
+      "ZSEQUENCER_PUSH_RATE_LIMIT_WINDOW_SECONDS": 1,
+      "ZSEQUENCER_MAX_BATCH_SIZE_KB": 5,
+      "ZSEQUENCER_PROXY_HOST": "localhost",
+      "ZSEQUENCER_PROXY_FLUSH_THRESHOLD_VOLUME": 2000,
+      "ZSEQUENCER_PROXY_FLUSH_THRESHOLD_TIMEOUT": 0.1,
+      "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_OUT_OF_REACH_SIMULATION": false,
+      "ZSEQUENCER_CHECK_REACHABILITY_OF_NODE_URL": false
+    },
+    "base_port": 6005,
+    "node_num": 4,
+    "sabotages_config": {
+      "0": [
+        {
+          "time_duration": 1000,
+          "up": true
+        },
+        {
+          "time_duration": 10,
+          "up": false
+        },
+        {
+          "time_duration": 100,
+          "up": true
+        }
+      ],
+      "1": [
+        {
+          "time_duration": 1000,
+          "up": true
+        },
+        {
+          "time_duration": 10,
+          "up": false
+        },
+        {
+          "time_duration": 100,
+          "up": true
+        }
+      ],
+      "2": [
+        {
+          "time_duration": 1000,
+          "up": true
+        },
+        {
+          "time_duration": 10,
+          "up": false
+        },
+        {
+          "time_duration": 100,
+          "up": true
+        }
+      ],
+      "3": [
+        {
+          "time_duration": 1000,
+          "up": true
+        },
+        {
+          "time_duration": 10,
+          "up": false
+        },
+        {
+          "time_duration": 100,
+          "up": true
+        }
+      ]
+    }
+  }
+  
