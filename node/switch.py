@@ -14,6 +14,7 @@ from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
 from common.db import SignatureData, zdb
 from common.logger import zlogger
+from common.api_models import SwitchProof
 from config import zconfig
 
 if TYPE_CHECKING:
