@@ -3,28 +3,24 @@ import json
 import os
 import subprocess
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
+from web3 import Account
+from eth_account.signers.local import LocalAccount
 from eigensdk.crypto.bls import attestation
 from pydantic import BaseModel
-from web3 import Account
 
-# Constants
 DOCKER_NETWORK_NAME = "zsequencer_net"
 SIMULATION_DATA_DIR = "./data"
 BASE_PROXY_PORT = 7001
 
 
-# Model definitions
 class Keys(BaseModel):
-    bls_private_key: str
-    bls_key_pair: Any
-    ecdsa_private_key: str
-
-
-class KeyData(BaseModel):
-    keys: Keys
+    bls_key: attestation.KeyPair
+    ecdsa_key: LocalAccount
     address: str
+
+    model_config = {"arbitrary_types_allowed": True}
 
 
 class NodeInfo(BaseModel):
@@ -37,14 +33,14 @@ class NodeInfo(BaseModel):
 
 
 class ExecutionData(BaseModel):
-    env_variables: Dict
+    env_variables: dict
 
 
 class SimulationConfig(BaseModel):
-    shared_env_variables: Dict[str, Any]
+    shared_env_variables: dict[str, Any]
     base_port: int
     node_num: int
-    sabotages_config: Dict[str, List[Dict[str, Any]]]
+    sabotages_config: dict[str, list[dict[str, Any]]]
 
 
 def load_simulation_config(config_path: str) -> SimulationConfig:
@@ -60,53 +56,48 @@ def load_simulation_config(config_path: str) -> SimulationConfig:
 
 def generate_keys(idx: int) -> Keys:
     """Generate deterministic keys based on the provided index."""
-    # Create a deterministic seed based on the index
-    seed = f"zsequencer_node_{idx}".encode()
 
     # Use SHA256 to generate deterministic hex string for BLS key
+    seed = f"zsequencer_bls_{idx}".encode()
     hash_obj = hashlib.sha256(seed)
     bls_private_key = hash_obj.hexdigest()
-    bls_key_pair = attestation.new_key_pair_from_string(bls_private_key)
+    bls_key = attestation.new_key_pair_from_string(bls_private_key)
 
     # Use a different seed for ECDSA key to avoid using the same key
     ecdsa_seed = f"zsequencer_ecdsa_{idx}".encode()
     ecdsa_hash = hashlib.sha256(ecdsa_seed)
     ecdsa_private_key = ecdsa_hash.hexdigest()
+    ecdsa_key = Account().from_key(ecdsa_private_key)
 
     return Keys(
-        bls_private_key=bls_private_key,
-        bls_key_pair=bls_key_pair,
-        ecdsa_private_key=ecdsa_private_key,
+        bls_key=bls_key,
+        ecdsa_key=ecdsa_key,
+        address=ecdsa_key.address.lower(),
     )
 
 
-def generate_network_keys(network_nodes_num: int) -> Tuple[str, List[KeyData]]:
-    network_keys = []
-
-    for idx in range(network_nodes_num):
-        keys = generate_keys(idx)  # Pass the index to generate_keys
-        address = Account().from_key(keys.ecdsa_private_key).address.lower()
-        network_keys.append(KeyData(keys=keys, address=address))
-
-    network_keys = sorted(network_keys, key=lambda network_key: network_key.address)
+def generate_network_keys(network_nodes_num: int) -> tuple[str, list[Keys]]:
+    network_keys = [generate_keys(idx) for idx in range(network_nodes_num)]
+    network_keys = sorted(
+        network_keys, key=lambda network_key: network_key.address
+    )
     sequencer_address = network_keys[0].address
-
     return sequencer_address, network_keys
 
 
 def generate_node_info(
     node_idx: int,
-    key_data: KeyData,
+    keys: Keys,
     base_port: int,
     stake: int = 10,
     node_host="localhost",
 ):
-    pubkeyG2_X, pubkeyG2_Y = attestation.g2_to_tupple(key_data.keys.bls_key_pair.pub_g2)
+    pubkeyG2_X, pubkeyG2_Y = attestation.g2_to_tupple(keys.bls_key.pub_g2)
     return NodeInfo(
-        id=key_data.address,
+        id=keys.address,
         pubkeyG2_X=pubkeyG2_X,
         pubkeyG2_Y=pubkeyG2_Y,
-        address=key_data.address,
+        address=keys.address,
         socket=f"http://{node_host}:{str(base_port + node_idx)}",
         stake=stake,
     )
@@ -200,12 +191,12 @@ def prepare_simulation_files(node_idx: int, keys: Keys):
 
     # Save BLS key
     bls_key_file = os.path.join(node_dir, "bls_key.json")
-    bls_key_pair = attestation.new_key_pair_from_string(keys.bls_private_key)
+    bls_key_pair = keys.bls_key
     bls_key_pair.save_to_file(bls_key_file, f"a{node_idx}")
 
     # Save ECDSA key
     ecdsa_key_file = os.path.join(node_dir, "ecdsa_key.json")
-    encrypted_json = Account.encrypt(keys.ecdsa_private_key, f"b{node_idx}")
+    encrypted_json = Account.encrypt(keys.ecdsa_key._private_key.hex(), f"b{node_idx}")
     with open(ecdsa_key_file, "w") as f:
         json.dump(encrypted_json, f)
 
@@ -220,7 +211,7 @@ def get_node_env_variables(
     node_idx: int,
     node_dir: str,
     sequencer_address: str,
-    shared_env_variables: Dict[str, Any],
+    shared_env_variables: dict[str, Any],
     base_port: int,
 ) -> dict:
     """Generate environment variables for a node."""
@@ -262,15 +253,15 @@ def main(config_path: str = "./simulation-config.json"):
     sabotage_timeseries_nodes = {}
 
     # Prepare nodes
-    for idx, key_data in enumerate(network_keys):
+    for idx, keys in enumerate(network_keys):
         # Prepare node files
-        node_files = prepare_simulation_files(idx, key_data.keys)
+        node_files = prepare_simulation_files(idx, keys)
         container_name = f"zsequencer-node-{idx}"
 
         # Generate node info
-        nodes_info[key_data.address] = generate_node_info(
+        nodes_info[keys.address] = generate_node_info(
             node_idx=idx,
-            key_data=key_data,
+            keys=keys,
             base_port=config.base_port,
             node_host=container_name,
         ).dict()
@@ -279,12 +270,12 @@ def main(config_path: str = "./simulation-config.json"):
         # Use node index as key if available, otherwise use default
         sabotage_key = str(idx)
         if sabotage_key in config.sabotages_config:
-            sabotage_timeseries_nodes[key_data.address] = config.sabotages_config[
+            sabotage_timeseries_nodes[keys.address] = config.sabotages_config[
                 sabotage_key
             ]
         else:
             # Default sabotage config if not specified
-            sabotage_timeseries_nodes[key_data.address] = [
+            sabotage_timeseries_nodes[keys.address] = [
                 {"time_duration": 1000, "up": True},
                 {"time_duration": 10, "up": False},
                 {"time_duration": 100, "up": True},
@@ -298,7 +289,7 @@ def main(config_path: str = "./simulation-config.json"):
             config.shared_env_variables,
             config.base_port,
         )
-        nodes_execution_args[key_data.address] = ExecutionData(env_variables=env_vars)
+        nodes_execution_args[keys.address] = ExecutionData(env_variables=env_vars)
 
     # Write configuration files
     with open(os.path.join(SIMULATION_DATA_DIR, "nodes.json"), "w") as f:
