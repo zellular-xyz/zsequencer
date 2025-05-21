@@ -54,7 +54,6 @@ router = APIRouter()
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
-    response_model=EmptyResponse,
 )
 async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
     """Submit multiple batches for different applications in a single request."""
@@ -90,7 +89,6 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
-    response_model=EmptyResponse,
 )
 async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyResponse:
     """Submit a batch to be sequenced for the specified application."""
@@ -121,7 +119,6 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
     ],
-    response_model=SignSyncPointResponse,
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
     """Sign a synchronization point to contribute to batch consensus."""
@@ -154,7 +151,6 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
     ],
-    response_model=DisputeResponse,
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     """Report a dispute about sequencer issues and receive a signed confirmation."""
@@ -188,7 +184,6 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     dependencies=[
         Depends(utils.validate_version("node")),
     ],
-    response_model=EmptyResponse,
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     """Initiate a sequencer switch based on provided signatures."""
@@ -212,7 +207,6 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 
 @router.get(
     "/state",
-    response_model=NodeStateResponse,
 )
 async def get_state() -> NodeStateResponse:
     """Retrieve current node information and application status."""
@@ -264,7 +258,6 @@ async def get_state() -> NodeStateResponse:
 @router.get(
     "/{app_name}/batches/{state}/last",
     dependencies=[Depends(utils.validate_version("node"))],
-    response_model=GetAppLastBatchResponse,
 )
 async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchResponse:
     """Get the latest batch for a specific application in the given state."""
@@ -284,7 +277,6 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
 @router.get(
     "/batches/{state}/last",
     dependencies=[Depends(utils.validate_version("node"))],
-    response_model=GetAppsLastBatchResponse,
 )
 async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
     """Retrieve the latest batches for all applications in one request."""
@@ -306,7 +298,6 @@ async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
 @router.get(
     "/{app_name}/batches/{state}",
     dependencies=[Depends(utils.validate_version("node"))],
-    response_model=GetBatchesResponse,
 )
 async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)

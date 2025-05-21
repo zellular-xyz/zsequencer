@@ -30,7 +30,6 @@ router = APIRouter()
         Depends(utils.sequencer_simulation_malfunction),
         Depends(utils.validate_version("sequencer")),
     ],
-    response_model=SequencerPutBatchesResponse,
 )
 async def put_batches(
     request: SequencerPutBatchesRequest,
