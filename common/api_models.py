@@ -1,5 +1,7 @@
 """This module defines Pydantic models for API responses."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from pydantic import BaseModel, Field, RootModel
@@ -34,7 +36,7 @@ class StatefulBatch(BaseModel):
     state: OperationalState
 
     @classmethod
-    def from_typed_dict(cls, data: StatefulBatchDict) -> "StatefulBatch":
+    def from_typed_dict(cls, data: StatefulBatchDict) -> StatefulBatch:
         return cls(**data)
 
 
@@ -58,6 +60,7 @@ class BatchResponse(SuccessResponse):
 
 # Request Models
 
+
 class BatchData(BaseModel):
     """Data structure for batch submission to the sequencer."""
 
@@ -78,7 +81,6 @@ class NodePutBulkBatchesRequest(RootModel):
 
     # Dictionary of app_name -> list of raw batch bodies
     root: dict[str, list[str]]
-
 
 
 class SequencerPutBatchesRequest(BaseModel):
@@ -128,13 +130,13 @@ class SignSyncPointResponse(SuccessResponse):
 
 
 class AppMissedBatch(BaseModel):
-    """Model for a missed batch."""
+    """Information about a batch that was not processed by the sequencer."""
 
     body: str
 
 
 class DisputeRequest(BaseModel):
-    """Request model for disputes."""
+    """Request to dispute against the sequencer."""
 
     sequencer_id: str
     apps_missed_batches: dict[str, dict[str, AppMissedBatch]]
@@ -143,7 +145,7 @@ class DisputeRequest(BaseModel):
 
 
 class DisputeData(BaseModel):
-    """Data model for dispute resolution response."""
+    """Dispute confirmation response with signed proof."""
 
     node_id: str
     old_sequencer_id: str
@@ -153,13 +155,13 @@ class DisputeData(BaseModel):
 
 
 class DisputeResponse(SuccessResponse):
-    """Response model for dispute resolution."""
+    """Response containing signed confirmation of the dispute."""
 
     data: DisputeData
 
 
 class SwitchProof(BaseModel):
-    """Model for a switch proof."""
+    """Cryptographic proof authorizing a sequencer switch."""
 
     node_id: str
     old_sequencer_id: str
@@ -169,20 +171,20 @@ class SwitchProof(BaseModel):
 
 
 class SwitchRequest(BaseModel):
-    """Request model for sequencer switches."""
+    """Request to switch sequencers with supporting proofs."""
 
     timestamp: int
     proofs: list[SwitchProof]
 
 
 class SwitchResponse(SuccessResponse):
-    """Response model for sequencer switches."""
+    """Response indicating sequencer switch status."""
 
     data: dict = Field(default_factory=dict)
 
 
 class AppState(BaseModel):
-    """Model for application state."""
+    """Current consensus state information for an application."""
 
     last_sequenced_index: int
     last_sequenced_hash: str
@@ -193,7 +195,7 @@ class AppState(BaseModel):
 
 
 class NodeStateData(BaseModel):
-    """Data model for node state."""
+    """Comprehensive node status and identity information."""
 
     sequencer: bool
     version: str
@@ -206,13 +208,13 @@ class NodeStateData(BaseModel):
 
 
 class NodeStateResponse(SuccessResponse):
-    """Response model for node state."""
+    """Response with complete node state information."""
 
     data: NodeStateData
 
 
 class BatchSignatureInfo(BaseModel):
-    """Information about batch signatures and consensus state."""
+    """Cryptographic proof and metadata about batch consensus status."""
 
     signature: str | None = None
     hash: str | None = None
@@ -223,19 +225,19 @@ class BatchSignatureInfo(BaseModel):
 
 
 class GetAppLastBatchResponse(SuccessResponse):
-    """Response model for getting a single app's last batch."""
+    """Response containing the latest batch for a specific application."""
 
     data: StatefulBatch | None = None
 
 
 class GetAppsLastBatchResponse(SuccessResponse):
-    """Response model for getting last batches for all apps."""
+    """Response with latest batches for all applications."""
 
     data: dict[str, StatefulBatch] | None = None
 
 
 class GetBatchesData(BaseModel):
-    """Data model for the get_batches endpoint."""
+    """Batch data with latest consensus status information on the provided batches."""
 
     batches: list[str]
     first_chaining_hash: str
@@ -244,7 +246,7 @@ class GetBatchesData(BaseModel):
 
 
 class GetBatchesResponse(SuccessResponse):
-    """Response model for the get_batches endpoint."""
+    """Response containing batches and their consensus status."""
 
     data: GetBatchesData | None = None
 
@@ -253,7 +255,7 @@ class GetBatchesResponse(SuccessResponse):
 
 
 class SequencerPutBatchesResponseData(BaseModel):
-    """Data model for the sequencer's put_batches response."""
+    """Response data containing both the node's submitted batches and batches from other nodes with their consensus state."""
 
     batches: list[dict[str, Any]] = Field(default_factory=list)
     last_finalized_index: int = 0
@@ -262,6 +264,6 @@ class SequencerPutBatchesResponseData(BaseModel):
 
 
 class SequencerPutBatchesResponse(SuccessResponse):
-    """Response model for the sequencer's put_batches endpoint."""
+    """Response from sequencer with both submitted and other nodes' batches along with consensus information."""
 
     data: SequencerPutBatchesResponseData

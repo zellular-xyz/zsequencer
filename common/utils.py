@@ -1,5 +1,7 @@
 """This module provides utility functions and decorators for the zellular application."""
 
+from __future__ import annotations
+
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -166,7 +168,7 @@ def is_dispute_approved(proof: "SwitchProof") -> bool:
 
 
 def get_switch_parameter_from_proofs(
-    proofs: list["SwitchProof"],
+    proofs: list[SwitchProof],
 ) -> tuple[str | None, str | None]:
     """Get the switch parameters from proofs."""
     sequencer_counts: Counter = Counter()

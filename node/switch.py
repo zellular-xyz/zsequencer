@@ -1,5 +1,7 @@
 """This module implements sequencer switching and dispute resolution logic."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import time
@@ -33,7 +35,7 @@ switch_lock: Lock = Lock()
 async def send_dispute_request(
     node: dict[str, Any],
     is_sequencer_down: bool,
-) -> "SwitchProof | None":
+) -> SwitchProof | None:
     """Send a dispute request to a specific node."""
     timestamp: int = int(time.time())
     data: str = json.dumps(
@@ -69,7 +71,7 @@ async def send_dispute_request(
     return None
 
 
-async def gather_disputes() -> tuple[list["SwitchProof"], float]:
+async def gather_disputes() -> tuple[list[SwitchProof], float]:
     """Gather dispute data from nodes until the stake of nodes reaches the threshold."""
     dispute_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
@@ -79,7 +81,7 @@ async def gather_disputes() -> tuple[list["SwitchProof"], float]:
         if node["id"] != zconfig.NODE["id"]
     }
 
-    results: list["SwitchProof"] = []
+    results: list[SwitchProof] = []
     pending_tasks = list(dispute_tasks.keys())
     stake_percent = (
         100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
@@ -160,7 +162,7 @@ async def send_dispute_requests() -> None:
     await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
 
 
-async def _send_switch_request(session, node, proofs: list["SwitchProof"]):
+async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     """Send a single switch request to a node."""
     # Convert SwitchProof objects to dictionaries for JSON serialization
     proofs_dict = [
@@ -191,7 +193,7 @@ async def _send_switch_request(session, node, proofs: list["SwitchProof"]):
         )
 
 
-async def send_switch_requests(proofs: list["SwitchProof"]) -> None:
+async def send_switch_requests(proofs: list[SwitchProof]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:
