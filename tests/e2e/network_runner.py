@@ -5,10 +5,10 @@ import subprocess
 import time
 from typing import Any
 
-from web3 import Account
-from eth_account.signers.local import LocalAccount
 from eigensdk.crypto.bls import attestation
+from eth_account.signers.local import LocalAccount
 from pydantic import BaseModel
+from web3 import Account
 
 DOCKER_NETWORK_NAME = "zsequencer_net"
 SIMULATION_DATA_DIR = "./data"
@@ -39,7 +39,7 @@ class SimulationConfig(BaseModel):
     shared_env_variables: dict[str, Any]
     base_port: int
     node_num: int
-    sabotages_config: dict[str, list[dict[str, Any]]]
+    sabotages_config: dict[str, dict[str, list[dict[str, Any]]]]
 
 
 def load_simulation_config(config_path: str) -> SimulationConfig:
@@ -77,9 +77,7 @@ def generate_keys(idx: int) -> Keys:
 
 def generate_network_keys(network_nodes_num: int) -> tuple[str, list[Keys]]:
     network_keys = [generate_keys(idx) for idx in range(network_nodes_num)]
-    network_keys = sorted(
-        network_keys, key=lambda network_key: network_key.address
-    )
+    network_keys = sorted(network_keys, key=lambda network_key: network_key.address)
     sequencer_address = network_keys[0].address
     return sequencer_address, network_keys
 
@@ -146,9 +144,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         env_variables["ZSEQUENCER_SNAPSHOT_PATH"]: "/db",
         env_variables["ZSEQUENCER_APPS_FILE"]: "/app/app.json",
         env_variables["ZSEQUENCER_NODES_FILE"]: "/app/nodes.json",
-        env_variables[
-            "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE"
-        ]: "/app/sabotage_simulation_timeseries.json",
+        env_variables["ZSEQUENCER_SABOTAGE_FILE"]: "/app/sabotage.json",
     }
 
     docker_env = {
@@ -158,7 +154,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         "ZSEQUENCER_SNAPSHOT_PATH": "/db",
         "ZSEQUENCER_APPS_FILE": "/app/app.json",
         "ZSEQUENCER_NODES_FILE": "/app/nodes.json",
-        "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE": "/app/sabotage_simulation_timeseries.json",
+        "ZSEQUENCER_SABOTAGE_FILE": "/app/sabotage.json",
     }
 
     cmd = ["docker", "run", "-d", "--name", container_name]
@@ -226,9 +222,7 @@ def get_node_env_variables(
         "ZSEQUENCER_ECDSA_KEY_FILE": os.path.join(node_dir, "ecdsa_key.json"),
         "ZSEQUENCER_ECDSA_KEY_PASSWORD": f"b{node_idx}",
         "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_address,
-        "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE": os.path.join(
-            SIMULATION_DATA_DIR, "sabotage_nodes_state.json"
-        ),
+        "ZSEQUENCER_SABOTAGE_FILE": os.path.join(SIMULATION_DATA_DIR, "sabotage.json"),
     }
 
 
@@ -248,7 +242,6 @@ def main(config_path: str = "./simulation-config.json"):
     sequencer_address, network_keys = generate_network_keys(config.node_num)
     nodes_info = {}
     nodes_execution_args = {}
-    sabotage_timeseries_nodes = {}
 
     # Prepare nodes
     for idx, keys in enumerate(network_keys):
@@ -264,20 +257,9 @@ def main(config_path: str = "./simulation-config.json"):
             node_host=container_name,
         ).dict()
 
-        # Get sabotage timeseries from config
-        # Use node index as key if available, otherwise use default
-        sabotage_key = str(idx)
-        if sabotage_key in config.sabotages_config:
-            sabotage_timeseries_nodes[keys.address] = config.sabotages_config[
-                sabotage_key
-            ]
-        else:
-            # Default sabotage config if not specified
-            sabotage_timeseries_nodes[keys.address] = [
-                {"time_duration": 1000, "up": True},
-                {"time_duration": 10, "up": False},
-                {"time_duration": 100, "up": True},
-            ]
+        # Write sabotage file
+        with open(os.path.join(node_files["node_dir"], "sabotage.json"), "w") as f:
+            json.dump(config.sabotages_config[str(idx)], f, indent=4)
 
         # Prepare environment variables
         env_vars = get_node_env_variables(
@@ -292,9 +274,6 @@ def main(config_path: str = "./simulation-config.json"):
     # Write configuration files
     with open(os.path.join(SIMULATION_DATA_DIR, "nodes.json"), "w") as f:
         json.dump(nodes_info, f, indent=4)
-
-    with open(os.path.join(SIMULATION_DATA_DIR, "sabotage_nodes_state.json"), "w") as f:
-        json.dump(sabotage_timeseries_nodes, f, indent=4)
 
     with open(os.path.join(SIMULATION_DATA_DIR, "apps.json"), "w") as f:
         json.dump({"simple_app": {"url": "", "public_keys": []}}, f, indent=4)
@@ -320,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="simulations/sample-config.json",
+        default="sample-config.json",
         help="Path to the simulation configuration file",
     )
 
