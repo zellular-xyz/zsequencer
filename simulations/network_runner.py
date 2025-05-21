@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 DOCKER_NETWORK_NAME = "zsequencer_net"
 SIMULATION_DATA_DIR = "./data"
-BASE_PROXY_PORT = 7001
 
 
 class Keys(BaseModel):
@@ -226,7 +225,6 @@ def get_node_env_variables(
         "ZSEQUENCER_BLS_KEY_PASSWORD": f"a{node_idx}",
         "ZSEQUENCER_ECDSA_KEY_FILE": os.path.join(node_dir, "ecdsa_key.json"),
         "ZSEQUENCER_ECDSA_KEY_PASSWORD": f"b{node_idx}",
-        "ZSEQUENCER_PROXY_PORT": str(BASE_PROXY_PORT + node_idx),
         "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_address,
         "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_TIMESERIES_NODES_STATE_FILE": os.path.join(
             SIMULATION_DATA_DIR, "sabotage_nodes_state.json"
