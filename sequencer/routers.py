@@ -35,7 +35,7 @@ router = APIRouter()
 async def put_batches(
     request: SequencerPutBatchesRequest,
 ) -> SequencerPutBatchesResponse:
-    """Process and sequence batches submitted by nodes."""
+    """Submit batches to the sequencer for ordering and consensus."""
     # Check rate limits
     if not try_acquire_rate_limit_of_other_nodes(
         node_id=request.node_id, batches=request.batches

@@ -57,7 +57,7 @@ router = APIRouter()
     response_model=EmptyResponse,
 )
 async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
-    """Receive batches for multiple applications in bulk."""
+    """Submit multiple batches for different applications in a single request."""
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
@@ -93,7 +93,7 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
     response_model=EmptyResponse,
 )
 async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyResponse:
-    """Receive a single batch for a specific application."""
+    """Submit a batch to be sequenced for the specified application."""
     if "posting" not in zconfig.NODE["roles"]:
         raise IsNotPostingNodeError()
 
@@ -124,7 +124,7 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
     response_model=SignSyncPointResponse,
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
-    """Sign a synchronization point for batch consensus."""
+    """Sign a synchronization point to contribute to batch consensus."""
     # TODO: only the sequencer should be able to call this route
     signature = tasks.sign_sync_point(
         {
@@ -157,7 +157,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     response_model=DisputeResponse,
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
-    """Confirm dispute by providing signature or reject by raising an error."""
+    """Report a dispute about sequencer issues and receive a signed confirmation."""
     if request.sequencer_id != zconfig.SEQUENCER["id"]:
         raise InvalidSequencerError()
 
@@ -191,7 +191,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     response_model=EmptyResponse,
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
-    """Switch to a new sequencer based on collected proofs."""
+    """Initiate a sequencer switch based on provided signatures."""
     proofs = request.proofs
 
     if not utils.is_switch_approved(proofs):
@@ -215,7 +215,7 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     response_model=NodeStateResponse,
 )
 async def get_state() -> NodeStateResponse:
-    """Retrieve the current state of the node and its applications."""
+    """Retrieve current node information and application status."""
     if (
         zconfig.get_mode() == MODE_PROD
         and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
@@ -267,7 +267,7 @@ async def get_state() -> NodeStateResponse:
     response_model=GetAppLastBatchResponse,
 )
 async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchResponse:
-    """Get the last batch for a specific app and state."""
+    """Get the latest batch for a specific application in the given state."""
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 
@@ -287,7 +287,7 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
     response_model=GetAppsLastBatchResponse,
 )
 async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
-    """Get the last batches for all apps in a given state."""
+    """Retrieve the latest batches for all applications in one request."""
     if state not in {"locked", "finalized"}:
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
@@ -311,7 +311,7 @@ async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
 async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)
 ) -> GetBatchesResponse:
-    """Fetch batches for an app in a specific state, starting after a given index."""
+    """Retrieve batches for an application with pagination support."""
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 

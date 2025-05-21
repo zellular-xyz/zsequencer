@@ -16,9 +16,8 @@ class SuccessResponse(BaseModel):
     data: Any = None
 
 
-# Pydantic version of StatefulBatch for API response
 class StatefulBatch(BaseModel):
-    """Pydantic model version of StatefulBatch TypedDict for API responses."""
+    """Complete information about a batch including its state and signatures."""
 
     app_name: str
     node_id: str
@@ -32,22 +31,21 @@ class StatefulBatch(BaseModel):
     finalized_nonsigners: list[str] | None
     finalized_tag: int | None
     index: int
-    state: OperationalState  # "sequenced" | "locked" | "finalized"
+    state: OperationalState
 
-    # Allow conversion from TypedDict to Pydantic model
     @classmethod
     def from_typed_dict(cls, data: StatefulBatchDict) -> "StatefulBatch":
         return cls(**data)
 
 
 class EmptyResponseData(BaseModel):
-    """Empty data model for operations that don't return meaningful data."""
+    """Empty response object used when no data is required."""
 
     pass
 
 
 class EmptyResponse(SuccessResponse):
-    """Response model for operations that don't need to return data."""
+    """Standard success response with no additional data."""
 
     data: EmptyResponseData = Field(default_factory=EmptyResponseData)
 
@@ -60,9 +58,8 @@ class BatchResponse(SuccessResponse):
 
 # Request Models
 
-
 class BatchData(BaseModel):
-    """Model for a single batch in a request."""
+    """Data structure for batch submission to the sequencer."""
 
     hash: str
     body: str
@@ -70,21 +67,22 @@ class BatchData(BaseModel):
 
 
 class NodePutBatchRequest(RootModel):
-    """Request model for the node's put_batch endpoint for a single batch."""
+    """Request format for submitting a single batch to a node."""
 
     # Raw batch body as string
     root: str
 
 
 class NodePutBulkBatchesRequest(RootModel):
-    """Request model for the node's put_bulk_batches endpoint."""
+    """Request format for submitting multiple batches to different applications at once."""
 
     # Dictionary of app_name -> list of raw batch bodies
     root: dict[str, list[str]]
 
 
+
 class SequencerPutBatchesRequest(BaseModel):
-    """Request model for the sequencer's put_batches endpoint."""
+    """Request format for batch sequencing with consensus information."""
 
     app_name: str
     batches: list[BatchData]
@@ -103,7 +101,7 @@ class SequencerPutBatchesRequest(BaseModel):
 
 
 class SignSyncPointRequest(BaseModel):
-    """Request model for signing sync points."""
+    """Request to sign a synchronization point for consensus."""
 
     app_name: str
     state: str
@@ -124,7 +122,7 @@ class SignSyncPointData(BaseModel):
 
 
 class SignSyncPointResponse(SuccessResponse):
-    """Response model for signing sync points."""
+    """Response containing the signature for a synchronization point."""
 
     data: SignSyncPointData
 
