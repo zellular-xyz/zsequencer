@@ -20,7 +20,6 @@ from common.errors import (
     SequencerOutOfReachError,
 )
 from config import zconfig
-from sabotage import sabotage_simulator
 
 def sequencer_only(request: Request) -> None:
     """Decorator to restrict access to sequencer-only functions."""
