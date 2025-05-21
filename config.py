@@ -246,7 +246,7 @@ class Config:
 
         self.fetch_network_state()
 
-        if self.ADDRESS in self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes:
+        if self.ADDRESS in self.last_state.nodes:
             self.NODE = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[
                 self.ADDRESS
             ]
