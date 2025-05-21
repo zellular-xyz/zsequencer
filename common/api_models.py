@@ -40,33 +40,7 @@ class StatefulBatch(BaseModel):
         return cls(**data)
 
 
-class EmptyResponseData(BaseModel):
-    """Empty response object used when no data is required."""
-
-    pass
-
-
-class EmptyResponse(SuccessResponse):
-    """Standard success response with no additional data."""
-
-    data: EmptyResponseData = Field(default_factory=EmptyResponseData)
-
-
-class BatchResponse(SuccessResponse):
-    """Response model for batch operations."""
-
-    data: dict = Field(default_factory=dict)
-
-
-# Request Models
-
-
-class BatchData(BaseModel):
-    """Data structure for batch submission to the sequencer."""
-
-    hash: str
-    body: str
-    node_id: str
+# Models for Node Router
 
 
 class NodePutBatchRequest(RootModel):
@@ -83,23 +57,16 @@ class NodePutBulkBatchesRequest(RootModel):
     root: dict[str, list[str]]
 
 
-class SequencerPutBatchesRequest(BaseModel):
-    """Request format for batch sequencing with consensus information."""
+class EmptyResponseData(BaseModel):
+    """Empty response object used when no data is required."""
 
-    app_name: str
-    batches: list[BatchData]
-    node_id: str
-    signature: str
-    sequenced_index: int
-    sequenced_hash: str
-    sequenced_chaining_hash: str
-    locked_index: int
-    locked_hash: str
-    locked_chaining_hash: str
-    timestamp: int
+    pass
 
 
-# Response Models
+class EmptyResponse(SuccessResponse):
+    """Standard success response with no additional data."""
+
+    data: EmptyResponseData = Field(default_factory=EmptyResponseData)
 
 
 class SignSyncPointRequest(BaseModel):
@@ -177,12 +144,6 @@ class SwitchRequest(BaseModel):
     proofs: list[SwitchProof]
 
 
-class SwitchResponse(SuccessResponse):
-    """Response indicating sequencer switch status."""
-
-    data: dict = Field(default_factory=dict)
-
-
 class AppState(BaseModel):
     """Current consensus state information for an application."""
 
@@ -252,6 +213,30 @@ class GetBatchesResponse(SuccessResponse):
 
 
 # Models for Sequencer Router
+
+
+class BatchData(BaseModel):
+    """Data structure for batch submission to the sequencer."""
+
+    hash: str
+    body: str
+    node_id: str
+
+
+class SequencerPutBatchesRequest(BaseModel):
+    """Request format for batch sequencing with consensus information."""
+
+    app_name: str
+    batches: list[BatchData]
+    node_id: str
+    signature: str
+    sequenced_index: int
+    sequenced_hash: str
+    sequenced_chaining_hash: str
+    locked_index: int
+    locked_hash: str
+    locked_chaining_hash: str
+    timestamp: int
 
 
 class SequencerPutBatchesResponseData(BaseModel):
