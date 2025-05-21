@@ -144,7 +144,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         env_variables["ZSEQUENCER_SNAPSHOT_PATH"]: "/db",
         env_variables["ZSEQUENCER_APPS_FILE"]: "/app/app.json",
         env_variables["ZSEQUENCER_NODES_FILE"]: "/app/nodes.json",
-        env_variables["ZSEQUENCER_SABOTAGE_FILE"]: "/app/sabotage.json",
+        env_variables["ZSEQUENCER_SABOTAGE_CONFIG_FILE"]: "/app/sabotage.json",
     }
 
     docker_env = {
@@ -154,7 +154,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         "ZSEQUENCER_SNAPSHOT_PATH": "/db",
         "ZSEQUENCER_APPS_FILE": "/app/app.json",
         "ZSEQUENCER_NODES_FILE": "/app/nodes.json",
-        "ZSEQUENCER_SABOTAGE_FILE": "/app/sabotage.json",
+        "ZSEQUENCER_SABOTAGE_CONFIG_FILE": "/app/sabotage.json",
     }
 
     cmd = ["docker", "run", "-d", "--name", container_name]
@@ -222,7 +222,7 @@ def get_node_env_variables(
         "ZSEQUENCER_ECDSA_KEY_FILE": os.path.join(node_dir, "ecdsa_key.json"),
         "ZSEQUENCER_ECDSA_KEY_PASSWORD": f"b{node_idx}",
         "ZSEQUENCER_INIT_SEQUENCER_ID": sequencer_address,
-        "ZSEQUENCER_SABOTAGE_FILE": os.path.join(SIMULATION_DATA_DIR, "sabotage.json"),
+        "ZSEQUENCER_SABOTAGE_CONFIG_FILE": os.path.join(node_dir, "sabotage.json"),
     }
 
 

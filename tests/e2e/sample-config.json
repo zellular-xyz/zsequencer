@@ -13,7 +13,7 @@
       "ZSEQUENCER_BANDWIDTH_KB_PER_WINDOW": 10000,
       "ZSEQUENCER_PUSH_RATE_LIMIT_WINDOW_SECONDS": 1,
       "ZSEQUENCER_MAX_BATCH_SIZE_KB": 5,
-      "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_OUT_OF_REACH_SIMULATION": false,
+      "ZSEQUENCER_SABOTAGE_SIMULATION": true,
       "ZSEQUENCER_CHECK_REACHABILITY_OF_NODE_URL": false
     },
     "base_port": 6005,
@@ -22,7 +22,7 @@
       "0": {
         "out_of_reach_time_series": [
           {
-            "time_duration": 1000,
+            "time_duration": 10,
             "up": true
           },
           {
