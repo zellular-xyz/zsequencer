@@ -157,7 +157,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         "ZSEQUENCER_SABOTAGE_CONFIG_FILE": "/app/sabotage.json",
     }
 
-    cmd = ["docker", "run", "-d", "--name", container_name]
+    cmd = ["docker", "run", "--cap-add", "NET_ADMIN", "-d", "--name", container_name]
     cmd.extend(["--network", DOCKER_NETWORK_NAME])
 
     for host_path, container_path in volumes.items():
