@@ -24,10 +24,9 @@ Comprehensive documentation is available at [docs.zellular.xyz](https://docs.zel
 - [Architecture Overview](https://docs.zellular.xyz/architecture.html) - Learn about the system design
 - [Protocol Specification](https://docs.zellular.xyz/protocol.html) - Detailed explanation of the BFT protocol
 - [SDK Documentation](https://docs.zellular.xyz/sdk.html) - How to build applications with Zellular
-- [Example Applications](https://docs.zellular.xyz/examples/token.html) - Sample implementations including:
+- Example Applications - Sample implementations including:
   - [Token Service](https://docs.zellular.xyz/examples/token.html)
   - [Orderbook](https://docs.zellular.xyz/examples/orderbook.html)
-  - [Verification](https://docs.zellular.xyz/examples/verification.html)
   - [Downtime Monitoring](https://docs.zellular.xyz/examples/downtime_monitoring.html)
 
 ## Joining EigenLayer Test Network
