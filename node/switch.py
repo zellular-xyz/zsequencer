@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import Counter
 from threading import Lock
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import Any, TypedDict
 
 import aiohttp
 
@@ -18,9 +19,6 @@ from common.bls import is_sync_point_signature_verified
 from common.db import SignatureData, zdb
 from common.logger import zlogger
 from config import zconfig
-
-if TYPE_CHECKING:
-    from common.api_models import SwitchProof
 
 
 # Define types
@@ -92,7 +90,7 @@ async def gather_disputes() -> tuple[list[SwitchProof], float]:
             return_when=asyncio.FIRST_COMPLETED,
         )
         for task in done:
-            if not task.result() or not utils.is_dispute_approved(task.result()):
+            if not task.result() or not is_dispute_approved(task.result()):
                 continue
             results.append(task.result())
             node_id = dispute_tasks[task]
@@ -118,7 +116,7 @@ async def send_dispute_requests() -> None:
         f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
     )
     timestamp: int = int(time.time())
-    new_sequencer_id: str = utils.get_next_sequencer_id(
+    new_sequencer_id: str = get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"],
     )
     # Create the initial SwitchProof from this node
@@ -157,7 +155,7 @@ async def send_dispute_requests() -> None:
         return
     proofs.extend(gathered_proofs)
 
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
+    old_sequencer_id, new_sequencer_id = get_switch_parameter_from_proofs(proofs)
     await send_switch_requests(proofs)
     await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
 
@@ -566,3 +564,64 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
         )
 
     return all_records
+
+
+def is_switch_approved(proofs: list[SwitchProof]) -> bool:
+    """Check if the switch to a new sequencer is approved."""
+    node_ids = [proof.node_id for proof in proofs if is_dispute_approved(proof)]
+    stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
+    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
+
+
+def is_dispute_approved(proof: SwitchProof) -> bool:
+    """Check if a dispute is approved based on the provided proof."""
+    # Validate the proof logic
+    expected_new_sequencer_id = get_next_sequencer_id(zconfig.SEQUENCER["id"])
+    if (
+        proof.old_sequencer_id != zconfig.SEQUENCER["id"]
+        or proof.new_sequencer_id != expected_new_sequencer_id
+    ):
+        return False
+
+    now = time.time()
+    if not now - 600 <= proof.timestamp <= now + 60:
+        return False
+
+    if not utils.is_eth_sig_verified(
+        signature=proof.signature,
+        node_id=proof.node_id,
+        message=f"{zconfig.SEQUENCER['id']}{proof.timestamp}",
+    ):
+        return False
+
+    return True
+
+
+def get_switch_parameter_from_proofs(
+    proofs: list[SwitchProof],
+) -> tuple[str | None, str | None]:
+    """Get the switch parameters from proofs."""
+    sequencer_counts: Counter = Counter()
+    for proof in proofs:
+        sequencer_counts[(proof.old_sequencer_id, proof.new_sequencer_id)] += 1
+
+    most_common_sequencer = sequencer_counts.most_common(1)
+    if most_common_sequencer:
+        return most_common_sequencer[0][0]
+
+    return None, None
+
+
+def get_next_sequencer_id(old_sequencer_id: str) -> str:
+    """Get the ID of the next sequencer in a circular sorted list."""
+    sorted_nodes = sorted(
+        zconfig.last_state.sequencing_nodes.values(), key=lambda x: x["id"]
+    )
+
+    ids = [node["id"] for node in sorted_nodes]
+
+    try:
+        index = ids.index(old_sequencer_id)
+        return ids[(index + 1) % len(ids)]  # Circular indexing
+    except ValueError:
+        return ids[0]  # Default to first if old_sequencer_id is not found
