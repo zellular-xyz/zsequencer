@@ -197,7 +197,8 @@ def run_docker_container(
     cmd.append(image_name)
 
     try:
-        subprocess.run(cmd, check=True)
+        # Use capture_output to suppress the container ID output
+        subprocess.run(cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         print(f"Error starting container {container_name}: {e}")
         raise
@@ -256,6 +257,7 @@ def start(config_path: str) -> None:
     """Start a network of zsequencer nodes based on the provided configuration."""
     # Load simulation configuration
     config = load_simulation_config(config_path)
+    print(f"Starting a network with {config.node_num} nodes...")
 
     # Ensure simulation directory exists
     if not os.path.exists(SIMULATION_DATA_DIR):
@@ -269,6 +271,8 @@ def start(config_path: str) -> None:
     sequencer_address, network_keys = generate_network_keys(config.node_num)
     nodes_info = {}
     nodes_execution_args = {}
+
+    print(f"Preparing node files and configurations...")
 
     # Prepare nodes
     for idx, keys in enumerate(network_keys):
@@ -304,18 +308,35 @@ def start(config_path: str) -> None:
     with open(os.path.join(SIMULATION_DATA_DIR, "apps.json"), "w") as f:
         json.dump({"simple_app": {"url": "", "public_keys": []}}, f, indent=4)
 
+    print(f"Starting {config.node_num} containers...")
+
     # Start containers
     for idx, node_id in enumerate(sorted(nodes_info.keys())):
         container_name = f"zsequencer-node-{idx}"
         execution_data = nodes_execution_args[node_id]
 
+        # Silently remove any existing container with the same name
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
+
+        print(f"  Starting node {idx + 1}/{config.node_num}: {container_name}")
+
+        # Use the existing run_docker_container function
         run_docker_container(
             image_name="zellular/zsequencer:latest",
             container_name=container_name,
             env_variables=execution_data.env_variables,
         )
+
         time.sleep(1)
+
+    print(f"\nNetwork started successfully!")
+    print(
+        f"- Node ports: {config.base_port} to {config.base_port + config.node_num - 1}"
+    )
+    print(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
+    print(f"- Configuration: {config_path}")
+    print(f"\nTo view logs: network_runner.py logs --terminal=<terminal>")
+    print(f"To stop the network: network_runner.py stop")
 
 
 def show_logs(terminal_cmd: str) -> None:
