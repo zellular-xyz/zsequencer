@@ -17,9 +17,9 @@ from common.errors import (
     IsPausedError,
     IsSequencerError,
     NotSyncedError,
-    SequencerOutOfReachError,
 )
 from config import zconfig
+
 
 def sequencer_only(request: Request) -> None:
     """Decorator to restrict access to sequencer-only functions."""
