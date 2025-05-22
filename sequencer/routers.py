@@ -27,7 +27,6 @@ router = APIRouter()
     dependencies=[
         Depends(utils.sequencer_only),
         Depends(utils.not_paused),
-        Depends(utils.sequencer_simulation_malfunction),
         Depends(utils.validate_version("sequencer")),
     ],
 )
