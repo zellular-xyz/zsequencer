@@ -1,3 +1,4 @@
+import argparse
 import hashlib
 import json
 import os
@@ -226,7 +227,7 @@ def get_node_env_variables(
     }
 
 
-def main(config_path: str = "./simulation-config.json"):
+def main(config_path: str):
     # Load simulation configuration
     config = load_simulation_config(config_path)
 
@@ -247,15 +248,6 @@ def main(config_path: str = "./simulation-config.json"):
     for idx, keys in enumerate(network_keys):
         # Prepare node files
         node_files = prepare_simulation_files(idx, keys)
-        container_name = f"zsequencer-node-{idx}"
-
-        # Generate node info
-        nodes_info[keys.address] = generate_node_info(
-            node_idx=idx,
-            keys=keys,
-            base_port=config.base_port,
-            node_host=container_name,
-        ).dict()
 
         # Write sabotage file
         with open(os.path.join(node_files["node_dir"], "sabotage.json"), "w") as f:
@@ -270,6 +262,14 @@ def main(config_path: str = "./simulation-config.json"):
             config.base_port,
         )
         nodes_execution_args[keys.address] = ExecutionData(env_variables=env_vars)
+
+        # Generate node info
+        nodes_info[keys.address] = generate_node_info(
+            node_idx=idx,
+            keys=keys,
+            base_port=config.base_port,
+            node_host=env_vars["ZSEQUENCER_HOST"],
+        ).dict()
 
     # Write configuration files
     with open(os.path.join(SIMULATION_DATA_DIR, "nodes.json"), "w") as f:
@@ -293,8 +293,6 @@ def main(config_path: str = "./simulation-config.json"):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="Run a zsequencer network simulation")
     parser.add_argument(
         "--config",
