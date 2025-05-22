@@ -77,6 +77,7 @@ def generate_keys(idx: int) -> Keys:
 
 
 def generate_network_keys(network_nodes_num: int) -> tuple[str, list[Keys]]:
+    """Generate deterministic keys for all nodes in the network."""
     network_keys = [generate_keys(idx) for idx in range(network_nodes_num)]
     network_keys = sorted(network_keys, key=lambda network_key: network_key.address)
     sequencer_address = network_keys[0].address
@@ -88,8 +89,9 @@ def generate_node_info(
     keys: Keys,
     base_port: int,
     stake: int = 10,
-    node_host="localhost",
-):
+    node_host: str = "localhost",
+) -> NodeInfo:
+    """Generate node information based on keys and network settings."""
     pubkeyG2_X, pubkeyG2_Y = attestation.g2_to_tupple(keys.bls_key.pub_g2)
     return NodeInfo(
         id=keys.address,
@@ -101,7 +103,7 @@ def generate_node_info(
     )
 
 
-def ensure_docker_network():
+def ensure_docker_network() -> None:
     """Ensure the Docker network exists."""
     try:
         result = subprocess.run(
@@ -118,22 +120,45 @@ def ensure_docker_network():
         raise
 
 
-def clean_docker_containers(network_nodes_num: int):
+def get_container_names() -> list[str]:
+    """Get the names of all zsequencer node containers."""
+    try:
+        filter_arg = "name=zsequencer-node-"
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", filter_arg, "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        container_names = result.stdout.strip().split("\n")
+        return [name for name in container_names if name]  # Filter out empty strings
+    except subprocess.CalledProcessError as e:
+        print(f"Error getting container names: {e}")
+        return []
+
+
+def stop() -> None:
     """Stop and remove all zsequencer node containers."""
-    for idx in range(network_nodes_num):
-        container_name = f"zsequencer-node-{idx}"
-        try:
-            subprocess.run(
-                ["docker", "stop", container_name], capture_output=True, check=False
-            )
-            subprocess.run(
-                ["docker", "rm", "-f", container_name], capture_output=True, check=False
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error cleaning container {container_name}: {e}")
+    container_names = get_container_names()
+
+    if not container_names:
+        print("No zsequencer containers found.")
+        return
+
+    print(f"Stopping and removing {len(container_names)} containers...")
+
+    for container_name in container_names:
+        print(f"Stopping container {container_name}...")
+        subprocess.run(["docker", "stop", container_name], check=False)
+        subprocess.run(["docker", "rm", "-f", container_name], check=False)
+
+    print("All zsequencer containers have been stopped and removed.")
 
 
-def run_docker_container(image_name: str, container_name: str, env_variables: dict):
+def run_docker_container(
+    image_name: str, container_name: str, env_variables: dict[str, str]
+) -> None:
     """Run a zsequencer node in a Docker container."""
     data_dir = env_variables["ZSEQUENCER_SNAPSHOT_PATH"]
     if not os.path.exists(data_dir):
@@ -178,7 +203,7 @@ def run_docker_container(image_name: str, container_name: str, env_variables: di
         raise
 
 
-def prepare_simulation_files(node_idx: int, keys: Keys):
+def prepare_simulation_files(node_idx: int, keys: Keys) -> dict[str, str]:
     """Prepare node files in the simulation directory."""
     # Create node directory
     node_dir = os.path.join(SIMULATION_DATA_DIR, f"node_{node_idx}")
@@ -209,7 +234,7 @@ def get_node_env_variables(
     sequencer_address: str,
     shared_env_variables: dict[str, Any],
     base_port: int,
-) -> dict:
+) -> dict[str, str]:
     """Generate environment variables for a node."""
     return {
         **shared_env_variables,  # Only include shared environment variables from config
@@ -227,7 +252,8 @@ def get_node_env_variables(
     }
 
 
-def main(config_path: str):
+def start(config_path: str) -> None:
+    """Start a network of zsequencer nodes based on the provided configuration."""
     # Load simulation configuration
     config = load_simulation_config(config_path)
 
@@ -236,7 +262,7 @@ def main(config_path: str):
         os.makedirs(SIMULATION_DATA_DIR)
 
     # Clean up existing containers
-    clean_docker_containers(config.node_num)
+    stop()
     ensure_docker_network()
 
     # Generate network keys and prepare nodes
@@ -292,35 +318,39 @@ def main(config_path: str):
         time.sleep(1)
 
 
-def stop_all_containers():
-    """Stop and remove all zsequencer node containers."""
-    try:
-        # Get all containers with name starting with 'zsequencer-node-'
-        result = subprocess.run(
-            ["docker", "ps", "-a", "--filter", "name=zsequencer-node-", "--format", "{{.Names}}"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+def show_logs(terminal_cmd: str) -> None:
+    """Open terminals showing logs for all zsequencer node containers."""
+    container_names = get_container_names()
 
-        container_names = result.stdout.strip().split('\n')
-        container_names = [name for name in container_names if name]  # Filter out empty strings
+    if not container_names:
+        print("No zsequencer containers found.")
+        return
 
-        if not container_names:
-            print("No zsequencer containers found.")
-            return
+    print(f"Opening terminal windows for {len(container_names)} containers...")
 
-        print(f"Stopping and removing {len(container_names)} containers...")
+    def get_terminal_command(terminal_type: str, container: str) -> list[str]:
+        """Get the appropriate terminal command based on terminal type."""
+        title = f"Logs: {container}"
+        log_command = f"docker logs -f {container}; read -p 'Press Enter to close...'"
 
-        for container_name in container_names:
-            print(f"Stopping container {container_name}...")
-            subprocess.run(["docker", "stop", container_name], check=False)
-            subprocess.run(["docker", "rm", "-f", container_name], check=False)
+        if terminal_type == "gnome-terminal":
+            return [terminal_type, "--", "bash", "-c", log_command]
+        elif terminal_type in ["konsole", "terminator"]:
+            return [terminal_type, "-e", f"bash -c '{log_command}'"]
+        elif terminal_type == "tilix":
+            return [terminal_type, "-t", title, "-e", f"bash -c '{log_command}'"]
+        else:  # xterm or others
+            return [terminal_type, "-T", title, "-e", f"bash -c '{log_command}'"]
 
-        print("All zsequencer containers have been stopped and removed.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error stopping containers: {e}")
-        raise
+    # Open a terminal for each container
+    for container_name in container_names:
+        cmd = get_terminal_command(terminal_cmd, container_name)
+        subprocess.Popen(cmd)
+
+        # Small delay to prevent terminals from overlapping too much
+        time.sleep(0.5)
+
+    print("Terminal windows opened. Close them manually when done.")
 
 
 if __name__ == "__main__":
@@ -339,10 +369,22 @@ if __name__ == "__main__":
     # Stop command
     stop_parser = subparsers.add_parser("stop", help="Stop all running containers")
 
+    # Logs command
+    logs_parser = subparsers.add_parser("logs", help="Show logs for containers")
+    logs_parser.add_argument(
+        "--terminal",
+        type=str,
+        choices=["gnome-terminal", "xterm", "konsole", "terminator", "tilix"],
+        required=True,
+        help="Terminal emulator to use",
+    )
+
     args = parser.parse_args()
 
     # Default to start if no command is provided
     if args.command is None or args.command == "start":
-        main(args.config if hasattr(args, "config") else "sample-config.json")
+        start(args.config if hasattr(args, "config") else "sample-config.json")
     elif args.command == "stop":
-        stop_all_containers()
+        stop()
+    elif args.command == "logs":
+        show_logs(args.terminal)

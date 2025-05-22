@@ -138,7 +138,19 @@ The project includes end-to-end tests that simulate a network of nodes and allow
    ```
    The client will send example transactions to the nodes in the network.
 
-5. When you're done testing, you can stop all the containers:
+5. To view logs from all containers:
+   ```bash
+   # Opens a terminal window for each container showing its logs
+   uv run network_runner.py logs --terminal=gnome-terminal
+   ```
+   Supported terminals: gnome-terminal, xterm, konsole, terminator, tilix
+
+   For individual container logs, use the docker logs command directly:
+   ```bash
+   docker logs -f zsequencer-node-0
+   ```
+
+6. When you're done testing, you can stop all the containers:
    ```bash
    uv run network_runner.py stop
    ```
