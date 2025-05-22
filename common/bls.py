@@ -168,6 +168,7 @@ async def request_signature(
                     pub_key=zconfig.NODES[node_id]["public_key_g2"],
                     msg_bytes=message.encode("utf-8"),
                 ):
+                    zlogger.warning(f"Signature verification failed for {node_id}.")
                     return None
                 return response_json["data"]
 

@@ -1,12 +1,18 @@
+"""This module implements sequencer switching and dispute resolution logic."""
+
+from __future__ import annotations
+
 import asyncio
 import json
 import time
+from collections import Counter
 from threading import Lock
 from typing import Any, TypedDict
 
 import aiohttp
 
 from common import utils
+from common.api_models import SwitchProof
 from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
@@ -14,19 +20,163 @@ from common.db import SignatureData, zdb
 from common.logger import zlogger
 from config import zconfig
 
-switch_lock: Lock = Lock()
 
-
+# Define types
 class LastLockedBatchEntry(TypedDict):
     node_id: str
     last_locked_batch: BatchRecord
 
 
-async def _send_switch_request(session, node, proofs):
+switch_lock: Lock = Lock()
+
+
+async def send_dispute_request(
+    node: dict[str, Any],
+    is_sequencer_down: bool,
+) -> SwitchProof | None:
+    """Send a dispute request to a specific node."""
+    timestamp: int = int(time.time())
+    data: str = json.dumps(
+        {
+            "sequencer_id": zconfig.SEQUENCER["id"],
+            "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
+            "is_sequencer_down": is_sequencer_down,
+            "has_delayed_batches": zdb.has_delayed_batches(),
+            "timestamp": timestamp,
+        },
+    )
+    url: str = f"{node['socket']}/node/dispute"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url=url,
+                data=data,
+                headers=zconfig.HEADERS,
+            ) as response:
+                response_json: dict[str, Any] = await response.json()
+                if response_json["status"] == "success" and "data" in response_json:
+                    data = response_json["data"]
+                    return SwitchProof(
+                        node_id=data["node_id"],
+                        old_sequencer_id=data["old_sequencer_id"],
+                        new_sequencer_id=data["new_sequencer_id"],
+                        timestamp=data["timestamp"],
+                        signature=data["signature"],
+                    )
+    except aiohttp.ClientError as error:
+        zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
+
+    return None
+
+
+async def gather_disputes() -> tuple[list[SwitchProof], float]:
+    """Gather dispute data from nodes until the stake of nodes reaches the threshold."""
+    dispute_tasks: dict[asyncio.Task, str] = {
+        asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
+            "id"
+        ]
+        for node in list(zconfig.NODES.values())
+        if node["id"] != zconfig.NODE["id"]
+    }
+
+    results: list[SwitchProof] = []
+    pending_tasks = list(dispute_tasks.keys())
+    stake_percent = (
+        100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
+    )
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if not task.result() or not is_dispute_approved(task.result()):
+                continue
+            results.append(task.result())
+            node_id = dispute_tasks[task]
+            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
+    return results, stake_percent
+
+
+async def send_dispute_requests() -> None:
+    """Send dispute requests if there are missed batches."""
+    is_not_synced = not zconfig.get_synced_flag()
+    is_paused = zconfig.is_paused
+
+    no_missed_batches = not zdb.has_missed_batches()
+    no_delayed_batches = not zdb.has_delayed_batches()
+    sequencer_up = not zdb.is_sequencer_down
+
+    no_functionality_issue = no_missed_batches and no_delayed_batches and sequencer_up
+
+    if is_not_synced or is_paused or no_functionality_issue:
+        return
+
+    zlogger.warning(
+        f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
+    )
+    timestamp: int = int(time.time())
+    new_sequencer_id: str = get_next_sequencer_id(
+        old_sequencer_id=zconfig.SEQUENCER["id"],
+    )
+    # Create the initial SwitchProof from this node
+    proofs: list[SwitchProof] = []
+    proofs.append(
+        SwitchProof(
+            node_id=zconfig.NODE["id"],
+            old_sequencer_id=zconfig.SEQUENCER["id"],
+            new_sequencer_id=new_sequencer_id,
+            timestamp=timestamp,
+            signature=utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
+        )
+    )
+
+    try:
+        gathered_proofs, stake_percent = await asyncio.wait_for(
+            gather_disputes(),
+            timeout=zconfig.AGGREGATION_TIMEOUT,
+        )
+    except TimeoutError:
+        zlogger.warning(
+            f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
+        )
+        return
+    except Exception as error:
+        import traceback
+
+        traceback.print_exc()
+        zlogger.error(f"An unexpected error occurred: {error}")
+        return
+
+    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
+        zlogger.warning(
+            f"Not enough stake for dispute, stake_percent : {stake_percent}"
+        )
+        return
+    proofs.extend(gathered_proofs)
+
+    old_sequencer_id, new_sequencer_id = get_switch_parameter_from_proofs(proofs)
+    await send_switch_requests(proofs)
+    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
+
+
+async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     """Send a single switch request to a node."""
+    # Convert SwitchProof objects to dictionaries for JSON serialization
+    proofs_dict = [
+        {
+            "node_id": proof.node_id,
+            "old_sequencer_id": proof.old_sequencer_id,
+            "new_sequencer_id": proof.new_sequencer_id,
+            "timestamp": proof.timestamp,
+            "signature": proof.signature,
+        }
+        for proof in proofs
+    ]
+
     data = json.dumps(
         {
-            "proofs": proofs,
+            "proofs": proofs_dict,
             "timestamp": int(time.time()),
         }
     )
@@ -41,7 +191,7 @@ async def _send_switch_request(session, node, proofs):
         )
 
 
-async def send_switch_requests(proofs: list[dict[str, Any]]) -> None:
+async def send_switch_requests(proofs: list[SwitchProof]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
     async with aiohttp.ClientSession() as session:
@@ -80,7 +230,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
         return
 
     with switch_lock:
-        zdb.pause_node.set()
+        zconfig.pause()
 
         try:
             zconfig.update_sequencer(new_sequencer_id)
@@ -171,7 +321,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)
         finally:
-            zdb.pause_node.clear()
+            zconfig.unpause()
 
 
 def _prepare_batches(
@@ -293,14 +443,7 @@ async def _sync_with_peer_node(
                     )
                     return False
 
-                result = zdb.insert_sequenced_batches(
-                    app_name=app_name, batches=batches
-                )
-                if not result:
-                    zlogger.warning(
-                        f"Error while upserting sequenced batches, app_name:{app_name}, peer_node_id:{peer_node_id}"
-                    )
-                    return False
+                zdb.insert_sequenced_batches(app_name=app_name, batches=batches)
 
                 if locked_signature_info:
                     locking_result = zdb.lock_batches(
@@ -421,3 +564,64 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
         )
 
     return all_records
+
+
+def is_switch_approved(proofs: list[SwitchProof]) -> bool:
+    """Check if the switch to a new sequencer is approved."""
+    node_ids = [proof.node_id for proof in proofs if is_dispute_approved(proof)]
+    stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
+    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
+
+
+def is_dispute_approved(proof: SwitchProof) -> bool:
+    """Check if a dispute is approved based on the provided proof."""
+    # Validate the proof logic
+    expected_new_sequencer_id = get_next_sequencer_id(zconfig.SEQUENCER["id"])
+    if (
+        proof.old_sequencer_id != zconfig.SEQUENCER["id"]
+        or proof.new_sequencer_id != expected_new_sequencer_id
+    ):
+        return False
+
+    now = time.time()
+    if not now - 600 <= proof.timestamp <= now + 60:
+        return False
+
+    if not utils.is_eth_sig_verified(
+        signature=proof.signature,
+        node_id=proof.node_id,
+        message=f"{zconfig.SEQUENCER['id']}{proof.timestamp}",
+    ):
+        return False
+
+    return True
+
+
+def get_switch_parameter_from_proofs(
+    proofs: list[SwitchProof],
+) -> tuple[str | None, str | None]:
+    """Get the switch parameters from proofs."""
+    sequencer_counts: Counter = Counter()
+    for proof in proofs:
+        sequencer_counts[(proof.old_sequencer_id, proof.new_sequencer_id)] += 1
+
+    most_common_sequencer = sequencer_counts.most_common(1)
+    if most_common_sequencer:
+        return most_common_sequencer[0][0]
+
+    return None, None
+
+
+def get_next_sequencer_id(old_sequencer_id: str) -> str:
+    """Get the ID of the next sequencer in a circular sorted list."""
+    sorted_nodes = sorted(
+        zconfig.last_state.sequencing_nodes.values(), key=lambda x: x["id"]
+    )
+
+    ids = [node["id"] for node in sorted_nodes]
+
+    try:
+        index = ids.index(old_sequencer_id)
+        return ids[(index + 1) % len(ids)]  # Circular indexing
+    except ValueError:
+        return ids[0]  # Default to first if old_sequencer_id is not found

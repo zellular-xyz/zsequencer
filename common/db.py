@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import itertools
 import os
-import threading
 import time
 from collections import deque
 from collections.abc import Iterable
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any, TypeAlias, TypedDict
 
 from common import utils
@@ -51,8 +49,7 @@ class InMemoryDB:
 
     def __init__(self) -> None:
         """Initialize the InMemoryDB instance."""
-        self.sequencer_put_batches_lock = threading.Lock()
-        self.pause_node = threading.Event()
+        self.sequencer_put_batches_lock = Lock()
         self.is_sequencer_down = False
         self.is_node_reachable = True
         self._snapshot_manager = SnapshotManager(
@@ -348,7 +345,7 @@ class InMemoryDB:
         app_name: str,
         batches: list[Batch],
     ) -> None:
-        """Upsert sequenced batches."""
+        """Insert sequenced batches."""
         if not batches:
             return
 
@@ -668,7 +665,6 @@ class InMemoryDB:
             .batches()
         ):
             reinitialized_batch: Batch = {
-                "app_name": batch["app_name"],
                 "node_id": batch["node_id"],
                 "hash": batch["hash"],
                 "body": batch["body"],

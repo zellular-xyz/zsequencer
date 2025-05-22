@@ -8,48 +8,55 @@ import threading
 import time
 
 import requests
-from flask import Flask, redirect, url_for
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import secrets
-
 from common.db import zdb
+from common.errors import BaseHTTPError
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
-from node.routes import node_blueprint
+from node.routers import router as node_router
+from node.switch import send_dispute_requests
 from sequencer import tasks as sequencer_tasks
-from sequencer.routes import sequencer_blueprint
+from sequencer.routers import router as sequencer_router
+
+app = FastAPI(title="ZSequencer")
+
+app.include_router(node_router, prefix="/node")
+app.include_router(sequencer_router, prefix="/sequencer")
 
 
-def create_app() -> Flask:
-    """Create and configure the Flask application."""
-    app: Flask = Flask(__name__)
-    app.secret_key = secrets.token_hex(32)
+@app.exception_handler(BaseHTTPError)
+async def base_http_exception_handler(
+    request: Request, exc: BaseHTTPError
+) -> JSONResponse:
+    zlogger.error(
+        f"[API_ERROR] BaseHTTPError at {request.url.path}: {exc.status_code} - {exc.detail['error']['message']}"
+    )
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
-    app.register_blueprint(node_blueprint, url_prefix="/node")
-    app.register_blueprint(sequencer_blueprint, url_prefix="/sequencer")
 
-    @app.route("/", methods=["GET"])
-    def base_redirect():
-        return redirect(url_for("node.get_state"))
-
-    return app
+@app.get("/", include_in_schema=False)
+def base_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/node/state")
 
 
 def run_node_tasks() -> None:
-    """Periodically run node tasks."""
+    """Run node tasks in a loop."""
     while True:
-        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zdb.pause_node.is_set():
+        if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             time.sleep(0.1)
             continue
         if not zdb.is_node_reachable:
             break
 
         node_tasks.send_batches()
-        asyncio.run(node_tasks.send_dispute_requests())
+        asyncio.run(send_dispute_requests())
 
 
 def run_sequencer_tasks() -> None:
@@ -69,7 +76,7 @@ async def run_sequencer_tasks_async() -> None:
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
-        if zdb.pause_node.is_set():
+        if zconfig.is_paused:
             continue
 
         await sequencer_tasks.sync()
@@ -77,7 +84,7 @@ async def run_sequencer_tasks_async() -> None:
 
 def check_node_reachability() -> None:
     """Check node reachability"""
-    time.sleep(5)  # Give Flask time to start
+    time.sleep(5)  # Give the server time to start
 
     try:
         host, port = (
@@ -107,7 +114,6 @@ def check_node_reachability() -> None:
 
 def main() -> None:
     """Main entry point for running the Zellular Node."""
-    app: Flask = create_app()
 
     # Start periodic tasks in threads
     sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks)
@@ -124,15 +130,14 @@ def main() -> None:
     # Set the logging level to WARNING to suppress INFO level logs
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
-    zlogger.info("Starting flask on port %s", zconfig.PORT)
+    zlogger.info("Starting service on port %s", zconfig.PORT)
 
-    # Run Flask directly in the main thread - this is a blocking call
-    app.run(
+    uvicorn.run(
+        "run:app",
         host="0.0.0.0",
         port=zconfig.PORT,
-        debug=False,
-        threaded=False,
-        use_reloader=False,
+        reload=False,
+        log_level="warning",
     )
 
 

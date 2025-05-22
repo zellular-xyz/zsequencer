@@ -5,7 +5,6 @@ from common.utils import get_utf8_size_kb
 
 
 class Batch(TypedDict, total=False):
-    app_name: str
     node_id: str
     body: str
     hash: str
@@ -34,7 +33,6 @@ class BatchRecord(TypedDict, total=False):
 class StatefulBatch(TypedDict, total=False):
     app_name: str
     node_id: str
-    timestamp: int
     body: str
     hash: str
     chaining_hash: str
@@ -48,16 +46,16 @@ class StatefulBatch(TypedDict, total=False):
     state: State
 
 
-def batch_record_to_stateful_batch(batch_record: BatchRecord) -> StatefulBatch:
+def batch_record_to_stateful_batch(
+    app_name: str, batch_record: BatchRecord
+) -> StatefulBatch:
     return cast(
         "StatefulBatch",
         {
-            key: value
-            for key, value in {
-                **batch_record,
-                **batch_record.get("batch", {}),
-            }.items()
-            if key in StatefulBatch.__annotations__
+            key: batch_record.get(key)
+            or batch_record.get("batch", {}).get(key)
+            or {"app_name": app_name}.get(key)
+            for key in StatefulBatch.__annotations__
         },
     )
 

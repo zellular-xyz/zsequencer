@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 # TODO: handle aggregated_public_key type
 class NetworkState(BaseModel):
-    tag: int
+    tag: int | None
     timestamp: int
     nodes: dict[str, dict[str, Any]]
     aggregated_public_key: Any
