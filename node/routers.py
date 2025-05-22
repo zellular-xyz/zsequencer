@@ -164,7 +164,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         response_data = DisputeData(
             node_id=zconfig.NODE["id"],
             old_sequencer_id=zconfig.SEQUENCER["id"],
-            new_sequencer_id=utils.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
+            new_sequencer_id=switch.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
             timestamp=timestamp,
             signature=signature,
         )
@@ -189,10 +189,10 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     """Initiate a sequencer switch based on provided signatures."""
     proofs = request.proofs
 
-    if not utils.is_switch_approved(proofs):
+    if not switch.is_switch_approved(proofs):
         raise SequencerChangeNotApprovedError()
 
-    old_sequencer_id, new_sequencer_id = utils.get_switch_parameter_from_proofs(proofs)
+    old_sequencer_id, new_sequencer_id = switch.get_switch_parameter_from_proofs(proofs)
 
     def run_switch_sequencer() -> None:
         switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
