@@ -102,10 +102,6 @@ Zellular Holesky testnet operators need at least 1 Lido Staked Ether (stETH) del
    docker compose up -d
    ```
 
-## Local Development
-
-For local development instructions, please refer to our [Development Guide](https://github.com/zellular-xyz/zsequencer/wiki/Node-Installation-Guide).
-
 ## Testing
 
 ### End-to-End (E2E) Tests
@@ -131,7 +127,7 @@ The project includes end-to-end tests that simulate a network of nodes and allow
 
 3. Run the network simulation:
    ```bash
-   uv run network_runner.py --config sample-config.json
+   uv run network_runner.py start --config sample-config.json
    ```
    This will start a network of nodes based on the configuration in `sample-config.json`.
 
@@ -141,6 +137,12 @@ The project includes end-to-end tests that simulate a network of nodes and allow
    uv run client.py
    ```
    The client will send example transactions to the nodes in the network.
+
+5. When you're done testing, you can stop all the containers:
+   ```bash
+   uv run network_runner.py stop
+   ```
+   This will stop and remove all zsequencer node containers that were started.
 
 #### Configuration Options
 

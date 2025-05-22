@@ -292,14 +292,57 @@ def main(config_path: str):
         time.sleep(1)
 
 
+def stop_all_containers():
+    """Stop and remove all zsequencer node containers."""
+    try:
+        # Get all containers with name starting with 'zsequencer-node-'
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--filter", "name=zsequencer-node-", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        container_names = result.stdout.strip().split('\n')
+        container_names = [name for name in container_names if name]  # Filter out empty strings
+
+        if not container_names:
+            print("No zsequencer containers found.")
+            return
+
+        print(f"Stopping and removing {len(container_names)} containers...")
+
+        for container_name in container_names:
+            print(f"Stopping container {container_name}...")
+            subprocess.run(["docker", "stop", container_name], check=False)
+            subprocess.run(["docker", "rm", "-f", container_name], check=False)
+
+        print("All zsequencer containers have been stopped and removed.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error stopping containers: {e}")
+        raise
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a zsequencer network simulation")
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # Start command
+    start_parser = subparsers.add_parser("start", help="Start a network of nodes")
+    start_parser.add_argument(
         "--config",
         type=str,
         default="sample-config.json",
         help="Path to the simulation configuration file",
     )
 
+    # Stop command
+    stop_parser = subparsers.add_parser("stop", help="Stop all running containers")
+
     args = parser.parse_args()
-    main(args.config)
+
+    # Default to start if no command is provided
+    if args.command is None or args.command == "start":
+        main(args.config if hasattr(args, "config") else "sample-config.json")
+    elif args.command == "stop":
+        stop_all_containers()
