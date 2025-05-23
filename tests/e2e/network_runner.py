@@ -36,11 +36,19 @@ class ExecutionData(BaseModel):
     env_variables: dict
 
 
+class OutOfReachItem(BaseModel):
+    time_duration: float
+    up: bool
+
+
+class SabotageConf(BaseModel):
+    out_of_reach_time_series: list[OutOfReachItem]
+
 class SimulationConfig(BaseModel):
-    shared_env_variables: dict[str, Any]
+    shared_env_variables: dict[str, str]
     base_port: int
     node_num: int
-    sabotages_config: dict[str, dict[str, list[dict[str, Any]]]]
+    sabotages_config: dict[str, SabotageConf]
 
 
 def load_simulation_config(config_path: str) -> SimulationConfig:
@@ -233,7 +241,7 @@ def get_node_env_variables(
     node_idx: int,
     node_dir: str,
     sequencer_address: str,
-    shared_env_variables: dict[str, Any],
+    shared_env_variables: dict[str, str],
     base_port: int,
 ) -> dict[str, str]:
     """Generate environment variables for a node."""
@@ -281,7 +289,7 @@ def start(config_path: str) -> None:
 
         # Write sabotage file
         with open(os.path.join(node_files["node_dir"], "sabotage.json"), "w") as f:
-            json.dump(config.sabotages_config[str(idx)], f, indent=4)
+            json.dump(config.sabotages_config[str(idx)].dict(), f, indent=4)
 
         # Prepare environment variables
         env_vars = get_node_env_variables(
