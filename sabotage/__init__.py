@@ -1,1 +1,1 @@
-from .sabotage_simulator import sabotage_simulator as sabotage_simulator
+from .sabotage_simulator import SabotageSimulator as SabotageSimulator

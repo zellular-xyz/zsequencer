@@ -1,7 +1,7 @@
+import os
 import subprocess
 import threading
 import time
-import os
 
 from common.logger import zlogger
 from sabotage.utils import get_sabotage_config
@@ -10,15 +10,16 @@ from sabotage.utils import get_sabotage_config
 def is_running_in_docker() -> bool:
     """Check if the code is running inside a Docker container."""
     # Check for Docker environment file
-    if os.path.exists('/.dockerenv'):
+    if os.path.exists("/.dockerenv"):
         return True
 
     # Check cgroup info for docker indication (for older Docker versions)
     try:
-        with open('/proc/1/cgroup', 'rt') as f:
-            return any('docker' in line or 'kubepods' in line for line in f)
+        with open("/proc/1/cgroup", "rt") as f:
+            return any("docker" in line or "kubepods" in line for line in f)
     except FileNotFoundError:
         return False
+
 
 class SabotageSimulator:
     def __init__(self):
