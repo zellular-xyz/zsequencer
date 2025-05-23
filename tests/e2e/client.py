@@ -8,6 +8,7 @@ from uuid import uuid4
 from zellular import StaticNetwork, Zellular
 
 from common.errors import IsSequencerError
+from common.logger import zlogger
 from tests.e2e.run import SIMULATION_DATA_DIR, load_simulation_config
 
 
@@ -43,11 +44,11 @@ def main(config_path: str) -> None:
         except Exception as e:
             if is_sequencer_error(e):
                 sequencer_port = port
-                print(
+                zlogger.warning(
                     f"Port {port} is used by sequencer. No request will be sent to the sequencer anymore."
                 )
             else:
-                print(e)
+                zlogger.error(e)
 
 
 if __name__ == "__main__":

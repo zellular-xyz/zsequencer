@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from web3 import Account
 
 from sabotage.schema import SabotageConf
+from common.logger import zlogger
 
 DOCKER_NETWORK_NAME = "zsequencer_net"
 SIMULATION_DATA_DIR = "./dist/e2e_test_data"
@@ -51,7 +52,7 @@ def load_simulation_config(config_path: str) -> SimulationConfig:
             config_data = json.load(f)
         return SimulationConfig(**config_data)
     except (json.JSONDecodeError, FileNotFoundError) as e:
-        print(f"Error loading simulation config: {e}")
+        zlogger.error(f"Error loading simulation config: {e}")
         raise
 
 
@@ -117,7 +118,7 @@ def ensure_docker_network() -> None:
                 ["docker", "network", "create", DOCKER_NETWORK_NAME], check=True
             )
     except subprocess.CalledProcessError as e:
-        print(f"Error managing Docker network: {e}")
+        zlogger.error(f"Error managing Docker network: {e}")
         raise
 
 
@@ -135,7 +136,7 @@ def get_container_names() -> list[str]:
         container_names = result.stdout.strip().split("\n")
         return [name for name in container_names if name]  # Filter out empty strings
     except subprocess.CalledProcessError as e:
-        print(f"Error getting container names: {e}")
+        zlogger.error(f"Error getting container names: {e}")
         return []
 
 
@@ -144,17 +145,17 @@ def stop() -> None:
     container_names = get_container_names()
 
     if not container_names:
-        print("No zsequencer containers found.")
+        zlogger.warning("No zsequencer containers found.")
         return
 
-    print(f"Stopping and removing {len(container_names)} containers...")
+    zlogger.info(f"Stopping and removing {len(container_names)} containers...")
 
     for container_name in container_names:
-        print(f"Stopping container {container_name}...")
+        zlogger.info(f"Stopping container {container_name}...")
         subprocess.run(["docker", "stop", container_name], check=False)
         subprocess.run(["docker", "rm", "-f", container_name], check=False)
 
-    print("All zsequencer containers have been stopped and removed.")
+    zlogger.info("All zsequencer containers have been stopped and removed.")
 
 
 def run_docker_container(
@@ -201,7 +202,7 @@ def run_docker_container(
         # Use capture_output to suppress the container ID output
         subprocess.run(cmd, check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
-        print(f"Error starting container {container_name}: {e}")
+        zlogger.error(f"Error starting container {container_name}: {e}")
         raise
 
 
@@ -258,7 +259,7 @@ def start(config_path: str) -> None:
     """Start a network of zsequencer nodes based on the provided configuration."""
     # Load simulation configuration
     config = load_simulation_config(config_path)
-    print(f"Starting a network with {config.node_num} nodes...")
+    zlogger.info(f"Starting a network with {config.node_num} nodes...")
 
     # Ensure simulation directory exists
     if not os.path.exists(SIMULATION_DATA_DIR):
@@ -273,7 +274,7 @@ def start(config_path: str) -> None:
     nodes_info = {}
     nodes_execution_args = {}
 
-    print("Preparing node files and configurations...")
+    zlogger.info("Preparing node files and configurations...")
 
     # Prepare nodes
     for idx, keys in enumerate(network_keys):
@@ -309,7 +310,7 @@ def start(config_path: str) -> None:
     with open(os.path.join(SIMULATION_DATA_DIR, "apps.json"), "w") as f:
         json.dump({"simple_app": {"url": "", "public_keys": []}}, f, indent=4)
 
-    print(f"Starting {config.node_num} containers...")
+    zlogger.info(f"Starting {config.node_num} containers...")
 
     # Start containers
     for idx, node_id in enumerate(sorted(nodes_info.keys())):
@@ -319,7 +320,7 @@ def start(config_path: str) -> None:
         # Silently remove any existing container with the same name
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
 
-        print(f"  Starting node {idx + 1}/{config.node_num}: {container_name}")
+        zlogger.info(f"  Starting node {idx + 1}/{config.node_num}: {container_name}")
 
         # Use the existing run_docker_container function
         run_docker_container(
@@ -330,14 +331,14 @@ def start(config_path: str) -> None:
 
         time.sleep(1)
 
-    print("\nNetwork started successfully!")
-    print(
+    zlogger.info("\nNetwork started successfully!")
+    zlogger.info(
         f"- Node ports: {config.base_port} to {config.base_port + config.node_num - 1}"
     )
-    print(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
-    print(f"- Configuration: {config_path}")
-    print("\nTo view logs: network_runner.py logs --terminal=<terminal>")
-    print("To stop the network: network_runner.py stop")
+    zlogger.info(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
+    zlogger.info(f"- Configuration: {config_path}")
+    zlogger.info("\nTo view logs: network_runner.py logs --terminal=<terminal>")
+    zlogger.info("To stop the network: network_runner.py stop")
 
 
 def show_logs(terminal_cmd: str) -> None:
@@ -345,10 +346,10 @@ def show_logs(terminal_cmd: str) -> None:
     container_names = get_container_names()
 
     if not container_names:
-        print("No zsequencer containers found.")
+        zlogger.warning("No zsequencer containers found.")
         return
 
-    print(f"Opening terminal windows for {len(container_names)} containers...")
+    zlogger.info(f"Opening terminal windows for {len(container_names)} containers...")
 
     def get_terminal_command(terminal_type: str, container: str) -> list[str]:
         """Get the appropriate terminal command based on terminal type."""
@@ -372,7 +373,7 @@ def show_logs(terminal_cmd: str) -> None:
         # Small delay to prevent terminals from overlapping too much
         time.sleep(0.5)
 
-    print("Terminal windows opened. Close them manually when done.")
+    zlogger.info("Terminal windows opened. Close them manually when done.")
 
 
 if __name__ == "__main__":
