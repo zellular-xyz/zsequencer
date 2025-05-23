@@ -42,12 +42,12 @@ class SabotageSimulator:
     def _disable_network(self):
         """Disable network connectivity."""
         zlogger.info("disable network")
-        subprocess.run("ip link set lo down", shell=True, check=True)
+        subprocess.run(["ip", "link", "set", "lo", "down"], check=True)
 
     def _enable_network(self):
         """Enable network connectivity."""
         zlogger.info("enable network")
-        subprocess.run("ip link set lo up", shell=True, check=True)
+        subprocess.run(["ip", "link", "set", "lo", "up"], check=True)
 
     def start_simulating(self):
         """Start the daemon threads to simulate and monitor the condition."""
