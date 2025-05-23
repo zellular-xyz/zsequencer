@@ -24,20 +24,20 @@ def is_running_in_docker() -> bool:
 class SabotageSimulator:
     def __init__(self):
         self._sabotage_conf = get_sabotage_config()
-        self._out_of_reach_time_series = self._sabotage_conf["out_of_reach_time_series"]
+        self._out_of_reach_time_series = self._sabotage_conf.out_of_reach_time_series
         self._out_of_reach = False
         self._monitor_thread = None
 
     def _simulate_out_of_reach(self):
         """Daemon thread function to periodically check the condition."""
         for state in self._out_of_reach_time_series:
-            self._out_of_reach = not state["up"]
+            self._out_of_reach = not state.up
             if self._out_of_reach:
                 self._disable_network()
             else:
                 self._enable_network()
 
-            time.sleep(state["time_duration"])
+            time.sleep(state.time_duration)
 
     def _disable_network(self):
         """Disable network connectivity."""
