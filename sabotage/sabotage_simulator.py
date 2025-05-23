@@ -25,39 +25,19 @@ class SabotageSimulator:
     def __init__(self):
         self._sabotage_conf = get_sabotage_config()
         self._out_of_reach_time_series = self._sabotage_conf["out_of_reach_time_series"]
-        self._out_of_reach = (
-            False
-            if len(self._out_of_reach_time_series) == 0
-            else (not self._out_of_reach_time_series[0]["up"])
-        )
-        self._stop_event = threading.Event()
+        self._out_of_reach = False
         self._monitor_thread = None
-
-    @staticmethod
-    def get_instance():
-        if not SabotageSimulator._instance:
-            SabotageSimulator._instance = SabotageSimulator()
-
-        SabotageSimulator._instance.start_simulating()
-        return SabotageSimulator._instance
 
     def _simulate_out_of_reach(self):
         """Daemon thread function to periodically check the condition."""
-        current_state_index = 0
-        while not self._stop_event.is_set() and self._out_of_reach_time_series:
+        for state in self._out_of_reach_time_series:
+            self._out_of_reach = not state["up"]
             if self._out_of_reach:
                 self._disable_network()
             else:
                 self._enable_network()
 
-            time.sleep(
-                self._out_of_reach_time_series[current_state_index]["time_duration"]
-            )
-            self._out_of_reach = not self._out_of_reach
-
-            current_state_index += 1
-            if current_state_index == len(self._out_of_reach_time_series):
-                break
+            time.sleep(state["time_duration"])
 
     def _disable_network(self):
         """Disable network connectivity."""
