@@ -55,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="sample-config.json",
+        default="sample_config.json",
         help="Path to the simulation configuration file",
     )
 

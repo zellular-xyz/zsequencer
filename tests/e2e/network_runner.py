@@ -272,7 +272,7 @@ def start(config_path: str) -> None:
     nodes_info = {}
     nodes_execution_args = {}
 
-    print(f"Preparing node files and configurations...")
+    print("Preparing node files and configurations...")
 
     # Prepare nodes
     for idx, keys in enumerate(network_keys):
@@ -329,14 +329,14 @@ def start(config_path: str) -> None:
 
         time.sleep(1)
 
-    print(f"\nNetwork started successfully!")
+    print("\nNetwork started successfully!")
     print(
         f"- Node ports: {config.base_port} to {config.base_port + config.node_num - 1}"
     )
     print(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
     print(f"- Configuration: {config_path}")
-    print(f"\nTo view logs: network_runner.py logs --terminal=<terminal>")
-    print(f"To stop the network: network_runner.py stop")
+    print("\nTo view logs: network_runner.py logs --terminal=<terminal>")
+    print("To stop the network: network_runner.py stop")
 
 
 def show_logs(terminal_cmd: str) -> None:
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     start_parser.add_argument(
         "--config",
         type=str,
-        default="sample-config.json",
+        default="sample_config.json",
         help="Path to the simulation configuration file",
     )
 
@@ -404,7 +404,7 @@ if __name__ == "__main__":
 
     # Default to start if no command is provided
     if args.command is None or args.command == "start":
-        start(args.config if hasattr(args, "config") else "sample-config.json")
+        start(args.config if hasattr(args, "config") else "sample_config.json")
     elif args.command == "stop":
         stop()
     elif args.command == "logs":

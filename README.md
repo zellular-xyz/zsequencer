@@ -126,9 +126,9 @@ The project includes end-to-end tests that simulate a network of nodes and allow
 
 3. Run the network simulation:
    ```bash
-   uv run network_runner.py start --config sample-config.json
+   uv run network_runner.py start --config sample_config.json
    ```
-   This will start a network of nodes based on the configuration in `sample-config.json`.
+   This will start a network of nodes based on the configuration in `sample_config.json`.
 
 4. In a separate terminal, run the client to interact with the network:
    ```bash
@@ -157,7 +157,7 @@ The project includes end-to-end tests that simulate a network of nodes and allow
 
 #### Configuration Options
 
-The sample configuration file (`sample-config.json`) lets you control:
+The sample configuration file (`sample_config.json`) lets you control:
 - Number of nodes in the network
 - Base port for the nodes
 - Environment variables for all nodes
