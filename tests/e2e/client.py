@@ -11,10 +11,7 @@ from zellular import StaticNetwork, Zellular
 
 def is_sequencer_error(e: Exception):
     try:
-        if e.response.json()["error"]["code"] == "IsSequencerError":
-            return True
-        else:
-            return False
+        return e.response.json()["error"]["code"] == "IsSequencerError"
     except Exception:
         return False
 
@@ -31,6 +28,7 @@ def main(config_path: str):
         threshold_percent=config.shared_env_variables["ZSEQUENCER_THRESHOLD_PERCENT"],
     )
     while True:
+        time.sleep(1)
         port = config.base_port + random.randint(0, config.node_num - 1)
         if port == sequencer_port:
             continue
