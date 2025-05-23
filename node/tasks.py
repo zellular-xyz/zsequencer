@@ -106,8 +106,9 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     url: str = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response: dict[str, Any] = {}
     try:
-        response = requests.put(url=url, data=data, headers=zconfig.HEADERS).json()
-        response.raise_for_status()
+        r = requests.put(url=url, data=data, headers=zconfig.HEADERS)
+        r.raise_for_status()
+        response = r.json()
         if response["status"] == "error":
             zlogger.warning(response["error"]["message"])
             zdb.add_missed_batches(app_name, initialized_batches.values())
@@ -115,11 +116,10 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
 
         try_acquire_rate_limit_of_self_node(batches)
 
-        sequencer_resp = response["data"]
         censored_batches = sync_with_sequencer(
             app_name=app_name,
             initialized_batches=initialized_batches,
-            sequencer_response=sequencer_resp,
+            sequencer_response=response["data"],
         )
         zdb.is_sequencer_down = False
         if not censored_batches:
