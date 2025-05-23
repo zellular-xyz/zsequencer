@@ -4,11 +4,10 @@ import json
 import os
 import subprocess
 import time
-from typing import Any
 
 from eigensdk.crypto.bls import attestation
 from eth_account.signers.local import LocalAccount
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from web3 import Account
 
 DOCKER_NETWORK_NAME = "zsequencer_net"
@@ -20,13 +19,13 @@ class Keys(BaseModel):
     ecdsa_key: LocalAccount
     address: str
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class NodeInfo(BaseModel):
     id: str
-    pubkeyG2_X: tuple
-    pubkeyG2_Y: tuple
+    pubkeyG2_X: tuple[int, int]
+    pubkeyG2_Y: tuple[int, int]
     address: str
     socket: str
     stake: int
@@ -43,6 +42,7 @@ class OutOfReachItem(BaseModel):
 
 class SabotageConf(BaseModel):
     out_of_reach_time_series: list[OutOfReachItem]
+
 
 class SimulationConfig(BaseModel):
     shared_env_variables: dict[str, str]

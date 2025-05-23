@@ -9,14 +9,14 @@ from network_runner import SIMULATION_DATA_DIR, load_simulation_config
 from zellular import StaticNetwork, Zellular
 
 
-def is_sequencer_error(e: Exception):
+def is_sequencer_error(e: Exception) -> bool:
     try:
         return e.response.json()["error"]["code"] == "IsSequencerError"
     except Exception:
         return False
 
 
-def main(config_path: str):
+def main(config_path: str) -> None:
     config = load_simulation_config(config_path)
 
     with open(os.path.join(SIMULATION_DATA_DIR, "nodes.json")) as f:
