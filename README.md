@@ -119,28 +119,22 @@ The project includes end-to-end tests that simulate a network of nodes and allow
    docker compose build
    ```
 
-2. Navigate to the E2E test directory:
+2. Run the network simulation:
    ```bash
-   cd tests/e2e
-   ```
-
-3. Run the network simulation:
-   ```bash
-   uv run network_runner.py start --config sample_config.json
+   uv run -m tests.e2e.run start --config tests/e2e/sample_config.json
    ```
    This will start a network of nodes based on the configuration in `sample_config.json`.
 
-4. In a separate terminal, run the client to interact with the network:
+3. In a separate terminal, run the client to interact with the network:
    ```bash
-   cd tests/e2e
-   uv run client.py
+   uv run -m tests.e2e.client --config tests/e2e/sample_config.json
    ```
    The client will send example transactions to the nodes in the network.
 
-5. To view logs from all containers:
+4. To view logs from all containers:
    ```bash
    # Opens a terminal window for each container showing its logs
-   uv run network_runner.py logs --terminal=gnome-terminal
+   uv run -m tests.e2e.run logs --terminal=gnome-terminal
    ```
    Supported terminals: gnome-terminal, xterm, konsole, terminator, tilix
 
@@ -149,9 +143,9 @@ The project includes end-to-end tests that simulate a network of nodes and allow
    docker logs -f zsequencer-node-0
    ```
 
-6. When you're done testing, you can stop all the containers:
+5. When you're done testing, you can stop all the containers:
    ```bash
-   uv run network_runner.py stop
+   uv run -m tests.e2e.run stop
    ```
    This will stop and remove all zsequencer node containers that were started.
 

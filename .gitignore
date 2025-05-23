@@ -183,5 +183,3 @@ cython_debug/
 # This file is used in project management tools such as uv and pdm to specify the
 # Python version used in local development.
 .python-version
-
-simulations/data

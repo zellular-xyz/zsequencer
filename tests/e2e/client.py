@@ -5,13 +5,15 @@ import random
 import time
 from uuid import uuid4
 
-from network_runner import SIMULATION_DATA_DIR, load_simulation_config
 from zellular import StaticNetwork, Zellular
+
+from common.errors import IsSequencerError
+from tests.e2e.run import SIMULATION_DATA_DIR, load_simulation_config
 
 
 def is_sequencer_error(e: Exception) -> bool:
     try:
-        return e.response.json()["error"]["code"] == "IsSequencerError"
+        return e.response.json()["error"]["code"] == IsSequencerError.__name__
     except Exception:
         return False
 
@@ -53,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="sample_config.json",
+        default="tests/e2e/sample_config.json",
         help="Path to the simulation configuration file",
     )
 

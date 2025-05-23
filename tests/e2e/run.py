@@ -10,8 +10,10 @@ from eth_account.signers.local import LocalAccount
 from pydantic import BaseModel, ConfigDict
 from web3 import Account
 
+from sabotage.schema import SabotageConf
+
 DOCKER_NETWORK_NAME = "zsequencer_net"
-SIMULATION_DATA_DIR = "./data"
+SIMULATION_DATA_DIR = "./dist/e2e_test_data"
 
 
 class Keys(BaseModel):
@@ -33,15 +35,6 @@ class NodeInfo(BaseModel):
 
 class ExecutionData(BaseModel):
     env_variables: dict
-
-
-class OutOfReachItem(BaseModel):
-    time_duration: float
-    up: bool
-
-
-class SabotageConf(BaseModel):
-    out_of_reach_time_series: list[OutOfReachItem]
 
 
 class SimulationConfig(BaseModel):
@@ -391,7 +384,7 @@ if __name__ == "__main__":
     start_parser.add_argument(
         "--config",
         type=str,
-        default="sample_config.json",
+        default="tests/e2e/sample_config.json",
         help="Path to the simulation configuration file",
     )
 
@@ -412,7 +405,7 @@ if __name__ == "__main__":
 
     # Default to start if no command is provided
     if args.command is None or args.command == "start":
-        start(args.config if hasattr(args, "config") else "sample_config.json")
+        start(args.config)
     elif args.command == "stop":
         stop()
     elif args.command == "logs":

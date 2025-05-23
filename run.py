@@ -22,7 +22,7 @@ from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
 from node.switch import send_dispute_requests
-from sabotage import SabotageSimulator
+from sabotage.sabotage_simulator import SabotageSimulator
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
 
