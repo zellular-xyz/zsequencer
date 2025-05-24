@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 
 from pydantic import BaseModel, ConfigDict
@@ -16,7 +18,7 @@ class SabotageConf(BaseModel):
     out_of_reach_time_series: list[OutOfReachItem]
 
     @classmethod
-    def get_config(cls, config_file: str) -> "SabotageConf":
+    def get_config(cls, config_file: str) -> SabotageConf:
         """Load sabotage configuration from config file."""
         with open(config_file, "r") as file:
             data = json.load(file)
