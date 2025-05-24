@@ -10,8 +10,8 @@ from eth_account.signers.local import LocalAccount
 from pydantic import BaseModel, ConfigDict
 from web3 import Account
 
-from sabotage.schema import SabotageConf
 from common.logger import zlogger
+from sabotage.schema import SabotageConf
 
 DOCKER_NETWORK_NAME = "zsequencer_net"
 SIMULATION_DATA_DIR = "./dist/e2e_test_data"
@@ -337,8 +337,8 @@ def start(config_path: str) -> None:
     )
     zlogger.info(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
     zlogger.info(f"- Configuration: {config_path}")
-    zlogger.info("\nTo view logs: network_runner.py logs --terminal=<terminal>")
-    zlogger.info("To stop the network: network_runner.py stop")
+    zlogger.info("\nTo view logs: tests.e2e.run logs --terminal=<terminal>")
+    zlogger.info("To stop the network: tests.e2e.run stop")
 
 
 def show_logs(terminal_cmd: str) -> None:

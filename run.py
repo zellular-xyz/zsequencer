@@ -133,8 +133,9 @@ def main() -> None:
     logger.setLevel(logging.WARNING)
     zlogger.info("Starting service on port %s", zconfig.PORT)
 
-    sabotage_simulator = SabotageSimulator()
-    sabotage_simulator.start_simulating()
+    if zconfig.SABOTAGE_SIMULATION:
+        sabotage_simulator = SabotageSimulator()
+        sabotage_simulator.start_simulating()
 
     uvicorn.run(
         "run:app",

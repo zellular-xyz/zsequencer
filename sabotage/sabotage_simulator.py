@@ -4,7 +4,8 @@ import threading
 import time
 
 from common.logger import zlogger
-from sabotage.utils import get_sabotage_config
+from config import zconfig
+from sabotage.schema import SabotageConf
 
 
 def is_running_in_docker() -> bool:
@@ -23,7 +24,7 @@ def is_running_in_docker() -> bool:
 
 class SabotageSimulator:
     def __init__(self):
-        self._sabotage_conf = get_sabotage_config()
+        self._sabotage_conf = SabotageConf.get_config(zconfig.SABOTAGE_CONFIG_FILE)
         self._out_of_reach_time_series = self._sabotage_conf.out_of_reach_time_series
         self._out_of_reach = False
         self._monitor_thread = None
