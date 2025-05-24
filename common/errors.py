@@ -62,11 +62,6 @@ class PermissionDeniedError(BaseHTTPError):
     message = "Permission denied."
 
 
-class SequencerOutOfReachError(BaseHTTPError):
-    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    message = "The sequencer is out of reach."
-
-
 class InvalidNodeVersionError(BaseHTTPError):
     status_code = status.HTTP_400_BAD_REQUEST
     message = "Invalid node version. Please get the latest version of node."

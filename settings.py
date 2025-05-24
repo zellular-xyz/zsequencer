@@ -9,15 +9,6 @@ MODE_TEST = "test"
 SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
-class SequencerSabotageSimulation(BaseSettings):
-    out_of_reach_simulation: bool = Field(default=False)
-    in_reach_seconds: int = Field(default=20)
-    out_of_reach_seconds: int = Field(default=20)
-
-    class Config:
-        env_prefix = "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_"
-
-
 class NodeConfig(BaseSettings):
     version: str = Field(default="v0.0.18")
     nodes_info_sync_border: int = Field(default=5)
@@ -57,6 +48,9 @@ class NodeConfig(BaseSettings):
     ecdsa_key_file: str = Field(default="")
     bls_key_password: str = Field(default="")
     ecdsa_key_password: str = Field(default="")
+
+    sabotage_config_file: str = Field(default="")
+    sabotage_simulation: bool = Field(default=False)
 
     register_operator: bool = Field(default=False)
     register_socket: str = Field(default="")

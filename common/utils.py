@@ -17,15 +17,8 @@ from common.errors import (
     IsPausedError,
     IsSequencerError,
     NotSyncedError,
-    SequencerOutOfReachError,
 )
 from config import zconfig
-from sequencer_sabotage_simulation import sequencer_sabotage_simulation_state
-
-
-def sequencer_simulation_malfunction(request: Request) -> None:
-    if sequencer_sabotage_simulation_state.out_of_reach:
-        raise SequencerOutOfReachError()
 
 
 def sequencer_only(request: Request) -> None:

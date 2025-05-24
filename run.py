@@ -22,6 +22,7 @@ from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
 from node.switch import send_dispute_requests
+from sabotage.sabotage_simulator import SabotageSimulator
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
 
@@ -131,6 +132,10 @@ def main() -> None:
     logger: logging.Logger = logging.getLogger("werkzeug")
     logger.setLevel(logging.WARNING)
     zlogger.info("Starting service on port %s", zconfig.PORT)
+
+    if zconfig.SABOTAGE_SIMULATION:
+        sabotage_simulator = SabotageSimulator()
+        sabotage_simulator.start_simulating()
 
     uvicorn.run(
         "run:app",
