@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel, ConfigDict
 
 
@@ -13,4 +11,4 @@ class OutOfReachItem(BaseModel):
 class SabotageConf(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    out_of_reach_time_series: List[OutOfReachItem]
+    out_of_reach_time_series: list[OutOfReachItem]
