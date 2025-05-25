@@ -57,6 +57,10 @@ class NodeConfig(BaseSettings):
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
+
     max_missed_batches_to_pick: int = Field(default=10)
 
     remote_host_checker_base_url: str = Field(

@@ -32,11 +32,13 @@ def main(config_path: str) -> None:
     )
     while True:
         time.sleep(1)
-        port = config.base_port + random.randint(0, config.node_num - 1)
+        port = config.base_port + random.randint(1, config.node_num)
         if port == sequencer_port:
             continue
         gateway = f"http://localhost:{port}"
-        zellular = Zellular(app="simple_app", network=network, gateway=gateway)
+        zellular = Zellular(
+            app="simple_app", network=network, gateway=gateway, timeout=2
+        )
         t = int(time.time())
         txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t} for i in range(1)]
         try:

@@ -67,6 +67,7 @@ class Config:
         self.NODES_FILE = node_config.nodes_file
         self.SABOTAGE_CONFIG_FILE = node_config.sabotage_config_file
         self.SABOTAGE_SIMULATION = node_config.sabotage_simulation
+        self.LOG_LEVEL = node_config.log_level
         self.NODES_INFO_SYNC_BORDER = node_config.nodes_info_sync_border
         self.VERSION = node_config.version
         self.BLS_KEY_STORE_PATH = node_config.bls_key_file

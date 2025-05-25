@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 
 # Install necessary packages and dependencies
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-dev iproute2 libgmp3-dev wget unzip cmake build-essential && \
+    apt-get install -y python3 python3-pip python3-dev iptables libgmp3-dev wget unzip cmake build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Download and install mcl

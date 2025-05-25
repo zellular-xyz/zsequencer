@@ -106,7 +106,8 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
     url: str = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response: dict[str, Any] = {}
     try:
-        r = requests.put(url=url, data=data, headers=zconfig.HEADERS)
+        # missing timeout allows malicious sequncer freeze node and prevent the dispute process
+        r = requests.put(url=url, data=data, headers=zconfig.HEADERS, timeout=5)
         r.raise_for_status()
         response = r.json()
         if response["status"] == "error":
@@ -219,9 +220,9 @@ def check_censorship(
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """Confirm and sign the sync point"""
-    batch_record = zdb.get_batch_record_by_hash_or_empty(
+    batch_record = zdb.get_batch_record_by_index_or_empty(
         sync_point["app_name"],
-        sync_point["hash"],
+        sync_point["index"],
     )
     batch = batch_record.get("batch", {})
     if (

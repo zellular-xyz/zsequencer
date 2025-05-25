@@ -80,7 +80,7 @@ def generate_keys(idx: int) -> Keys:
 
 def generate_network_keys(network_nodes_num: int) -> tuple[str, list[Keys]]:
     """Generate deterministic keys for all nodes in the network."""
-    network_keys = [generate_keys(idx) for idx in range(network_nodes_num)]
+    network_keys = [generate_keys(idx) for idx in range(1, network_nodes_num + 1)]
     network_keys = sorted(network_keys, key=lambda network_key: network_key.address)
     sequencer_address = network_keys[0].address
     return sequencer_address, network_keys
@@ -134,7 +134,9 @@ def get_container_names() -> list[str]:
         )
 
         container_names = result.stdout.strip().split("\n")
-        return [name for name in container_names if name]  # Filter out empty strings
+        return sorted(
+            [name for name in container_names if name]
+        )  # Filter out empty strings
     except subprocess.CalledProcessError as e:
         zlogger.error(f"Error getting container names: {e}")
         return []
@@ -152,8 +154,15 @@ def stop() -> None:
 
     for container_name in container_names:
         zlogger.info(f"Stopping container {container_name}...")
-        subprocess.run(["docker", "stop", container_name], check=False)
-        subprocess.run(["docker", "rm", "-f", container_name], check=False)
+
+        subprocess.run(
+            ["docker", "stop", container_name], check=False, stdout=subprocess.DEVNULL
+        )
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+        )
 
     zlogger.info("All zsequencer containers have been stopped and removed.")
 
@@ -185,7 +194,15 @@ def run_docker_container(
         "ZSEQUENCER_SABOTAGE_CONFIG_FILE": "/app/sabotage.json",
     }
 
-    cmd = ["docker", "run", "--cap-add", "NET_ADMIN", "-d", "--name", container_name]
+    cmd = [
+        "docker",
+        "run",
+        "--cap-add",
+        "NET_ADMIN",
+        "-d",
+        "--name",
+        container_name,
+    ]
     cmd.extend(["--network", DOCKER_NETWORK_NAME])
 
     for host_path, container_path in volumes.items():
@@ -261,7 +278,7 @@ def start(config_path: str) -> None:
     config = load_simulation_config(config_path)
     zlogger.info(f"Starting a network with {config.node_num} nodes...")
 
-    # Ensure simulation directory exists
+    # Delete old simulation directory and create a new one
     if not os.path.exists(SIMULATION_DATA_DIR):
         os.makedirs(SIMULATION_DATA_DIR)
 
@@ -277,7 +294,8 @@ def start(config_path: str) -> None:
     zlogger.info("Preparing node files and configurations...")
 
     # Prepare nodes
-    for idx, keys in enumerate(network_keys):
+    for i, keys in enumerate(network_keys):
+        idx = i + 1
         # Prepare node files
         node_files = prepare_simulation_files(idx, keys)
 
@@ -313,14 +331,15 @@ def start(config_path: str) -> None:
     zlogger.info(f"Starting {config.node_num} containers...")
 
     # Start containers
-    for idx, node_id in enumerate(sorted(nodes_info.keys())):
+    for i, node_id in enumerate(sorted(nodes_info.keys())):
+        idx = i + 1
         container_name = f"zsequencer-node-{idx}"
         execution_data = nodes_execution_args[node_id]
 
         # Silently remove any existing container with the same name
         subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
 
-        zlogger.info(f"  Starting node {idx + 1}/{config.node_num}: {container_name}")
+        zlogger.info(f"  Starting node {idx}/{config.node_num}: {container_name}")
 
         # Use the existing run_docker_container function
         run_docker_container(
@@ -369,8 +388,8 @@ def show_logs(terminal_cmd: str) -> None:
     for container_name in container_names:
         cmd = get_terminal_command(terminal_cmd, container_name)
         subprocess.Popen(cmd)
-
         # Small delay to prevent terminals from overlapping too much
+
         time.sleep(0.5)
 
     zlogger.info("Terminal windows opened. Close them manually when done.")

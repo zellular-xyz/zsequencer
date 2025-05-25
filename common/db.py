@@ -26,7 +26,6 @@ class App(TypedDict, total=False):
     initialized_batch_map: dict[str, Batch]
     operational_batch_sequence: BatchSequence
     # TODO: Check if it's necessary.
-    operational_batch_hash_index_map: dict[str, int]
     missed_batch_map: dict[str, Batch]
     latency_tracking_queue: deque[TimestampedIndex]
 
@@ -112,7 +111,6 @@ class InMemoryDB:
                     "nodes_state": {},
                     "initialized_batch_map": {},
                     "operational_batch_sequence": BatchSequence(),
-                    "operational_batch_hash_index_map": {},
                     "missed_batch_map": {},
                     "latency_tracking_queue": deque(),
                 }
@@ -157,9 +155,6 @@ class InMemoryDB:
                 "nodes_state": {},
                 "initialized_batch_map": {},
                 "operational_batch_sequence": finalized_batch_sequence,
-                "operational_batch_hash_index_map": self._generate_batch_hash_index_map(
-                    finalized_batch_sequence
-                ),
                 "missed_batch_map": {},
                 "latency_tracking_queue": deque(),
             }
@@ -188,11 +183,6 @@ class InMemoryDB:
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
         ].filter(start_exclusive=remove_border_index)
-        self.apps[app_name]["operational_batch_hash_index_map"] = (
-            self._generate_batch_hash_index_map(
-                self.apps[app_name]["operational_batch_sequence"],
-            )
-        )
 
     def get_batch_map(self, app_name: str) -> dict[str, Batch]:
         # NOTE: We copy the dictionary in order to make it safe to work on it
@@ -257,21 +247,14 @@ class InMemoryDB:
 
         return result
 
-    def get_batch_record_by_hash_or_empty(
+    def get_batch_record_by_index_or_empty(
         self,
         app_name: str,
-        batch_hash: str,
+        index: int,
     ) -> BatchRecord:
-        """Get a batch by its hash."""
-        if batch_hash in self.apps[app_name]["initialized_batch_map"]:
-            return {
-                "batch": self.apps[app_name]["initialized_batch_map"][batch_hash],
-                "index": BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-                "state": "initialized",
-            }
-        return self._get_operational_batch_record_by_hash_or_empty(
-            app_name,
-            batch_hash,
+        """Get a batch by its index."""
+        return self.apps[app_name]["operational_batch_sequence"].get_or_empty(
+            index
         )
 
     def init_batches(self, app_name: str, bodies: Iterable[str]) -> None:
@@ -281,7 +264,7 @@ class InMemoryDB:
 
         for body in bodies:
             batch_hash = utils.gen_hash(body)
-            if not self._batch_exists(app_name, batch_hash):
+            if batch_hash not in self.apps[app_name]["initialized_batch_map"]:
                 self.apps[app_name]["initialized_batch_map"][batch_hash] = {
                     "app_name": app_name,
                     "node_id": zconfig.NODE["id"],
@@ -316,9 +299,6 @@ class InMemoryDB:
         chaining_hash = last_sequenced_batch.get("chaining_hash", "")
 
         for batch in initializing_batches:
-            if self._batch_exists(app_name, batch["hash"]):
-                continue
-
             batch_hash = utils.gen_hash(batch["body"])
             if batch["hash"] != batch_hash:
                 zlogger.warning(
@@ -335,9 +315,6 @@ class InMemoryDB:
 
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
                 batch,
-            )
-            self.apps[app_name]["operational_batch_hash_index_map"][batch_hash] = (
-                batch_index
             )
 
     def insert_sequenced_batches(
@@ -366,9 +343,6 @@ class InMemoryDB:
             self.apps[app_name]["initialized_batch_map"].pop(batch["hash"], None)
             batch_index = self.apps[app_name]["operational_batch_sequence"].append(
                 batch,
-            )
-            self.apps[app_name]["operational_batch_hash_index_map"][batch["hash"]] = (
-                batch_index
             )
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
@@ -399,20 +373,17 @@ class InMemoryDB:
             )
             return False
 
-        if (
-            signature_data["hash"]
-            not in self.apps[app_name]["operational_batch_hash_index_map"]
-        ):
+        target_batch = self.get_batch_record_by_index_or_empty(
+            app_name,
+            signature_data["index"],
+        ).get("batch", {})
+
+        if not target_batch:
             zlogger.warning(
-                f"The locking {signature_data=} hash couldn't be found in the "
+                f"The locking {signature_data=} couldn't be found in the "
                 "operational batches.",
             )
             return False
-
-        target_batch = self._get_operational_batch_record_by_hash_or_empty(
-            app_name,
-            signature_data["hash"],
-        ).get("batch", {})
 
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
@@ -466,20 +437,20 @@ class InMemoryDB:
             )
             return False
 
-        if (
-            signature_data["hash"]
-            not in self.apps[app_name]["operational_batch_hash_index_map"]
-        ):
+
+        # Update target batch with finalization data
+        target_batch = self.get_batch_record_by_index_or_empty(
+            app_name,
+            signature_data["index"],
+        ).get("batch", {})
+
+        if not target_batch:
             zlogger.warning(
-                f"The finalizing {signature_data=} hash couldn't be found in the operational batches."
+                f"The finalizing {signature_data=} couldn't be found in the operational batches."
             )
             return False
 
-        # Update target batch with finalization data
-        target_batch = self._get_operational_batch_record_by_hash_or_empty(
-            app_name,
-            signature_data["hash"],
-        ).get("batch", {})
+
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
                 "The chaining hash on the finalizing signature does not match the corrosponding batch"
@@ -672,40 +643,14 @@ class InMemoryDB:
             self.apps[app_name]["initialized_batch_map"][batch["hash"]] = (
                 reinitialized_batch
             )
-            self.apps[app_name]["operational_batch_hash_index_map"].pop(batch["hash"])
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"
         ].filter(end_inclusive=last_locked_index)
 
-    def _get_operational_batch_record_by_hash_or_empty(
-        self,
-        app_name: str,
-        batch_hash: str,
-    ) -> BatchRecord:
-        return self.apps[app_name]["operational_batch_sequence"].get_or_empty(
-            self.apps[app_name]["operational_batch_hash_index_map"].get(
-                batch_hash,
-                BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-            ),
-        )
-
-    def _batch_exists(self, app_name: str, batch_hash: str) -> bool:
-        return (
-            batch_hash in self.apps[app_name]["initialized_batch_map"]
-            or batch_hash in self.apps[app_name]["operational_batch_hash_index_map"]
-        )
-
     @classmethod
     def _generate_batch_map(cls, batches: Iterable[Batch]) -> dict[str, Batch]:
         return {batch["hash"]: batch for batch in batches}
-
-    @classmethod
-    def _generate_batch_hash_index_map(cls, batches: BatchSequence) -> dict[str, int]:
-        return {
-            batch_record["batch"]["hash"]: batch_record["index"]
-            for batch_record in batches.records()
-        }
 
 
 zdb = InMemoryDB()

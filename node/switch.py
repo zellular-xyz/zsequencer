@@ -392,7 +392,7 @@ async def _sync_with_peer_node(
     zdb.reinitialize_batches(app_name=app_name)
 
     #  timeout value (in seconds)
-    timeout = aiohttp.ClientTimeout(total=10)
+    timeout = aiohttp.ClientTimeout(total=5)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         while True:
@@ -491,7 +491,7 @@ async def _fetch_node_last_locked_batch_records_or_none(
     url = f"{socket}/node/batches/locked/last"
     try:
         async with session.get(
-            url, headers=zconfig.HEADERS, timeout=aiohttp.ClientTimeout(total=10)
+            url, headers=zconfig.HEADERS, timeout=aiohttp.ClientTimeout(total=5)
         ) as response:
             if response.status != 200:
                 error_text = await response.text()

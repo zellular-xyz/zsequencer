@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 # Add the parent directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from common import errors
 from common.db import zdb
-from common.errors import BaseHTTPError
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
@@ -30,16 +30,18 @@ app = FastAPI(title="ZSequencer")
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
+zlogger.setLevel(logging.getLevelName(zconfig.LOG_LEVEL))
 
 
-@app.exception_handler(BaseHTTPError)
+@app.exception_handler(errors.BaseHTTPError)
 async def base_http_exception_handler(
-    request: Request, exc: BaseHTTPError
+    request: Request, e: errors.BaseHTTPError
 ) -> JSONResponse:
-    zlogger.error(
-        f"[API_ERROR] BaseHTTPError at {request.url.path}: {exc.status_code} - {exc.detail['error']['message']}"
+    zlogger.log(
+        e.log_level,
+        f"[API_ERROR] {e.__class__.__name__} at {request.url.path}: {e.status_code} - {e.detail['error']['message']}",
     )
-    return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    return JSONResponse(status_code=e.status_code, content=e.detail)
 
 
 @app.get("/", include_in_schema=False)
@@ -61,26 +63,16 @@ def run_node_tasks() -> None:
 
 
 def run_sequencer_tasks() -> None:
-    """Run sequencer tasks in an asynchronous event loop."""
-    loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(run_sequencer_tasks_async())
-    finally:
-        loop.close()
-
-
-async def run_sequencer_tasks_async() -> None:
-    """Asynchronously run sequencer tasks."""
+    """Run sequencer tasks in a loop."""
     while True:
-        await asyncio.sleep(zconfig.SYNC_INTERVAL)
+        time.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
         if zconfig.is_paused:
             continue
 
-        await sequencer_tasks.sync()
+        asyncio.run(sequencer_tasks.sync())
 
 
 def check_node_reachability() -> None:
