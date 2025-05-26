@@ -108,7 +108,7 @@ async def gather_and_aggregate_signatures(
                 url=f"{attesting_nodes_info[node_id]['socket']}/node/sign_sync_point",
                 data=data,
                 message=message,
-                timeout=120,
+                timeout=5,
             ),
         ): node_id
         for node_id in node_ids
@@ -147,7 +147,7 @@ async def request_signature(
     url: str,
     data: dict[str, Any],
     message: str,
-    timeout: int = 120,
+    timeout: int = 5,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
