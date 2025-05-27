@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import xxhash
-from eth_account.messages import SignableMessage, encode_defunct
+from eth_account.messages import encode_defunct
 from fastapi import Request
 from web3 import Account
 
@@ -17,6 +17,7 @@ from common.errors import (
     IsPausedError,
     IsSequencerError,
     NotSyncedError,
+    PermissionDeniedError,
 )
 from config import zconfig
 
@@ -62,31 +63,42 @@ def not_paused(request: Request) -> None:
         raise IsPausedError()
 
 
-def validate_body_keys(required_keys: list[str]) -> Callable[[Request], None]:
-    """Decorator to validate required keys in the request JSON body."""
+async def authenticate(request: Request, signature: str = Header(None)) -> None:
+    """Decorator to authenticate the request."""
+    if signature is None:
+        raise PermissionDeniedError("Signature header is required")
 
-    async def validator(request: Request) -> None:
-        try:
-            req_data = await request.json()
-            if not isinstance(req_data, dict):
-                raise InvalidRequestError("Request body must be a JSON object")
+    try:
+        body = await request.body()
+        if not body:
+            raise InvalidRequestError("Empty request body")
 
-        except Exception:
-            raise InvalidRequestError("Failed to parse JSON request body")
+        body_hash = hashlib.sha256(body).hexdigest()
+        message = encode_defunct(text=body_hash)
+        recovered_address = Account.recover_message(message, signature=signature)
 
-        if not all(key in req_data for key in required_keys):
-            missing = [key for key in required_keys if key not in req_data]
-            raise InvalidRequestError(
-                f"Required keys are missing: {', '.join(missing)}"
-            )
+        route_path = request.url.path
+        if "/sign_sync_point" in route_path:
+            if recovered_address.lower() != zconfig.SEQUENCER["id"]:
+                raise PermissionDeniedError(
+                    "Only the current sequencer can call this endpoint"
+                )
+        else:
+            if recovered_address.lower() not in zconfig.NODES:
+                raise PermissionDeniedError("Address not authorized")
 
-    return validator
+    except ValueError as e:
+        zlogger.error(f"Invalid signature: {str(e)}")
+        raise InvalidRequestError("Invalid signature")
+    except Exception as e:
+        zlogger.error(f"Authentication error: {str(e)}")
+        raise InvalidRequestError("Authentication error")
 
 
 def eth_sign(message: str) -> str:
     """Sign a message using the node's private key."""
-    message_encoded: SignableMessage = encode_defunct(text=message)
-    account_instance: Account = Account()
+    message_encoded = encode_defunct(text=message)
+    account_instance = Account()
     return account_instance.sign_message(
         signable_message=message_encoded,
         private_key=zconfig.NODE["ecdsa_private_key"],
@@ -96,9 +108,9 @@ def eth_sign(message: str) -> str:
 def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
     """Verify a signature against the node's public address."""
     try:
-        msg_encoded: SignableMessage = encode_defunct(text=message)
-        account_instance: Account = Account()
-        recovered_address: str = account_instance.recover_message(
+        msg_encoded = encode_defunct(text=message)
+        account_instance = Account()
+        recovered_address = account_instance.recover_message(
             signable_message=msg_encoded,
             signature=signature,
         )

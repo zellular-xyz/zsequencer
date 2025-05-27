@@ -1,9 +1,10 @@
 """This module defines the FastAPI router for node."""
 
+import hashlib
 import threading
 import time
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from common import utils
 from common.api_models import (
@@ -53,6 +54,7 @@ router = APIRouter()
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
+        Depends(utils.authenticate),
     ],
 )
 async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
@@ -88,6 +90,7 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
+        Depends(utils.authenticate),
     ],
 )
 async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyResponse:
@@ -118,11 +121,14 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(utils.authenticate),
     ],
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
-    """Sign a synchronization point to contribute to batch consensus."""
-    # TODO: only the sequencer should be able to call this route
+    """Sign a synchronization point to contribute to batch consensus.
+
+    This endpoint can only be called by the current active sequencer."""
+    # Sequencer verification is handled by verify_sequencer_signature dependency
     signature = tasks.sign_sync_point(
         {
             "app_name": request.app_name,
@@ -150,6 +156,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(utils.authenticate),
     ],
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
@@ -183,6 +190,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     "/switch",
     dependencies=[
         Depends(utils.validate_version("node")),
+        Depends(utils.authenticate),
     ],
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
@@ -257,7 +265,9 @@ async def get_state() -> NodeStateResponse:
 
 @router.get(
     "/{app_name}/batches/{state}/last",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchResponse:
     """Get the latest batch for a specific application in the given state."""
@@ -276,7 +286,9 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
 
 @router.get(
     "/batches/{state}/last",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
     """Retrieve the latest batches for all applications in one request."""
@@ -297,7 +309,9 @@ async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
 
 @router.get(
     "/{app_name}/batches/{state}",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)

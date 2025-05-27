@@ -253,9 +253,7 @@ class InMemoryDB:
         index: int,
     ) -> BatchRecord:
         """Get a batch by its index."""
-        return self.apps[app_name]["operational_batch_sequence"].get_or_empty(
-            index
-        )
+        return self.apps[app_name]["operational_batch_sequence"].get_or_empty(index)
 
     def init_batches(self, app_name: str, bodies: Iterable[str]) -> None:
         """Initialize batches of transactions with a given body."""
@@ -437,7 +435,6 @@ class InMemoryDB:
             )
             return False
 
-
         # Update target batch with finalization data
         target_batch = self.get_batch_record_by_index_or_empty(
             app_name,
@@ -449,7 +446,6 @@ class InMemoryDB:
                 f"The finalizing {signature_data=} couldn't be found in the operational batches."
             )
             return False
-
 
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
