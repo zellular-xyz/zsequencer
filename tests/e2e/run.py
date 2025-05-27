@@ -294,8 +294,7 @@ def start(config_path: str) -> None:
     zlogger.info("Preparing node files and configurations...")
 
     # Prepare nodes
-    for i, keys in enumerate(network_keys):
-        idx = i + 1
+    for idx, keys in enumerate(network_keys, start=1):
         # Prepare node files
         node_files = prepare_simulation_files(idx, keys)
 
@@ -331,8 +330,7 @@ def start(config_path: str) -> None:
     zlogger.info(f"Starting {config.node_num} containers...")
 
     # Start containers
-    for i, node_id in enumerate(sorted(nodes_info.keys())):
-        idx = i + 1
+    for idx, node_id in enumerate(sorted(nodes_info.keys()), start=1):
         container_name = f"zsequencer-node-{idx}"
         execution_data = nodes_execution_args[node_id]
 
