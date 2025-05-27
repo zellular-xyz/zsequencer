@@ -35,12 +35,6 @@ console_str_formatter: logging.Formatter = ColoredFormatter(
 console_handler: StreamHandler = logging.StreamHandler()
 console_handler.setFormatter(console_str_formatter)
 
-# Set up file handler
-file_str_formatter: logging.Formatter = logging.Formatter(
-    fmt="%(asctime)s - %(levelname)s - %(filename)s(%(lineno)d) - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
 # Add handlers to the logger
 zlogger.addHandler(console_handler)
 

@@ -5,14 +5,14 @@ import random
 import threading
 import time
 from queue import Queue
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from zellular import StaticNetwork, Zellular
+
 from common.errors import IsSequencerError
 from common.logger import zlogger
-from tests.e2e.run import SIMULATION_DATA_DIR, load_simulation_config, SimulationConfig
-
+from tests.e2e.run import SIMULATION_DATA_DIR, SimulationConfig, load_simulation_config
 
 NUM_THREADS = 100
 TOTAL_REQUESTS = 10_000
@@ -44,7 +44,9 @@ def worker(config: SimulationConfig, network: StaticNetwork, nodes: dict[str, An
                     continue
 
             gateway = f"http://localhost:{port}"
-            zellular = Zellular(app="simple_app", network=network, gateway=gateway, timeout=2)
+            zellular = Zellular(
+                app="simple_app", network=network, gateway=gateway, timeout=2
+            )
             t = int(time.time())
             txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t}]
 
@@ -89,11 +91,15 @@ def main(config_path: str) -> None:
     for t in threads:
         t.join()
 
-    zlogger.info(f"Finished sending {TOTAL_REQUESTS} requests using {NUM_THREADS} threads.")
+    zlogger.info(
+        f"Finished sending {TOTAL_REQUESTS} requests using {NUM_THREADS} threads."
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run threaded zellular stress test client")
+    parser = argparse.ArgumentParser(
+        description="Run threaded zellular stress test client"
+    )
     parser.add_argument(
         "--config",
         type=str,
