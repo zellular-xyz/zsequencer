@@ -12,13 +12,14 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-# Add the parent directory to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from common.logger import zlogger
+from config import zconfig
+
+zlogger.setLevel(logging.getLevelName(zconfig.LOG_LEVEL))
+
 
 from common import errors
 from common.db import zdb
-from common.logger import zlogger
-from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
 from node.switch import send_dispute_requests
@@ -30,7 +31,6 @@ app = FastAPI(title="ZSequencer")
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
-zlogger.setLevel(logging.getLevelName(zconfig.LOG_LEVEL))
 
 
 @app.exception_handler(errors.BaseHTTPError)
