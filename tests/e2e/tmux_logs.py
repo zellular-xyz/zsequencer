@@ -1,13 +1,13 @@
 import subprocess
 
 from tests.e2e.run import get_container_names
-
+from common.logger import zlogger
 
 def show_logs_in_tmux_grid():
     container_names = get_container_names()
 
     if len(container_names) < 4:
-        print("Need at least 4 containers.")
+        zlogger.error("Need at least 4 containers.")
         return
 
     container_names = container_names[:4]

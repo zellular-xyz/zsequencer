@@ -77,7 +77,6 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
-        self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
         self.REMOTE_HOST_CHECKER_BASE_URL = node_config.remote_host_checker_base_url
         self.CHECK_REACHABILITY_OF_NODE_URL = node_config.check_reachability_of_node_url
         self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (

@@ -31,7 +31,7 @@ def main(config_path: str) -> None:
         threshold_percent=config.shared_env_variables["ZSEQUENCER_THRESHOLD_PERCENT"],
     )
     while True:
-        time.sleep(1)
+        # time.sleep(1)
         port = config.base_port + random.randint(1, config.node_num)
         if port == sequencer_port:
             continue

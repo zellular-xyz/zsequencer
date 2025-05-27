@@ -61,8 +61,6 @@ class NodeConfig(BaseSettings):
         default="INFO"
     )
 
-    max_missed_batches_to_pick: int = Field(default=10)
-
     remote_host_checker_base_url: str = Field(
         default="https://portchecker.io/api/{host}/{port}"
     )

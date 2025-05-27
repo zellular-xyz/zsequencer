@@ -5,9 +5,7 @@ from common.utils import get_utf8_size_kb
 
 
 class Batch(TypedDict, total=False):
-    node_id: str
     body: str
-    hash: str
     chaining_hash: str
     lock_signature: str
     locked_nonsigners: list[str]
@@ -34,7 +32,6 @@ class StatefulBatch(TypedDict, total=False):
     app_name: str
     node_id: str
     body: str
-    hash: str
     chaining_hash: str
     lock_signature: str
     locked_nonsigners: list[str]

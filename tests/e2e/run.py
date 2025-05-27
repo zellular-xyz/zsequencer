@@ -352,9 +352,11 @@ def start(config_path: str) -> None:
 
     zlogger.info("\nNetwork started successfully!")
     zlogger.info(
-        f"- Node ports: {config.base_port} to {config.base_port + config.node_num - 1}"
+        f"- Node ports: {config.base_port + 1} to {config.base_port + config.node_num}"
     )
-    zlogger.info(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
+    zlogger.info(
+        f"- Sequencer: zsequencer-node-1 (running on port {config.base_port + 1})"
+    )
     zlogger.info(f"- Configuration: {config_path}")
     zlogger.info("\nTo view logs: tests.e2e.run logs --terminal=<terminal>")
     zlogger.info("To stop the network: tests.e2e.run stop")

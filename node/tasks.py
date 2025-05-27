@@ -46,11 +46,7 @@ def send_batches() -> None:
 
 
 def send_app_batches_iteration(app_name: str) -> bool:
-    response = send_app_batches(app_name).get("data", {})
-    sequencer_last_finalized_index = response.get(
-        "last_finalized_index",
-        BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
-    )
+    sequencer_last_finalized_index = send_app_batches(app_name)
     last_in_memory_index = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="sequenced"
     ).get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
@@ -59,13 +55,12 @@ def send_app_batches_iteration(app_name: str) -> bool:
     return sequencer_last_finalized_index <= last_in_memory_index
 
 
-def send_app_batches(app_name: str) -> dict[str, Any]:
-    """Send batches for a specific app."""
+def send_app_batches(app_name: str) -> int:
+    """Send batches for a specific app and return sequencer last finalized index."""
     max_size_kb = get_remaining_capacity_kb_of_self_node()
-    initialized_batches: dict[str, Any] = zdb.get_limited_initialized_batch_map(
+    batches = zdb.get_limited_initialized_batches(
         app_name=app_name, max_size_kb=max_size_kb
     )
-    batches = list(initialized_batches.values())
 
     last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name,
@@ -76,25 +71,20 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         state="locked",
     )
 
-    concat_hash: str = "".join(initialized_batches.keys())
+    concat_hash: str = "".join(utils.gen_hash(batch_body) for batch_body in batches)
     concat_sig: str = utils.eth_sign(concat_hash)
     data: str = json.dumps(
         {
             "app_name": app_name,
-            "batches": list(initialized_batches.values()),
+            "batches": batches,
             "node_id": zconfig.NODE["id"],
             "signature": concat_sig,
             "sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "sequenced_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "hash",
-                "",
-            ),
             "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get(
                 "chaining_hash",
                 "",
             ),
             "locked_index": last_locked_batch_record.get("index", 0),
-            "locked_hash": last_locked_batch_record.get("batch", {}).get("hash", ""),
             "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get(
                 "chaining_hash",
                 "",
@@ -103,8 +93,8 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         },
     )
 
-    url: str = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
-    response: dict[str, Any] = {}
+    url = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
+    response = None
     try:
         # missing timeout allows malicious sequncer freeze node and prevent the dispute process
         r = requests.put(url=url, data=data, headers=zconfig.HEADERS, timeout=5)
@@ -112,35 +102,39 @@ def send_app_batches(app_name: str) -> dict[str, Any]:
         response = r.json()
         if response["status"] == "error":
             zlogger.warning(response["error"]["message"])
-            zdb.add_missed_batches(app_name, initialized_batches.values())
-            return {}
+            zdb.reinit_missed_batches(app_name, batches)
+            zdb.is_sequencer_down = True
+            return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
         try_acquire_rate_limit_of_self_node(batches)
 
-        censored_batches = sync_with_sequencer(
+        sync_with_sequencer(
             app_name=app_name,
-            initialized_batches=initialized_batches,
             sequencer_response=response["data"],
         )
+
         zdb.is_sequencer_down = False
-        if not censored_batches:
-            zdb.clear_missed_batches(app_name)
+        censored_batches = set(batches) - set(response["data"]["batches"])
+        if censored_batches:
+            zdb.reinit_missed_batches(app_name, censored_batches)
+            zdb.set_sequencer_censoring(app_name)
+        else:
+            zdb.clear_sequencer_censoring(app_name)
+        return response["data"]["last_finalized_index"]
 
     except Exception as e:
         zlogger.error(
             f"An unexpected error occurred, while sending batches to sequencer: {e=}, {response=}",
         )
-        zdb.add_missed_batches(app_name, initialized_batches.values())
+        zdb.reinit_missed_batches(app_name, batches)
         zdb.is_sequencer_down = True
-
-    return response
+        return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
 
 def sync_with_sequencer(
     app_name: str,
-    initialized_batches: dict[str, Any],
     sequencer_response: dict[str, Any],
-) -> dict[str, Any]:
+) -> None:
     """Sync batches with the sequencer."""
     zdb.insert_sequenced_batches(
         app_name=app_name,
@@ -182,41 +176,6 @@ def sync_with_sequencer(
             app_name=app_name, state=state, last_index=index, current_time=current_time
         )
 
-    return check_censorship(
-        app_name=app_name,
-        initialized_batches=initialized_batches,
-        sequencer_response=sequencer_response,
-    )
-
-
-def check_censorship(
-    app_name: str,
-    initialized_batches: dict[str, Any],
-    sequencer_response: dict[str, Any],
-) -> dict[str, Any]:
-    """Check for censorship and update missed batches."""
-    sequenced_hashes: set[str] = set(
-        batch["hash"] for batch in sequencer_response["batches"]
-    )
-    censored_batches: list[dict[str, Any]] = [
-        batch
-        for batch_hash, batch in initialized_batches.items()
-        if batch_hash not in sequenced_hashes
-    ]
-
-    # remove sequenced batches from the missed batches dict
-    missed_batches: list[dict[str, Any]] = [
-        batch
-        for batch_hash, batch in zdb.get_missed_batch_map(app_name).items()
-        if batch_hash not in sequenced_hashes
-    ]
-
-    # add censored batches to the missed batches dict
-    missed_batches += censored_batches
-
-    zdb.set_missed_batches(app_name=app_name, missed_batches=missed_batches)
-    return censored_batches
-
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """Confirm and sign the sync point"""
@@ -226,7 +185,7 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
     )
     batch = batch_record.get("batch", {})
     if (
-        any(batch.get(key) != sync_point[key] for key in ["hash", "chaining_hash"])
+        batch.get("chaining_hash") != sync_point["chaining_hash"]
         or not is_state_before_or_equal(sync_point["state"], batch_record["state"])
         or batch_record["index"] != sync_point["index"]
     ):

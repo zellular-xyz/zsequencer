@@ -198,7 +198,6 @@ def is_sync_point_signature_verified(
     app_name: str,
     state: str,
     index: int,
-    batch_hash: str,
     chaining_hash: str,
     tag: int,
     signature_hex: str,
@@ -215,7 +214,6 @@ def is_sync_point_signature_verified(
         app_name: The name of the application for which the sync point is being verified
         state: "sequenced" for locking signatures and "lock" for finalizing signatures
         index: The index of the batch in the sequence
-        batch_hash: The hash of the batch content
         chaining_hash: The hash that chains this batch to previous batches
         tag: The network status tag used to identify the correct network state
         signature_hex: The hexadecimal representation of the BLS signature to verify
@@ -257,7 +255,6 @@ def is_sync_point_signature_verified(
             "app_name": app_name,
             "state": state,
             "index": index,
-            "hash": batch_hash,
             "chaining_hash": chaining_hash,
         },
         sort_keys=True,
