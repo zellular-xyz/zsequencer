@@ -8,7 +8,7 @@ from threading import Lock, Thread
 from typing import Any, TypeAlias, TypedDict
 
 from common import utils
-from common.batch import Batch, BatchRecord
+from common.batch import BatchRecord
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
 from common.logger import zlogger
@@ -67,7 +67,7 @@ class InMemoryDB:
         state: SequencedState | FinalizedState,
         last_index: int,
         current_time: int,
-    ):
+    ) -> None:
         """Track when a range of batches transitions to a new state and remove from previous state.
 
         Args:
@@ -161,7 +161,7 @@ class InMemoryDB:
 
     def get_limited_initialized_batches(
         self, app_name: str, max_size_kb: float
-    ) -> dict[str, Batch]:
+    ) -> list[str]:
         total_batches_size = 0.0
         limited_batches = []
 
@@ -325,11 +325,11 @@ class InMemoryDB:
         if not is_sync_point_signature_verified(
             app_name=app_name,
             state="sequenced",
-            index=signature_data.get("index"),
-            chaining_hash=signature_data.get("chaining_hash"),
-            tag=signature_data.get("tag"),
-            signature_hex=signature_data.get("signature"),
-            nonsigners=signature_data.get("nonsigners"),
+            index=signature_data["index"],
+            chaining_hash=signature_data["chaining_hash"],
+            tag=signature_data["tag"],
+            signature_hex=signature_data["signature"],
+            nonsigners=signature_data["nonsigners"],
         ):
             zlogger.warning(
                 f"The locking {signature_data=} can not be verified.",
@@ -383,11 +383,11 @@ class InMemoryDB:
         if not is_sync_point_signature_verified(
             app_name=app_name,
             state="locked",
-            index=signature_data.get("index"),
-            chaining_hash=signature_data.get("chaining_hash"),
-            tag=signature_data.get("tag"),
-            signature_hex=signature_data.get("signature"),
-            nonsigners=signature_data.get("nonsigners"),
+            index=signature_data["index"],
+            chaining_hash=signature_data["chaining_hash"],
+            tag=signature_data["tag"],
+            signature_hex=signature_data["signature"],
+            nonsigners=signature_data["nonsigners"],
         ):
             zlogger.warning(
                 f"The finalizing {signature_data=} can not be verified.",
