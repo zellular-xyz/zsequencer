@@ -58,7 +58,7 @@ def send_app_batches_iteration(app_name: str) -> bool:
 def send_app_batches(app_name: str) -> int:
     """Send batches for a specific app and return sequencer last finalized index."""
     max_size_kb = get_remaining_capacity_kb_of_self_node()
-    batches = zdb.get_limited_initialized_batches(
+    batches = zdb.pop_limited_initialized_batches(
         app_name=app_name, max_size_kb=max_size_kb
     )
 

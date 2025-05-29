@@ -159,7 +159,7 @@ class InMemoryDB:
 
         return result
 
-    def get_limited_initialized_batches(
+    def pop_limited_initialized_batches(
         self, app_name: str, max_size_kb: float
     ) -> list[str]:
         total_batches_size = 0.0
