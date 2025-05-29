@@ -157,7 +157,7 @@ async def send_dispute_requests() -> None:
 
     old_sequencer_id, new_sequencer_id = get_switch_parameter_from_proofs(proofs)
     asyncio.create_task(send_switch_requests(proofs))
-    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
+    await switch_sequencer(old_sequencer_id, new_sequencer_id)
 
 
 async def _send_switch_request(session, node, proofs: list[SwitchProof]):
@@ -203,24 +203,9 @@ async def send_switch_requests(proofs: list[SwitchProof]) -> None:
         await asyncio.gather(*tasks)
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
-    """
-    Synchronous wrapper for sequencer switching.
-    """
-    asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
-
-
-async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
-    """
-    Asynchronous version of sequencer switching.
-    """
-    await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
-
-
-async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
+async def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """
     Core implementation of sequencer switching logic.
-    Used by both sync and async switch functions.
     """
     if old_sequencer_id != zconfig.SEQUENCER["id"]:
         old_sequencer_node = zconfig.NODES[old_sequencer_id]

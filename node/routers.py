@@ -1,6 +1,6 @@
 """This module defines the FastAPI router for node."""
 
-import threading
+import asyncio
 import time
 
 from fastapi import APIRouter, Depends, Query
@@ -194,13 +194,10 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 
     old_sequencer_id, new_sequencer_id = switch.get_switch_parameter_from_proofs(proofs)
 
-    def run_switch_sequencer() -> None:
-        switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
-
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
-    threading.Thread(target=run_switch_sequencer).start()
+    asyncio.create_task(switch.switch_sequencer(old_sequencer_id, new_sequencer_id))
 
     return EmptyResponse(message="Sequencer switch initiated successfully.")
 
