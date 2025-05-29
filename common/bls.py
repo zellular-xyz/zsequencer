@@ -47,31 +47,25 @@ def is_bls_sig_verified(
 
 async def gather_signatures(
     sign_tasks: dict[asyncio.Task, str],
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
 
     stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
 
-    try:
-        while stake_percent < zconfig.THRESHOLD_PERCENT:
-            done, pending_tasks = await asyncio.wait(
-                pending_tasks,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in done:
-                if not task.result():
-                    continue
-                node_id = sign_tasks[task]
-                completed_results[node_id] = task.result()
-                stake_percent += (
-                    100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
-                )
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if not task.result():
+                continue
+            node_id = sign_tasks[task]
+            completed_results[node_id] = task.result()
+            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
 
-    except Exception as error:
-        if not isinstance(error, ValueError):  # For empty list
-            zlogger.error(f"An unexpected error occurred: {error}")
     return completed_results, stake_percent
 
 
@@ -118,11 +112,15 @@ async def gather_and_aggregate_signatures(
             gather_signatures(sign_tasks),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         zlogger.error(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
-        return None
+        return
+
+    except Exception as error:
+        zlogger.error(f"An unexpected error occurred: {error}")
+        return
 
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None

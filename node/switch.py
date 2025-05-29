@@ -10,6 +10,7 @@ from threading import Lock
 from typing import Any, TypedDict
 
 import aiohttp
+from aiohttp.web import HTTPError
 
 from common import utils
 from common.api_models import SwitchProof
@@ -65,7 +66,7 @@ async def send_dispute_request(
                         timestamp=data["timestamp"],
                         signature=data["signature"],
                     )
-    except Exception as error:
+    except (HTTPError, asyncio.TimeoutError) as error:
         zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
     return None
@@ -137,15 +138,13 @@ async def send_dispute_requests() -> None:
             gather_disputes(),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         zlogger.warning(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return
-    except Exception as error:
-        import traceback
 
-        traceback.print_exc()
+    except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
         return
 
@@ -186,7 +185,7 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     try:
         async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
             await response.text()  # Consume the response
-    except Exception as e:
+    except (HTTPError, asyncio.TimeoutError) as e:
         zlogger.warning(
             f"Error occurred while sending switch request to {node['id']}: {e}"
         )
@@ -340,9 +339,11 @@ async def _sync_with_peer_node(
 
     zdb.reinitialize_sequenced_batches(app_name=app_name)
 
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-        while True:
-            try:
+    while True:
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as session:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
                 params = {"after": after_index}
 
@@ -357,68 +358,62 @@ async def _sync_with_peer_node(
                         return False
 
                     data = await response.json()
-                    if data.get("status") != "success" or not data.get("data"):
-                        return False
+        except (HTTPError, asyncio.TimeoutError) as e:
+            zlogger.warning(
+                f"Error occurred while fetching batches from {peer_node_socket}: {e}"
+            )
+            return False
 
-                batch_bodies = data["data"]["batches"]
-                if not batch_bodies:
-                    return False
-                chaining_hash = data["data"]["first_chaining_hash"]
-                locked_signature_info = data["data"]["locked"]
-                finalized_signature_info = data["data"]["finalized"]
-                last_page = (
-                    after_index
-                    <= target_locked_index
-                    <= after_index + len(batch_bodies)
-                )
-                zlogger.warning(f"{after_index}, {chaining_hash}")
+        if data.get("status") != "success" or not data.get("data"):
+            return False
 
-                if last_page and not locked_signature_info:
-                    zlogger.warning(
-                        f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
-                    )
-                    return False
+        batch_bodies = data["data"]["batches"]
+        if not batch_bodies:
+            return False
+        chaining_hash = data["data"]["first_chaining_hash"]
+        locked_signature_info = data["data"]["locked"]
+        finalized_signature_info = data["data"]["finalized"]
+        last_page = (
+            after_index <= target_locked_index <= after_index + len(batch_bodies)
+        )
+        zlogger.warning(f"{after_index}, {chaining_hash}")
 
-                zdb.insert_sequenced_batch_bodies(
-                    app_name=app_name, batch_bodies=batch_bodies
-                )
+        if last_page and not locked_signature_info:
+            zlogger.warning(
+                f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
+            )
+            return False
 
-                if locked_signature_info:
-                    locking_result = zdb.lock_batches(
-                        app_name=app_name,
-                        signature_data=locked_signature_info,
-                    )
-                    if not locking_result:
-                        zlogger.warning(
-                            f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
-                        )
-                        return False
-                if finalized_signature_info:
-                    finalizing_result = zdb.finalize_batches(
-                        app_name=app_name,
-                        signature_data=finalized_signature_info,
-                    )
-                    if not finalizing_result:
-                        zlogger.warning(
-                            f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
-                        )
-                        return False
+        zdb.insert_sequenced_batch_bodies(app_name=app_name, batch_bodies=batch_bodies)
 
-                zlogger.info(
-                    f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
-                )
-                if last_page:
-                    return True
-
-                after_index += len(batch_bodies)
-            except Exception as e:
-                import traceback
-
-                traceback.print_exc()
+        if locked_signature_info:
+            locking_result = zdb.lock_batches(
+                app_name=app_name,
+                signature_data=locked_signature_info,
+            )
+            if not locking_result:
                 zlogger.warning(
-                    f"Error occurred while fetching batches from {peer_node_socket}: {e}"
+                    f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
                 )
                 return False
+        if finalized_signature_info:
+            finalizing_result = zdb.finalize_batches(
+                app_name=app_name,
+                signature_data=finalized_signature_info,
+            )
+            if not finalizing_result:
+                zlogger.warning(
+                    f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
+                )
+                return False
+
+        zlogger.info(
+            f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
+        )
+        if last_page:
+            return True
+
+        after_index += len(batch_bodies)
 
 
 async def _fetch_node_last_locked_batch_records_or_none(
@@ -440,20 +435,22 @@ async def _fetch_node_last_locked_batch_records_or_none(
                 return None
 
             data = await response.json()
-            if data.get("status") == "error":
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {data}"
-                )
-                return None
 
-            return {
-                app_name: stateful_batch_to_batch_record(data["data"][app_name])
-                for app_name in zconfig.APPS
-                if app_name in data["data"]
-            }
-    except Exception as e:
+    except (HTTPError, asyncio.TimeoutError) as e:
         zlogger.warning(f"Failed to fetch last locked record from node {socket}: {e}")
         return None
+
+    if data.get("status") == "error":
+        zlogger.warning(
+            f"Failed to fetch last locked record from node {socket}: {data}"
+        )
+        return None
+
+    return {
+        app_name: stateful_batch_to_batch_record(data["data"][app_name])
+        for app_name in zconfig.APPS
+        if app_name in data["data"]
+    }
 
 
 async def get_network_last_locked_batch_entries_sorted() -> dict[
