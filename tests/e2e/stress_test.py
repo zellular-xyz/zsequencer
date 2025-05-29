@@ -25,7 +25,12 @@ def is_sequencer_error(e: Exception) -> bool:
         return False
 
 
-def worker(config: SimulationConfig, job_queue: Queue, network: StaticNetwork, nodes: dict[str, Any]):
+def worker(
+    config: SimulationConfig,
+    job_queue: Queue,
+    network: StaticNetwork,
+    nodes: dict[str, Any],
+):
     global sequencer_port
 
     while not job_queue.empty():
