@@ -66,9 +66,9 @@ def _put_batches(
 ) -> SequencerPutBatchesResponseData:
     """Process the batches data and return a structured response."""
     with zdb.sequencer_put_batches_lock:
-        zdb.sequencer_init_batches(
+        zdb.sequencer_init_batch_bodies(
             app_name=request.app_name,
-            initializing_batches=request.batches,
+            batch_bodies=request.batches,
         )
     batch_sequence = zdb.get_global_operational_batch_sequence(
         app_name=request.app_name,

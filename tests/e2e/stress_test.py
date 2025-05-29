@@ -16,9 +16,6 @@ from tests.e2e.run import SIMULATION_DATA_DIR, SimulationConfig, load_simulation
 
 NUM_THREADS = 100
 TOTAL_REQUESTS = 10_000
-JOB_QUEUE = Queue()
-SEQUENCER_PORT_LOCK = threading.Lock()
-SEQUENCER_PORT = None
 
 
 def is_sequencer_error(e: Exception) -> bool:
@@ -28,20 +25,19 @@ def is_sequencer_error(e: Exception) -> bool:
         return False
 
 
-def worker(config: SimulationConfig, network: StaticNetwork, nodes: dict[str, Any]):
-    global SEQUENCER_PORT
+def worker(config: SimulationConfig, job_queue: Queue, network: StaticNetwork, nodes: dict[str, Any]):
+    global sequencer_port
 
-    while not JOB_QUEUE.empty():
+    while not job_queue.empty():
         try:
-            JOB_QUEUE.get_nowait()
+            job_queue.get_nowait()
         except Exception:
             return
 
         while True:
             port = config.base_port + random.randint(1, config.node_num)
-            with SEQUENCER_PORT_LOCK:
-                if port == SEQUENCER_PORT:
-                    continue
+            if port == sequencer_port:
+                continue
 
             gateway = f"http://localhost:{port}"
             zellular = Zellular(
@@ -55,14 +51,13 @@ def worker(config: SimulationConfig, network: StaticNetwork, nodes: dict[str, An
                 break  # job succeeded
             except Exception as e:
                 if is_sequencer_error(e):
-                    with SEQUENCER_PORT_LOCK:
-                        SEQUENCER_PORT = port
+                    sequencer_port = port
                     zlogger.warning(f"Port {port} is a sequencer. Skipping it.")
                 else:
                     zlogger.error(f"Error on port {port}: {e}")
                     break  # treat other errors as final
 
-        JOB_QUEUE.task_done()
+        job_queue.task_done()
 
 
 def main(config_path: str) -> None:
@@ -77,13 +72,14 @@ def main(config_path: str) -> None:
     )
 
     # Fill the job queue
+    job_queue = Queue()
     for _ in range(TOTAL_REQUESTS):
-        JOB_QUEUE.put(1)
+        job_queue.put(1)
 
     # Start worker threads
     threads = []
     for _ in range(NUM_THREADS):
-        t = threading.Thread(target=worker, args=(config, network, nodes))
+        t = threading.Thread(target=worker, args=(config, job_queue, network, nodes))
         t.start()
         threads.append(t)
 
@@ -107,4 +103,5 @@ if __name__ == "__main__":
         help="Path to the simulation configuration file",
     )
     args = parser.parse_args()
+    sequencer_port = None
     main(args.config)
