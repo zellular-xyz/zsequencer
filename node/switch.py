@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from asyncio import Lock
 from collections import Counter
-from threading import Lock
 from typing import Any, TypedDict
 
 import aiohttp
@@ -229,7 +229,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
         )
         return
 
-    with switch_lock:
+    async with switch_lock:
         zconfig.pause()
 
         try:
