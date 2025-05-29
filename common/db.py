@@ -4,7 +4,7 @@ import os
 import time
 from collections import deque
 from collections.abc import Iterable
-from threading import Lock, Thread
+from threading import Thread
 from typing import Any, TypeAlias, TypedDict
 
 from common import utils
@@ -46,7 +46,6 @@ class InMemoryDB:
 
     def __init__(self) -> None:
         """Initialize the InMemoryDB instance."""
-        self.sequencer_put_batches_lock = Lock()
         self.is_sequencer_down = False
         self.is_node_reachable = True
         self._snapshot_manager = SnapshotManager(
