@@ -23,7 +23,7 @@ TimestampedIndex: TypeAlias = tuple[int, int]
 class App(TypedDict, total=False):
     # TODO: Annotate the keys and values.
     nodes_state: dict[str, Any]
-    initialized_batches: deque[str]
+    initialized_batch_bodies: deque[str]
     operational_batch_sequence: BatchSequence
     is_sequencer_censoring: bool
     latency_tracking_queue: deque[TimestampedIndex]
@@ -107,7 +107,7 @@ class InMemoryDB:
             else:
                 new_apps[app_name] = {
                     "nodes_state": {},
-                    "initialized_batches": deque(),
+                    "initialized_batch_bodies": deque(),
                     "operational_batch_sequence": BatchSequence(),
                     "is_sequencer_censoring": False,
                     "latency_tracking_queue": deque(),
@@ -151,7 +151,7 @@ class InMemoryDB:
             )
             result[app_name] = {
                 "nodes_state": {},
-                "initialized_batches": deque(),
+                "initialized_batch_bodies": deque(),
                 "operational_batch_sequence": finalized_batch_sequence,
                 "is_sequencer_censoring": False,
                 "latency_tracking_queue": deque(),
@@ -159,21 +159,21 @@ class InMemoryDB:
 
         return result
 
-    def pop_limited_initialized_batches(
+    def pop_limited_initialized_batch_bodies(
         self, app_name: str, max_size_kb: float
     ) -> list[str]:
         total_batches_size = 0.0
-        limited_batches = []
+        limited_batch_bodies = []
 
-        while len(self.apps[app_name]["initialized_batches"]) > 0:
-            batch_body = self.apps[app_name]["initialized_batches"].popleft()
+        while len(self.apps[app_name]["initialized_batch_bodies"]) > 0:
+            batch_body = self.apps[app_name]["initialized_batch_bodies"].popleft()
             batch_size = utils.get_utf8_size_kb(batch_body)
             if total_batches_size + batch_size > max_size_kb:
-                self.apps[app_name]["initialized_batches"].appendleft(batch_body)
+                self.apps[app_name]["initialized_batch_bodies"].appendleft(batch_body)
                 break
-            limited_batches.append(batch_body)
+            limited_batch_bodies.append(batch_body)
             total_batches_size += batch_size
-        return limited_batches
+        return limited_batch_bodies
 
     def _prune_old_finalized_batches(self, app_name: str) -> None:
         remove_border_index = self._snapshot_manager.get_latest_chunks_start_index(
@@ -250,16 +250,18 @@ class InMemoryDB:
         """Get a batch by its index."""
         return self.apps[app_name]["operational_batch_sequence"].get_or_empty(index)
 
-    def init_batches(self, app_name: str, bodies: Iterable[str]) -> None:
+    def init_batches(self, app_name: str, batch_bodies: Iterable[str]) -> None:
         """Initialize batches of transactions with a given body."""
-        if not bodies:
+        if not batch_bodies:
             return
 
-        self.apps[app_name]["initialized_batches"].extend(bodies)
+        self.apps[app_name]["initialized_batch_bodies"].extend(batch_bodies)
 
-    def reinit_missed_batches(self, app_name: str, bodies: Iterable[str]) -> None:
+    def reinit_missed_batch_bodies(
+        self, app_name: str, batch_bodies: Iterable[str]
+    ) -> None:
         """Re-initialize batches of transactions after being missed from sequencing."""
-        self.apps[app_name]["initialized_batches"].extendleft(bodies)
+        self.apps[app_name]["initialized_batch_bodies"].extendleft(batch_bodies)
 
     def get_last_operational_batch_record_or_empty(
         self,
@@ -271,13 +273,13 @@ class InMemoryDB:
             state,
         )
 
-    def sequencer_init_batches(
+    def sequencer_init_batch_bodies(
         self,
         app_name: str,
-        initializing_batches: list[str],
+        batch_bodies: list[str],
     ) -> None:
         """Initialize and sequence batches."""
-        if not initializing_batches:
+        if not batch_bodies:
             return
 
         last_sequenced_batch = (
@@ -287,24 +289,24 @@ class InMemoryDB:
         )
         chaining_hash = last_sequenced_batch.get("chaining_hash", "")
 
-        for batch in initializing_batches:
-            batch_hash = utils.gen_hash(batch)
+        for batch_body in batch_bodies:
+            batch_hash = utils.gen_hash(batch_body)
 
             chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
             self.apps[app_name]["operational_batch_sequence"].append(
                 {
-                    "body": batch,
+                    "body": batch_body,
                     "chaining_hash": chaining_hash,
                 }
             )
 
-    def insert_sequenced_batches(
+    def insert_sequenced_batch_bodies(
         self,
         app_name: str,
-        batches: list[str],
+        batch_bodies: list[str],
     ) -> None:
-        """Insert sequenced batches."""
-        if not batches:
+        """Insert sequenced batch bodies."""
+        if not batch_bodies:
             return
 
         chaining_hash = (
@@ -314,10 +316,10 @@ class InMemoryDB:
             .get("chaining_hash", "")
         )
 
-        for batch in batches:
-            chaining_hash = utils.gen_hash(chaining_hash + utils.gen_hash(batch))
+        for batch_body in batch_bodies:
+            chaining_hash = utils.gen_hash(chaining_hash + utils.gen_hash(batch_body))
             self.apps[app_name]["operational_batch_sequence"].append(
-                {"body": batch, "chaining_hash": chaining_hash}
+                {"body": batch_body, "chaining_hash": chaining_hash}
             )
 
     def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
@@ -527,9 +529,9 @@ class InMemoryDB:
             self.apps[app_name]["is_sequencer_censoring"] for app_name in zconfig.APPS
         )
 
-    def get_apps_censored_batches(self) -> dict[str, str]:
+    def get_apps_censored_batch_bodies(self) -> dict[str, str]:
         return {
-            app_name: self.apps[app_name]["initialized_batches"][0]
+            app_name: self.apps[app_name]["initialized_batch_bodies"][0]
             for app_name in self.apps
             if self.apps[app_name]["is_sequencer_censoring"]
         }
@@ -550,11 +552,11 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def reset_initialized_batches(self, app_name: str) -> None:
+    def reset_initialized_batch_bodies(self, app_name: str) -> None:
         """reset initialized batches after a switch for the new sequencer."""
-        self.apps[app_name]["initialized_batches"] = deque()
+        self.apps[app_name]["initialized_batch_bodies"] = deque()
 
-    def reinitialize_batches(self, app_name: str) -> None:
+    def reinitialize_sequenced_batches(self, app_name: str) -> None:
         """Reinitialize batches after a switch in the sequencer."""
         last_locked_index = (
             self.apps[app_name]["operational_batch_sequence"]
@@ -566,7 +568,7 @@ class InMemoryDB:
             .filter(start_exclusive=last_locked_index)
             .batches()
         ):
-            self.apps[app_name]["initialized_batches"].append(batch["body"])
+            self.apps[app_name]["initialized_batch_bodies"].append(batch["body"])
 
         self.apps[app_name]["operational_batch_sequence"] = self.apps[app_name][
             "operational_batch_sequence"

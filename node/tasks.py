@@ -58,7 +58,7 @@ def send_app_batches_iteration(app_name: str) -> bool:
 def send_app_batches(app_name: str) -> int:
     """Send batches for a specific app and return sequencer last finalized index."""
     max_size_kb = get_remaining_capacity_kb_of_self_node()
-    batches = zdb.pop_limited_initialized_batches(
+    batch_bodies = zdb.pop_limited_initialized_batch_bodies(
         app_name=app_name, max_size_kb=max_size_kb
     )
 
@@ -71,12 +71,14 @@ def send_app_batches(app_name: str) -> int:
         state="locked",
     )
 
-    concat_hash: str = "".join(utils.gen_hash(batch_body) for batch_body in batches)
+    concat_hash: str = "".join(
+        utils.gen_hash(batch_body) for batch_body in batch_bodies
+    )
     concat_sig: str = utils.eth_sign(concat_hash)
     data: str = json.dumps(
         {
             "app_name": app_name,
-            "batches": batches,
+            "batches": batch_bodies,
             "node_id": zconfig.NODE["id"],
             "signature": concat_sig,
             "sequenced_index": last_sequenced_batch_record.get("index", 0),
@@ -102,11 +104,11 @@ def send_app_batches(app_name: str) -> int:
         response = r.json()
         if response["status"] == "error":
             zlogger.warning(response["error"]["message"])
-            zdb.reinit_missed_batches(app_name, batches)
+            zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
-        try_acquire_rate_limit_of_self_node(batches)
+        try_acquire_rate_limit_of_self_node(batch_bodies)
 
         sync_with_sequencer(
             app_name=app_name,
@@ -114,9 +116,9 @@ def send_app_batches(app_name: str) -> int:
         )
 
         zdb.is_sequencer_down = False
-        censored_batches = set(batches) - set(response["data"]["batches"])
-        if censored_batches:
-            zdb.reinit_missed_batches(app_name, censored_batches)
+        censored_batch_bodies = set(batch_bodies) - set(response["data"]["batches"])
+        if censored_batch_bodies:
+            zdb.reinit_missed_batch_bodies(app_name, censored_batch_bodies)
             zdb.set_sequencer_censoring(app_name)
         else:
             zdb.clear_sequencer_censoring(app_name)
@@ -126,7 +128,7 @@ def send_app_batches(app_name: str) -> int:
         zlogger.error(
             f"An unexpected error occurred, while sending batches to sequencer: {e=}, {response=}",
         )
-        zdb.reinit_missed_batches(app_name, batches)
+        zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
         zdb.is_sequencer_down = True
         return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
@@ -136,9 +138,9 @@ def sync_with_sequencer(
     sequencer_response: dict[str, Any],
 ) -> None:
     """Sync batches with the sequencer."""
-    zdb.insert_sequenced_batches(
+    zdb.insert_sequenced_batch_bodies(
         app_name=app_name,
-        batches=sequencer_response["batches"],
+        batch_bodies=sequencer_response["batches"],
     )
     last_locked_index = zdb.get_last_operational_batch_record_or_empty(
         app_name,

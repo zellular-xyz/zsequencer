@@ -39,7 +39,7 @@ async def send_dispute_request(
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_censored_batches": zdb.get_apps_censored_batches(),
+            "apps_censored_batches": zdb.get_apps_censored_batch_bodies(),
             "is_sequencer_down": is_sequencer_down,
             "has_delayed_batches": zdb.has_delayed_batches(),
             "timestamp": timestamp,
@@ -240,7 +240,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             )
 
             for app_name, entries in network_last_locked_batch_entries.items():
-                zdb.reinitialize_batches(app_name=app_name)
+                zdb.reinitialize_sequenced_batches(app_name=app_name)
                 self_node_last_locked_record = (
                     zdb.get_last_operational_batch_record_or_empty(
                         app_name=app_name, state="locked"
@@ -321,7 +321,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                     # because if their number exceeds the per-node quota, batches from other
                     # nodes might not be returned immediately.
                     # This could lead to disputes against the new leader because of censorship.
-                    zdb.reset_initialized_batches(app_name=app_name)
+                    zdb.reset_initialized_batch_bodies(app_name=app_name)
 
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)
@@ -338,7 +338,7 @@ async def _sync_with_peer_node(
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
     after_index = self_node_last_locked_index
 
-    zdb.reinitialize_batches(app_name=app_name)
+    zdb.reinitialize_sequenced_batches(app_name=app_name)
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
         while True:
@@ -360,14 +360,16 @@ async def _sync_with_peer_node(
                     if data.get("status") != "success" or not data.get("data"):
                         return False
 
-                batches = data["data"]["batches"]
-                if not batches:
+                batch_bodies = data["data"]["batches"]
+                if not batch_bodies:
                     return False
                 chaining_hash = data["data"]["first_chaining_hash"]
                 locked_signature_info = data["data"]["locked"]
                 finalized_signature_info = data["data"]["finalized"]
                 last_page = (
-                    after_index <= target_locked_index <= after_index + len(batches)
+                    after_index
+                    <= target_locked_index
+                    <= after_index + len(batch_bodies)
                 )
                 zlogger.warning(f"{after_index}, {chaining_hash}")
 
@@ -377,7 +379,9 @@ async def _sync_with_peer_node(
                     )
                     return False
 
-                zdb.insert_sequenced_batches(app_name=app_name, batches=batches)
+                zdb.insert_sequenced_batch_bodies(
+                    app_name=app_name, batch_bodies=batch_bodies
+                )
 
                 if locked_signature_info:
                     locking_result = zdb.lock_batches(
@@ -401,12 +405,12 @@ async def _sync_with_peer_node(
                         return False
 
                 zlogger.info(
-                    f"Fetched {len(batches)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
+                    f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
                 )
                 if last_page:
                     return True
 
-                after_index += len(batches)
+                after_index += len(batch_bodies)
             except Exception as e:
                 import traceback
 
