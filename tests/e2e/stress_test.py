@@ -24,6 +24,7 @@ def is_sequencer_error(e: Exception) -> bool:
     except Exception:
         return False
 
+sequencer_port = None
 
 def worker(
     config: SimulationConfig,
@@ -108,5 +109,4 @@ if __name__ == "__main__":
         help="Path to the simulation configuration file",
     )
     args = parser.parse_args()
-    sequencer_port = None
     main(args.config)
