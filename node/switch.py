@@ -355,7 +355,7 @@ async def _sync_with_peer_node(
         batch_bodies = data["data"]["batches"]
         if not batch_bodies:
             return False
-        chaining_hash = data["data"]["first_chaining_hash"]
+
         locked_signature_info = data["data"]["locked"]
         finalized_signature_info = data["data"]["finalized"]
         last_page = (
