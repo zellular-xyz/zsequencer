@@ -361,7 +361,6 @@ async def _sync_with_peer_node(
         last_page = (
             after_index <= target_locked_index <= after_index + len(batch_bodies)
         )
-        zlogger.warning(f"{after_index}, {chaining_hash}")
 
         if last_page and not locked_signature_info:
             zlogger.warning(
