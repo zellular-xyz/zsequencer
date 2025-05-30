@@ -20,7 +20,7 @@ TOTAL_REQUESTS = 100_000
 
 def worker(
     config: SimulationConfig,
-    job_queue: Queue,
+    job_queue: Queue[int],
     network: StaticNetwork,
     nodes: dict[str, Any],
 ) -> None:
@@ -59,7 +59,7 @@ def main(config_path: str) -> None:
     )
 
     # Fill the job queue
-    job_queue = Queue()
+    job_queue: Queue[int] = Queue()
     for _ in range(TOTAL_REQUESTS):
         job_queue.put(1)
 
