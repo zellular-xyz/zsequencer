@@ -36,7 +36,7 @@ async def put_batches(
     """Submit batches to the sequencer for ordering and consensus."""
     # Check rate limits
     if not try_acquire_rate_limit_of_other_nodes(
-        node_id=request.node_id, batches=request.batches
+        node_id=request.node_id, batch_bodies=request.batches
     ):
         raise BatchesLimitExceededError()
     # Validate batch sizes
