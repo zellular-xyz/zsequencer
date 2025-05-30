@@ -5,6 +5,7 @@ import random
 import time
 from uuid import uuid4
 
+from requests.exceptions import RequestException
 from zellular import StaticNetwork, Zellular
 
 from common.errors import IsSequencerError
@@ -12,11 +13,12 @@ from common.logger import zlogger
 from tests.e2e.run import SIMULATION_DATA_DIR, load_simulation_config
 
 
-def is_sequencer_error(e: Exception) -> bool:
-    try:
-        return e.response.json()["error"]["code"] == IsSequencerError.__name__
-    except Exception:
-        return False
+def is_sequencer_error(e: RequestException) -> bool:
+    return (
+        e.response is not None
+        and e.response.headers.get("content-type") == "application/json"
+        and e.response.json().get("error", {}).get("code") == IsSequencerError.__name__
+    )
 
 
 def main(config_path: str) -> None:
@@ -42,7 +44,7 @@ def main(config_path: str) -> None:
         txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t} for i in range(1)]
         try:
             zellular.send(json.dumps(txs))
-        except Exception as e:
+        except RequestException as e:
             if is_sequencer_error(e):
                 sequencer_port = port
                 zlogger.warning(
