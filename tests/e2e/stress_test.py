@@ -24,7 +24,9 @@ def is_sequencer_error(e: Exception) -> bool:
     except Exception:
         return False
 
+
 sequencer_port = None
+
 
 def worker(
     config: SimulationConfig,
