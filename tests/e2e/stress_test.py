@@ -8,24 +8,14 @@ from queue import Queue
 from typing import Any
 from uuid import uuid4
 
+from requests.exceptions import RequestException
 from zellular import StaticNetwork, Zellular
 
-from common.errors import IsSequencerError
 from common.logger import zlogger
 from tests.e2e.run import SIMULATION_DATA_DIR, SimulationConfig, load_simulation_config
 
 NUM_THREADS = 100
-TOTAL_REQUESTS = 10_000
-
-
-def is_sequencer_error(e: Exception) -> bool:
-    try:
-        return e.response.json()["error"]["code"] == IsSequencerError.__name__
-    except Exception:
-        return False
-
-
-sequencer_port = None
+TOTAL_REQUESTS = 100_000
 
 
 def worker(
@@ -34,36 +24,25 @@ def worker(
     network: StaticNetwork,
     nodes: dict[str, Any],
 ) -> None:
-    global sequencer_port
-
     while not job_queue.empty():
         try:
-            job_queue.get_nowait()
+            job = job_queue.get_nowait()
         except Exception:
             return
 
-        while True:
-            port = config.base_port + random.randint(1, config.node_num)
-            if port == sequencer_port:
-                continue
+        port = config.base_port + random.randint(1, config.node_num)
+        gateway = f"http://localhost:{port}"
+        zellular = Zellular(
+            app="simple_app", network=network, gateway=gateway, timeout=2
+        )
+        t = int(time.time())
+        txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t}]
 
-            gateway = f"http://localhost:{port}"
-            zellular = Zellular(
-                app="simple_app", network=network, gateway=gateway, timeout=2
-            )
-            t = int(time.time())
-            txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t}]
-
-            try:
-                zellular.send(json.dumps(txs))
-                break  # job succeeded
-            except Exception as e:
-                if is_sequencer_error(e):
-                    sequencer_port = port
-                    zlogger.warning(f"Port {port} is a sequencer. Skipping it.")
-                else:
-                    zlogger.error(f"Error on port {port}: {e}")
-                    break  # treat other errors as final
+        try:
+            zellular.send(json.dumps(txs))
+        except RequestException as e:
+            zlogger.error(f"Error sending request to {gateway}: {e}")
+            job_queue.put(job)
 
         job_queue.task_done()
 
