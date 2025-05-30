@@ -10,6 +10,7 @@ from collections import Counter
 from typing import Any, TypedDict
 
 import aiohttp
+from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPError
 
 from common import utils
@@ -48,13 +49,13 @@ async def send_dispute_request(
     )
     url = f"{node['socket']}/node/dispute"
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=5)
-        ) as session:
+        async with aiohttp.ClientSession() as session:
             async with session.post(
                 url=url,
                 data=data,
                 headers=zconfig.HEADERS,
+                timeout=5,
+                raise_for_status=True,
             ) as response:
                 response_json = await response.json()
                 if response_json["status"] == "success" and "data" in response_json:
@@ -66,7 +67,7 @@ async def send_dispute_request(
                         timestamp=data["timestamp"],
                         signature=data["signature"],
                     )
-    except (HTTPError, asyncio.TimeoutError) as error:
+    except (ClientError, HTTPError, asyncio.TimeoutError) as error:
         zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
     return None
@@ -183,9 +184,9 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     url = f"{node['socket']}/node/switch"
 
     try:
-        async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
-            await response.text()  # Consume the response
-    except (HTTPError, asyncio.TimeoutError) as e:
+        async with session.post(url, data=data) as response:
+            await response.text()
+    except (HTTPError, ClientError, asyncio.TimeoutError) as e:
         zlogger.warning(
             f"Error occurred while sending switch request to {node['id']}: {e}"
         )
@@ -194,7 +195,11 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
 async def send_switch_requests(proofs: list[SwitchProof]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=5),
+        raise_for_status=True,
+        headers=zconfig.HEADERS,
+    ) as session:
         tasks = [
             _send_switch_request(session, node, proofs)
             for node in zconfig.NODES.values()
@@ -326,24 +331,19 @@ async def _sync_with_peer_node(
 
     while True:
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as session:
+            async with aiohttp.ClientSession() as session:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
                 params = {"after": after_index}
 
                 async with session.get(
-                    url, params=params, headers=zconfig.HEADERS
+                    url,
+                    params=params,
+                    headers=zconfig.HEADERS,
+                    timeout=5,
+                    raise_for_status=True,
                 ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        zlogger.warning(
-                            f"Failed to fetch batches from node {peer_node_socket}: {error_text}"
-                        )
-                        return False
-
                     data = await response.json()
-        except (HTTPError, asyncio.TimeoutError) as e:
+        except (ClientError, HTTPError, asyncio.TimeoutError) as e:
             zlogger.warning(
                 f"Error occurred while fetching batches from {peer_node_socket}: {e}"
             )
@@ -410,17 +410,10 @@ async def _fetch_node_last_locked_batch_records_or_none(
     socket = zconfig.NODES[node_id]["socket"]
     url = f"{socket}/node/batches/locked/last"
     try:
-        async with session.get(url, headers=zconfig.HEADERS) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {error_text}"
-                )
-                return None
-
+        async with session.get(url) as response:
             data = await response.json()
 
-    except (HTTPError, asyncio.TimeoutError) as e:
+    except (ClientError, HTTPError, asyncio.TimeoutError) as e:
         zlogger.warning(f"Failed to fetch last locked record from node {socket}: {e}")
         return None
 
@@ -456,7 +449,11 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
     nodes_to_query = [node_id for node_id in zconfig.NODES if node_id != self_node_id]
 
     # Query all nodes concurrently
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=5),
+        raise_for_status=True,
+        headers=zconfig.HEADERS,
+    ) as session:
         tasks_with_node_ids = {
             node_id: _fetch_node_last_locked_batch_records_or_none(session, node_id)
             for node_id in nodes_to_query
