@@ -33,7 +33,7 @@ def worker(
     job_queue: Queue,
     network: StaticNetwork,
     nodes: dict[str, Any],
-):
+) -> None:
     global sequencer_port
 
     while not job_queue.empty():
