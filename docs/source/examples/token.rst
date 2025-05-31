@@ -235,47 +235,124 @@ Why This Matters
 
 In Step 4, we’ll introduce **verifiable reads**: users can query balances and verify the response using aggregated BLS signatures from the token replicas.
 
-Step 4: Verifiable Token Service
---------------------------------
+.. _signed-balance-token-service:
 
-In this step, we make balance queries verifiable by cryptographically signing every `/balance` response using **BLS signatures**. Each node signs the message with its own private key, allowing external services to confirm the authenticity of the returned value.
+Step 4: Signed Balance Token Service
+------------------------------------
 
-📄 File: :src:`token/04_verifiable_token_service.py`
+In this step, we introduce cryptographic signatures for balance responses. Each replica node now signs its own ``/balance`` response using a **BLS signature**, which allows external clients to confirm that the node is attesting to a specific value.
+
+📄 File: :src:`token/04_signed_balance_token_service.py`
 
 Key Concepts
 ~~~~~~~~~~~~
 
-- `/balance` responses are now BLS-signed
-- Clients can collect signed values from multiple nodes
-- These signatures can later be aggregated and verified (see future section)
+- ``/balance`` responses are now individually signed using BLS
+- Each node attests to the correctness of its response
+- Clients can optionally verify the individual signature using the node’s public key
 
-Why Verifiable Reads?
+Why Signed Responses?
 ~~~~~~~~~~~~~~~~~~~~~
 
-In a decentralized setting, it's not enough to replicate state — the **correctness of the state must also be verifiable**.
+In a decentralized environment, it’s important to ensure that values returned from public APIs can be **cryptographically authenticated**.
 
-When other services (such as wallets, exchanges, or cross-chain systems) rely on the token service, they must be able to trust the values returned from balance queries. Verifiable reads enable these external systems to **independently confirm that a node is reporting accurate, untampered state**, without relying on that node’s honesty.
+By signing the balance response:
 
-By signing each balance response with a BLS key:
+- The node proves it is accountable for the value it returned
+- Clients can verify the signature independently
+- This enables detection of tampered or inconsistent responses
 
-- The node **attests to the specific value** it returned
-- The signature can be later verified or aggregated with others
-- Clients can detect misreporting or inconsistency across nodes
-
-This forms the foundation for **trustless interoperability** between services that read from each other — essential for building tamper-proof decentralized infrastructure.
+This step lays the groundwork for **verifiable reads**, where multiple nodes agree on the same value.
 
 Balance Endpoint
 ~~~~~~~~~~~~~~~~
 
-The `/balance` endpoint signs the message before returning it:
+Each node signs its ``/balance`` response using BLS:
 
-
-.. literalinclude:: ../../../examples/token/04_verifiable_token_service.py
+.. literalinclude:: ../../../examples/token/04_signed_balance_token_service.py
    :language: python
    :start-after: -- start: checking balance --
    :end-before: -- end: checking balance --
 
+In Step 5, we’ll show how to **aggregate** these signed responses from multiple nodes to produce a **single verifiable proof** that a quorum attested to the same value.
 
-The message is signed using the BLS POP (Proof of Possession) scheme from the `blspy` library and the resulting `signature` is included in the API response.
+.. _verifiable-token-service:
 
-For now, this step ensures that every balance query is individually signed and verifiable. In the :doc:`Signature Aggregation and Verification <verification>` section, we’ll explore how an aggregator can collect signed responses from multiple nodes, combine them into a single BLS signature, and how clients or external services can verify that a quorum of replicas attested to the same value.
+Step 5: Verifiable Token Service
+--------------------------------
+
+In this final step, we introduce a new endpoint that aggregates signed balance responses from multiple nodes and returns a **single BLS signature** as proof.
+
+📄 File: :src:`token/05_verifiable_token_service.py`
+
+Key Concepts
+~~~~~~~~~~~~
+
+- Aggregator node queries multiple replicas for their signed balances
+- Only responses that match the expected value are included in the quorum
+- The resulting BLS signatures are **aggregated into a single proof**
+- Clients can verify the aggregated signature using the **aggregated public key** (with excluded non-signers)
+
+Why Signature Aggregation?
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a decentralized token system, it's not enough for individual nodes to return signed balances. What matters is whether a **majority of them agree** on the same value.
+
+Step 5 introduces **signature aggregation**, allowing clients to:
+
+- Collect individual BLS-signed balance responses
+- Aggregate them into a **single compact proof**
+- Verify that a **quorum of nodes attested** to the same balance
+
+This is especially important for **external independent services** — such as cross-chain bridges or decentralized exchanges — that consume balance data from the token service. These services need **cryptographic assurance** that a balance was not only signed, but also **agreed upon by a majority of nodes**, without trusting any single replica.
+
+By verifying the aggregated signature, clients can confirm not only the value itself but that **a threshold of honest nodes agrees** with it — enabling **trustless interoperability** across decentralized infrastructure.
+
+Aggregation Logic
+~~~~~~~~~~~~~~~~~
+
+The aggregator queries all replicas and collects signed balance responses:
+
+.. literalinclude:: ../../../examples/token/05_verifiable_token_service.py
+   :language: python
+   :start-after: -- start: querying nodes for signed balances --
+   :end-before: -- end: querying nodes for signed balances --
+
+Valid signatures that match the expected balance are combined:
+
+.. literalinclude:: ../../../examples/token/05_verifiable_token_service.py
+   :language: python
+   :start-after: -- start: aggregating matching signatures --
+   :end-before: -- end: aggregating matching signatures --
+
+The final response includes:
+
+- The agreed-upon balance
+- The aggregated BLS signature
+- The list of non-signing nodes
+
+Verification Example
+~~~~~~~~~~~~~~~~~~~~
+
+To verify the aggregated signature, clients subtract non-signers' public keys from the aggregate key and verify the result.
+
+📄 File: :src:`token/verify_aggregated_signature.py`
+
+.. literalinclude:: ../../../examples/token/verify_aggregated_signature.py
+   :language: python
+   :start-after: -- start: subtracting non-signers --
+   :end-before: -- end: subtracting non-signers --
+
+.. literalinclude:: ../../../examples/token/verify_aggregated_signature.py
+   :language: python
+   :start-after: -- start: verifying signature --
+   :end-before: -- end: verifying signature --
+
+Why This Matters
+~~~~~~~~~~~~~~~~
+
+- Enables **auditable consensus** from decentralized nodes
+- Promotes **interoperability** with other offchain or onchain systems
+- Reduces trust assumptions to **cryptographic validation**
+
+You now have a fully replicated, consistent, and **deterministic orderbook service** built with Zellular.
