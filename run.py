@@ -2,21 +2,14 @@
 
 import asyncio
 import logging
-import os
-import sys
-import threading
-import time
 
 import requests
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-# Add the parent directory to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
+from common import errors
 from common.db import zdb
-from common.errors import BaseHTTPError
 from common.logger import zlogger
 from config import zconfig
 from node import tasks as node_tasks
@@ -26,20 +19,24 @@ from sabotage.sabotage_simulator import SabotageSimulator
 from sequencer import tasks as sequencer_tasks
 from sequencer.routers import router as sequencer_router
 
+zlogger.setLevel(logging.getLevelName(zconfig.LOG_LEVEL))
+
+
 app = FastAPI(title="ZSequencer")
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
 
 
-@app.exception_handler(BaseHTTPError)
+@app.exception_handler(errors.BaseHTTPError)
 async def base_http_exception_handler(
-    request: Request, exc: BaseHTTPError
+    request: Request, e: errors.BaseHTTPError
 ) -> JSONResponse:
-    zlogger.error(
-        f"[API_ERROR] BaseHTTPError at {request.url.path}: {exc.status_code} - {exc.detail['error']['message']}"
+    zlogger.log(
+        e.log_level,
+        f"[API_ERROR] {e.__class__.__name__} at {request.url.path}: {e.status_code} - {e.detail['error']['message']}",
     )
-    return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    return JSONResponse(status_code=e.status_code, content=e.detail)
 
 
 @app.get("/", include_in_schema=False)
@@ -47,31 +44,21 @@ def base_redirect() -> RedirectResponse:
     return RedirectResponse(url="/node/state")
 
 
-def run_node_tasks() -> None:
+async def run_node_tasks() -> None:
     """Run node tasks in a loop."""
     while True:
+        await asyncio.sleep(0.1)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
-            time.sleep(0.1)
             continue
         if not zdb.is_node_reachable:
             break
 
         node_tasks.send_batches()
-        asyncio.run(send_dispute_requests())
+        await send_dispute_requests()
 
 
-def run_sequencer_tasks() -> None:
-    """Run sequencer tasks in an asynchronous event loop."""
-    loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(run_sequencer_tasks_async())
-    finally:
-        loop.close()
-
-
-async def run_sequencer_tasks_async() -> None:
-    """Asynchronously run sequencer tasks."""
+async def run_sequencer_tasks() -> None:
+    """Run sequencer tasks in a loop."""
     while True:
         await asyncio.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
@@ -83,9 +70,9 @@ async def run_sequencer_tasks_async() -> None:
         await sequencer_tasks.sync()
 
 
-def check_node_reachability() -> None:
+async def check_node_reachability() -> None:
     """Check node reachability"""
-    time.sleep(5)  # Give the server time to start
+    asyncio.sleep(5)  # Give the server time to start
 
     try:
         host, port = (
@@ -113,38 +100,25 @@ def check_node_reachability() -> None:
         zlogger.error(f"Failed to check node reachability: {e}")
 
 
-def main() -> None:
+async def run_server() -> None:
+    config = uvicorn.Config(
+        "run:app", host="0.0.0.0", port=zconfig.PORT, reload=False, log_level="warning"
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+async def main() -> None:
     """Main entry point for running the Zellular Node."""
-
-    # Start periodic tasks in threads
-    sequencer_tasks_thread = threading.Thread(target=run_sequencer_tasks)
-    sequencer_tasks_thread.start()
-
-    node_tasks_thread = threading.Thread(target=run_node_tasks)
-    node_tasks_thread.start()
-
-    # Start reachability check in separate thread
-    if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
-        reachability_check_thread = threading.Thread(target=check_node_reachability)
-        reachability_check_thread.start()
-
-    # Set the logging level to WARNING to suppress INFO level logs
-    logger: logging.Logger = logging.getLogger("werkzeug")
-    logger.setLevel(logging.WARNING)
-    zlogger.info("Starting service on port %s", zconfig.PORT)
-
     if zconfig.SABOTAGE_SIMULATION:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()
 
-    uvicorn.run(
-        "run:app",
-        host="0.0.0.0",
-        port=zconfig.PORT,
-        reload=False,
-        log_level="warning",
-    )
+    tasks = [run_sequencer_tasks(), run_node_tasks(), run_server()]
+    if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
+        tasks.append(check_node_reachability())
+    await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

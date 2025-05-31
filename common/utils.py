@@ -12,7 +12,6 @@ from web3 import Account
 
 from common.errors import (
     InvalidNodeVersionError,
-    InvalidRequestError,
     IsNotSequencerError,
     IsPausedError,
     IsSequencerError,
@@ -60,27 +59,6 @@ def not_paused(request: Request) -> None:
     """Decorator to ensure the service is not paused."""
     if zconfig.is_paused:
         raise IsPausedError()
-
-
-def validate_body_keys(required_keys: list[str]) -> Callable[[Request], None]:
-    """Decorator to validate required keys in the request JSON body."""
-
-    async def validator(request: Request) -> None:
-        try:
-            req_data = await request.json()
-            if not isinstance(req_data, dict):
-                raise InvalidRequestError("Request body must be a JSON object")
-
-        except Exception:
-            raise InvalidRequestError("Failed to parse JSON request body")
-
-        if not all(key in req_data for key in required_keys):
-            missing = [key for key in required_keys if key not in req_data]
-            raise InvalidRequestError(
-                f"Required keys are missing: {', '.join(missing)}"
-            )
-
-    return validator
 
 
 def eth_sign(message: str) -> str:

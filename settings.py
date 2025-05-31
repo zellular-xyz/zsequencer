@@ -57,7 +57,9 @@ class NodeConfig(BaseSettings):
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
-    max_missed_batches_to_pick: int = Field(default=10)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
 
     remote_host_checker_base_url: str = Field(
         default="https://portchecker.io/api/{host}/{port}"

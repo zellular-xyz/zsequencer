@@ -36,16 +36,16 @@ async def put_batches(
     """Submit batches to the sequencer for ordering and consensus."""
     # Check rate limits
     if not try_acquire_rate_limit_of_other_nodes(
-        node_id=request.node_id, batches=request.batches
+        node_id=request.node_id, batch_bodies=request.batches
     ):
         raise BatchesLimitExceededError()
     # Validate batch sizes
     for batch in request.batches:
-        if utils.get_utf8_size_kb(batch.body) > zconfig.MAX_BATCH_SIZE_KB:
+        if utils.get_utf8_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
             raise BatchSizeExceededError()
 
     # Verify signature
-    concat_hash = "".join(batch.hash for batch in request.batches)
+    concat_hash = "".join(utils.gen_hash(batch) for batch in request.batches)
     is_eth_sig_verified = utils.is_eth_sig_verified(
         signature=request.signature,
         node_id=request.node_id,
@@ -65,13 +65,10 @@ def _put_batches(
     request: SequencerPutBatchesRequest,
 ) -> SequencerPutBatchesResponseData:
     """Process the batches data and return a structured response."""
-    # Convert to dict only once for DB operations
-    batches_dict = [batch.dict() for batch in request.batches]
-    with zdb.sequencer_put_batches_lock:
-        zdb.sequencer_init_batches(
-            app_name=request.app_name,
-            initializing_batches=batches_dict,
-        )
+    zdb.sequencer_init_batch_bodies(
+        app_name=request.app_name,
+        batch_bodies=request.batches,
+    )
     batch_sequence = zdb.get_global_operational_batch_sequence(
         app_name=request.app_name,
         after=request.sequenced_index,
@@ -114,10 +111,8 @@ def _put_batches(
             "app_name": request.app_name,
             "node_id": request.node_id,
             "sequenced_index": request.sequenced_index,
-            "sequenced_hash": request.sequenced_hash,
             "sequenced_chaining_hash": request.sequenced_chaining_hash,
             "locked_index": request.locked_index,
-            "locked_hash": request.locked_hash,
             "locked_chaining_hash": request.locked_chaining_hash,
         },
     )
@@ -126,12 +121,11 @@ def _put_batches(
     last_locked_batch = last_locked_batch_record.get("batch", {})
 
     return SequencerPutBatchesResponseData(
-        batches=batch_sequence.batches(),
+        batches=[batch["body"] for batch in batch_sequence.batches()],
         last_finalized_index=last_finalized_index,
         finalized=BatchSignatureInfo(
             index=last_finalized_batch_record.get("index", 0),
             chaining_hash=last_finalized_batch.get("chaining_hash", ""),
-            hash=last_finalized_batch.get("hash", ""),
             signature=last_finalized_batch.get("finalization_signature", ""),
             nonsigners=last_finalized_batch.get("finalized_nonsigners", []),
             tag=last_finalized_batch.get("finalized_tag", 0),
@@ -139,7 +133,6 @@ def _put_batches(
         locked=BatchSignatureInfo(
             index=last_locked_batch_record.get("index", 0),
             chaining_hash=last_locked_batch.get("chaining_hash", ""),
-            hash=last_locked_batch.get("hash", ""),
             signature=last_locked_batch.get("lock_signature", ""),
             nonsigners=last_locked_batch.get("locked_nonsigners", []),
             tag=last_locked_batch.get("locked_tag", 0),
