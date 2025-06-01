@@ -1,0 +1,89 @@
+{
+    "shared_env_variables": {
+      "ZSEQUENCER_HISTORICAL_NODES_REGISTRY": "localhost:8000",
+      "ZSEQUENCER_REMOVE_CHUNK_BORDER": "3",
+      "ZSEQUENCER_THRESHOLD_PERCENT": "67",
+      "ZSEQUENCER_SYNC_INTERVAL": "0.05",
+      "ZSEQUENCER_FINALIZATION_TIME_BORDER": "10",
+      "ZSEQUENCER_SIGNATURES_AGGREGATION_TIMEOUT": "5",
+      "ZSEQUENCER_FETCH_APPS_AND_NODES_INTERVAL": "60",
+      "ZSEQUENCER_NODES_SOURCE": "file",
+      "ZSEQUENCER_MODE": "dev",
+      "ZSEQUENCER_SNAPSHOT_CHUNK_SIZE_KB": "100",
+      "ZSEQUENCER_BANDWIDTH_KB_PER_WINDOW": "1000",
+      "ZSEQUENCER_PUSH_RATE_LIMIT_WINDOW_SECONDS": "1",
+      "ZSEQUENCER_MAX_BATCH_SIZE_KB": "5",
+      "ZSEQUENCER_SABOTAGE_SIMULATION": "true",
+      "ZSEQUENCER_CHECK_REACHABILITY_OF_NODE_URL": "false",
+      "ZSEQUENCER_LOG_LEVEL": "INFO"
+    },
+    "base_port": 6005,
+    "node_num": 4,
+    "sabotages_config": {
+      "1": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 10,
+            "up": true
+          },
+          {
+            "time_duration": 100,
+            "up": false
+          },
+          {
+            "time_duration": 100,
+            "up": true
+          }
+        ]
+      },
+      "2": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 1000,
+            "up": true
+          },
+          {
+            "time_duration": 10,
+            "up": false
+          },
+          {
+            "time_duration": 100,
+            "up": true
+          }
+        ]
+      },
+      "3": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 1000,
+            "up": true
+          },
+          {
+            "time_duration": 1000,
+            "up": false
+          },
+          {
+            "time_duration": 100,
+            "up": true
+          }
+        ]
+      },
+      "4": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 1000,
+            "up": true
+          },
+          {
+            "time_duration": 10,
+            "up": false
+          },
+          {
+            "time_duration": 100,
+            "up": true
+          }
+        ]
+      }
+    }
+  }
+  

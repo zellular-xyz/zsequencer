@@ -9,17 +9,8 @@ MODE_TEST = "test"
 SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
-class SequencerSabotageSimulation(BaseSettings):
-    out_of_reach_simulation: bool = Field(default=False)
-    in_reach_seconds: int = Field(default=20)
-    out_of_reach_seconds: int = Field(default=20)
-
-    class Config:
-        env_prefix = "ZSEQUENCER_SEQUENCER_SABOTAGE_SIMULATION_"
-
-
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.18")
+    version: str = Field(default="v0.0.19")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -58,12 +49,17 @@ class NodeConfig(BaseSettings):
     bls_key_password: str = Field(default="")
     ecdsa_key_password: str = Field(default="")
 
+    sabotage_config_file: str = Field(default="")
+    sabotage_simulation: bool = Field(default=False)
+
     register_operator: bool = Field(default=False)
     register_socket: str = Field(default="")
 
     mode: Literal["dev", "prod", "test"] = Field(default=MODE_PROD)
 
-    max_missed_batches_to_pick: int = Field(default=10)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
 
     remote_host_checker_base_url: str = Field(
         default="https://portchecker.io/api/{host}/{port}"

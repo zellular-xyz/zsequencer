@@ -2,8 +2,6 @@ services:
   zsequencer:
     container_name: zsequencer-node
     image: zellular/zsequencer:latest
-    networks:
-      - zsequencer_net
     volumes:
       - "${ZSEQUENCER_BLS_KEY_FILE}:/app/bls_key.json"
       - "${ZSEQUENCER_ECDSA_KEY_FILE}:/app/ecdsa_key.json"
@@ -16,17 +14,3 @@ services:
       - "${ZSEQUENCER_PORT}:${ZSEQUENCER_PORT}"  # Binds ZSEQUENCER_PORT on host
     env_file:
       - .env
-
-  zsequencer_proxy:
-    container_name: zsequencer-proxy
-    image: zellular/zsequencer-proxy:latest
-    networks:
-      - zsequencer_net
-    ports:
-      - "${ZSEQUENCER_PROXY_PORT}:80"
-    env_file:
-      - .env
-
-networks:
-  zsequencer_net:
-    external: true  # Ensure all instances use the same network

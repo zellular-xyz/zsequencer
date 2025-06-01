@@ -47,29 +47,25 @@ def is_bls_sig_verified(
 
 async def gather_signatures(
     sign_tasks: dict[asyncio.Task, str],
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
-    stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
-    try:
-        while stake_percent < zconfig.THRESHOLD_PERCENT:
-            done, pending_tasks = await asyncio.wait(
-                pending_tasks,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in done:
-                if not task.result():
-                    continue
-                node_id = sign_tasks[task]
-                completed_results[node_id] = task.result()
-                stake_percent += (
-                    100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
-                )
 
-    except Exception as error:
-        if not isinstance(error, ValueError):  # For empty list
-            zlogger.error(f"An unexpected error occurred: {error}")
+    stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
+
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if not task.result():
+                continue
+            node_id = sign_tasks[task]
+            completed_results[node_id] = task.result()
+            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
+
     return completed_results, stake_percent
 
 
@@ -82,20 +78,20 @@ async def gather_and_aggregate_signatures(
     """
     tag = zconfig.NETWORK_STATUS_TAG
     network_state = zconfig.get_network_state(tag)
-    node_info, network_nodes_info, total_stake = (
+    node_info, attesting_nodes_info, total_stake = (
         zconfig.NODE,
-        network_state.nodes,
+        network_state.attesting_nodes,
         network_state.total_stake,
     )
 
     stake = (
-        sum([network_nodes_info[node_id]["stake"] for node_id in node_ids])
+        sum([attesting_nodes_info[node_id]["stake"] for node_id in node_ids])
         + node_info["stake"]
     )
     if 100 * stake / total_stake < zconfig.THRESHOLD_PERCENT:
         return None
 
-    if not node_ids.issubset(set(network_nodes_info.keys())):
+    if not node_ids.issubset(set(attesting_nodes_info.keys())):
         return None
 
     message: str = utils.gen_hash(json.dumps(data, sort_keys=True))
@@ -103,10 +99,10 @@ async def gather_and_aggregate_signatures(
         asyncio.create_task(
             request_signature(
                 node_id=node_id,
-                url=f"{network_nodes_info[node_id]['socket']}/node/sign_sync_point",
+                url=f"{attesting_nodes_info[node_id]['socket']}/node/sign_sync_point",
                 data=data,
                 message=message,
-                timeout=120,
+                timeout=5,
             ),
         ): node_id
         for node_id in node_ids
@@ -116,19 +112,24 @@ async def gather_and_aggregate_signatures(
             gather_signatures(sign_tasks),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         zlogger.error(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
-        return None
+        return
+
+    except Exception as error:
+        zlogger.error(f"An unexpected error occurred: {error}")
+        return
 
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None
 
-    data["signature"] = bls_sign(message)
-    signatures[node_info["id"]] = data
+    if node_info["stake"] > 0:
+        data["signature"] = bls_sign(message)
+        signatures[node_info["id"]] = data
 
-    nonsigners = list(set(network_nodes_info.keys()) - set(signatures.keys()))
+    nonsigners = list(set(attesting_nodes_info.keys()) - set(signatures.keys()))
     aggregated_signature: str = gen_aggregated_signature(list(signatures.values()))
     zlogger.info(f"data: {data}, message: {message}, nonsigners: {nonsigners}")
     return {
@@ -144,7 +145,7 @@ async def request_signature(
     url: str,
     data: dict[str, Any],
     message: str,
-    timeout: int = 120,
+    timeout: int = 5,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
     async with aiohttp.ClientSession() as session:
@@ -165,6 +166,7 @@ async def request_signature(
                     pub_key=zconfig.NODES[node_id]["public_key_g2"],
                     msg_bytes=message.encode("utf-8"),
                 ):
+                    zlogger.warning(f"Signature verification failed for {node_id}.")
                     return None
                 return response_json["data"]
 
@@ -194,7 +196,6 @@ def is_sync_point_signature_verified(
     app_name: str,
     state: str,
     index: int,
-    batch_hash: str,
     chaining_hash: str,
     tag: int,
     signature_hex: str,
@@ -211,7 +212,6 @@ def is_sync_point_signature_verified(
         app_name: The name of the application for which the sync point is being verified
         state: "sequenced" for locking signatures and "lock" for finalizing signatures
         index: The index of the batch in the sequence
-        batch_hash: The hash of the batch content
         chaining_hash: The hash that chains this batch to previous batches
         tag: The network status tag used to identify the correct network state
         signature_hex: The hexadecimal representation of the BLS signature to verify
@@ -232,8 +232,7 @@ def is_sync_point_signature_verified(
         No explicit exceptions are raised, but failures in verification return False
     """
     network_state = zconfig.get_network_state(tag=tag)
-    nodes_info = network_state.nodes
-
+    nodes_info = network_state.attesting_nodes
     nonsigners_stake = sum(
         [nodes_info.get(node_id, {}).get("stake", 0) for node_id in nonsigners],
     )
@@ -254,7 +253,6 @@ def is_sync_point_signature_verified(
             "app_name": app_name,
             "state": state,
             "index": index,
-            "hash": batch_hash,
             "chaining_hash": chaining_hash,
         },
         sort_keys=True,

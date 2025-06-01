@@ -9,20 +9,18 @@ from config import zconfig
 
 def find_locked_sync_point(app_name: str) -> dict[str, Any] | None:
     """Find the locked sync point for a given app."""
-    nodes_state: list[dict[str, Any]] = zdb.get_nodes_state(app_name)
-    locked_index: int = zdb.get_locked_sync_point_or_empty(app_name).get("index", 0)
+    nodes_state = zdb.get_nodes_state(app_name)
+    locked_index = zdb.get_locked_sync_point_or_empty(app_name).get("index", 0)
     if not any(s["sequenced_index"] > locked_index for s in nodes_state):
         return None
-    filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["sequenced_index"] >= locked_index
-    ]
-    sorted_filtered_states: list[dict[str, Any]] = sorted(
+    filtered_states = [s for s in nodes_state if s["sequenced_index"] > locked_index]
+    sorted_filtered_states = sorted(
         filtered_states,
         key=lambda x: x["sequenced_index"],
         reverse=True,
     )
     for state in sorted_filtered_states:
-        party: set[str] = {
+        party = {
             s["node_id"]
             for s in sorted_filtered_states
             if s["sequenced_index"] >= state["sequenced_index"]
@@ -43,17 +41,15 @@ def find_finalized_sync_point(app_name: str) -> dict[str, Any] | None:
     )
     if not any(s["locked_index"] > finalized_index for s in nodes_state):
         return None
-    filtered_states: list[dict[str, Any]] = [
-        s for s in nodes_state if s["locked_index"] >= finalized_index
-    ]
+    filtered_states = [s for s in nodes_state if s["locked_index"] > finalized_index]
 
-    sorted_filtered_states: list[dict[str, Any]] = sorted(
+    sorted_filtered_states = sorted(
         filtered_states,
         key=lambda x: x["locked_index"],
         reverse=True,
     )
     for state in sorted_filtered_states:
-        party: set[str] = {
+        party = {
             s["node_id"]
             for s in sorted_filtered_states
             if s["locked_index"] >= state["locked_index"]
@@ -78,11 +74,10 @@ async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
     if locked_sync_point:
-        locked_data: dict[str, Any] = {
+        locked_data = {
             "app_name": app_name,
             "state": "sequenced",
             "index": locked_sync_point["state"]["sequenced_index"],
-            "hash": locked_sync_point["state"]["sequenced_hash"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
         }
         lock_signature: (
@@ -112,11 +107,10 @@ async def sync_app(app_name: str) -> None:
 
     finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
     if finalized_sync_point:
-        finalized_data: dict[str, Any] = {
+        finalized_data = {
             "app_name": app_name,
             "state": "locked",
             "index": finalized_sync_point["state"]["locked_index"],
-            "hash": finalized_sync_point["state"]["locked_hash"],
             "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
         }
         finalization_signature: (

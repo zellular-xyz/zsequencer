@@ -36,6 +36,7 @@ class Config:
         self.ADDRESS = None
 
         self._SYNCED_FLAG = False
+        self._PAUSED = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -63,6 +64,9 @@ class Config:
         self.APPS_FILE = node_config.apps_file
         self.HISTORICAL_NODES_REGISTRY = node_config.historical_nodes_registry
         self.NODES_FILE = node_config.nodes_file
+        self.SABOTAGE_CONFIG_FILE = node_config.sabotage_config_file
+        self.SABOTAGE_SIMULATION = node_config.sabotage_simulation
+        self.LOG_LEVEL = node_config.log_level
         self.NODES_INFO_SYNC_BORDER = node_config.nodes_info_sync_border
         self.VERSION = node_config.version
         self.BLS_KEY_STORE_PATH = node_config.bls_key_file
@@ -72,7 +76,6 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
-        self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
         self.REMOTE_HOST_CHECKER_BASE_URL = node_config.remote_host_checker_base_url
         self.CHECK_REACHABILITY_OF_NODE_URL = node_config.check_reachability_of_node_url
         self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (
@@ -85,16 +88,23 @@ class Config:
         # Init node encryption and networks configurations
         self._init_node()
 
-    def get_synced_flag(self):
+    @property
+    def is_paused(self) -> bool:
+        return self._PAUSED
+
+    def pause(self) -> None:
+        self._PAUSED = True
+
+    def unpause(self) -> None:
+        self._PAUSED = False
+
+    def get_synced_flag(self) -> bool:
         return self._SYNCED_FLAG
 
-    def set_synced_flag(self):
+    def set_synced_flag(self) -> None:
         self._SYNCED_FLAG = True
 
-    def unset_synced_flag(self):
-        self._SYNCED_FLAG = False
-
-    def get_mode(self):
+    def get_mode(self) -> str:
         return self._MODE
 
     @staticmethod
@@ -130,6 +140,8 @@ class Config:
                 node_data["pubkeyG2_Y"][0],
                 node_data["pubkeyG2_Y"][1],
             )
+            if "roles" not in node_data:
+                node_data["roles"] = ("posting", "sequencing")
 
         aggregated_public_key = utils.get_aggregated_public_key(nodes_data)
         total_stake = sum([node["stake"] for node in nodes_data.values()])
@@ -143,6 +155,9 @@ class Config:
         )
 
         self.HISTORICAL_NETWORK_STATE[tag] = network_state
+        if self.NETWORK_STATUS_TAG is None or int(tag) > int(self.NETWORK_STATUS_TAG):
+            self.NETWORK_STATUS_TAG = tag
+
         return network_state
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
@@ -161,7 +176,6 @@ class Config:
         # TODO: properly handle exception on fetching tag and corresponding network state
         tag = self.fetch_tag()
         network_state = self.get_network_state(tag=tag)
-        self.NETWORK_STATUS_TAG = tag
 
         nodes_data = network_state.nodes
         if self.ADDRESS in nodes_data:
@@ -191,34 +205,28 @@ class Config:
 
     def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
-        current_network_nodes = self.HISTORICAL_NETWORK_STATE[
-            self.NETWORK_STATUS_TAG
-        ].nodes
+        sequencing_nodes = self.last_state.sequencing_nodes
+        attesting_nodes = self.last_state.attesting_nodes
+
         total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
 
-        sequencers_stake: dict[str, Any] = dict.fromkeys(
-            list(current_network_nodes.keys()), 0
-        )
-        for node_id in list(current_network_nodes.keys()):
+        sequencers_stake: dict[str, Any] = dict.fromkeys(sequencing_nodes, 0)
+        for node_id in attesting_nodes:
             if node_id == self.NODE["id"]:
                 continue
-            url: str = f"{current_network_nodes[node_id]['socket']}/node/state"
+            url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
+                response = requests.get(url=url, headers=self.HEADERS, timeout=5).json()
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
-                sequencers_stake[sequencer_id] += current_network_nodes[node_id][
-                    "stake"
-                ]
+                if sequencer_id in sequencing_nodes:
+                    sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if (
-            100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT
-            and sequencers_stake[max_stake_id] > self.NODE["stake"]
-        ):
+        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
             self.update_sequencer(max_stake_id)
         else:
             self.update_sequencer(self.INIT_SEQUENCER_ID)
@@ -239,7 +247,7 @@ class Config:
 
         self.fetch_network_state()
 
-        if self.ADDRESS in self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes:
+        if self.ADDRESS in self.last_state.nodes:
             self.NODE = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[
                 self.ADDRESS
             ]
@@ -284,7 +292,9 @@ class Config:
 
     @property
     def node_send_limit_per_window_size_kb(self) -> float:
-        return self.BANDWIDTH_KB_PER_WINDOW / (len(self.NODES) ** 2)
+        return self.node_receive_limit_per_window_size_kb / len(
+            self.last_state.posting_nodes
+        )
 
     @property
     def node_receive_limit_per_window_size_kb(self) -> float:

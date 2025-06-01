@@ -1,7 +1,7 @@
 """This module configures and sets up logging for the zellular application."""
 
 import logging
-from logging import FileHandler, Logger, StreamHandler
+from logging import Logger, StreamHandler
 
 # Set up the logger
 zlogger: Logger = logging.getLogger("zellular_logger")
@@ -35,16 +35,7 @@ console_str_formatter: logging.Formatter = ColoredFormatter(
 console_handler: StreamHandler = logging.StreamHandler()
 console_handler.setFormatter(console_str_formatter)
 
-# Set up file handler
-file_str_formatter: logging.Formatter = logging.Formatter(
-    fmt="%(asctime)s - %(levelname)s - %(filename)s(%(lineno)d) - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-file_handler: FileHandler = logging.FileHandler(filename="zellular.log", mode="w")
-file_handler.setFormatter(file_str_formatter)
-
 # Add handlers to the logger
-# zlogger.addHandler(file_handler)
 zlogger.addHandler(console_handler)
 
 if __name__ == "__main__":
