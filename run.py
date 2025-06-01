@@ -53,7 +53,7 @@ async def run_node_tasks() -> None:
         if not zdb.is_node_reachable:
             break
 
-        node_tasks.send_batches()
+        await node_tasks.send_batches()
         await send_dispute_requests()
 
 

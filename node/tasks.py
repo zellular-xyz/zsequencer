@@ -7,7 +7,7 @@ import random
 import time
 from typing import Any
 
-import requests
+import aiohttp
 
 from common import bls, utils
 from common.batch_sequence import BatchSequence
@@ -22,7 +22,7 @@ from node.rate_limit import (
 )
 
 
-def send_batches() -> None:
+async def send_batches() -> None:
     """Send batches for all apps."""
     single_iteration_apps_sync = True
     app_names = list(zconfig.APPS.keys())
@@ -30,14 +30,14 @@ def send_batches() -> None:
     random.shuffle(app_names)
 
     for app_name in app_names:
-        finish_condition = send_app_batches_iteration(app_name=app_name)
+        finish_condition = await send_app_batches_iteration(app_name=app_name)
         if finish_condition:
             continue
 
         single_iteration_apps_sync = False
 
         while True:
-            finish_condition = send_app_batches_iteration(app_name=app_name)
+            finish_condition = await send_app_batches_iteration(app_name=app_name)
             if finish_condition:
                 break
 
@@ -45,8 +45,8 @@ def send_batches() -> None:
         zconfig.set_synced_flag()
 
 
-def send_app_batches_iteration(app_name: str) -> bool:
-    sequencer_last_finalized_index = send_app_batches(app_name)
+async def send_app_batches_iteration(app_name: str) -> bool:
+    sequencer_last_finalized_index = await send_app_batches(app_name)
     last_in_memory_index = zdb.get_last_operational_batch_record_or_empty(
         app_name=app_name, state="sequenced"
     ).get("index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET)
@@ -55,7 +55,7 @@ def send_app_batches_iteration(app_name: str) -> bool:
     return sequencer_last_finalized_index <= last_in_memory_index
 
 
-def send_app_batches(app_name: str) -> int:
+async def send_app_batches(app_name: str) -> int:
     """Send batches for a specific app and return sequencer last finalized index."""
     max_size_kb = get_remaining_capacity_kb_of_self_node()
     batch_bodies = zdb.pop_limited_initialized_batch_bodies(
@@ -98,10 +98,16 @@ def send_app_batches(app_name: str) -> int:
     url = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response = None
     try:
-        # missing timeout allows malicious sequncer freeze node and prevent the dispute process
-        r = requests.put(url=url, data=data, headers=zconfig.HEADERS, timeout=5)
-        r.raise_for_status()
-        response = r.json()
+        async with aiohttp.ClientSession() as session:
+            async with session.put(
+                url,
+                data=data,
+                headers=zconfig.HEADERS,
+                timeout=5,
+                raise_for_status=True,
+            ) as r:
+                response = await r.json()
+
         if response["status"] == "error":
             zlogger.warning(response["error"]["message"])
             zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
