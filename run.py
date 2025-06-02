@@ -72,7 +72,7 @@ async def run_sequencer_tasks() -> None:
 
 async def check_node_reachability() -> None:
     """Check node reachability"""
-    await asyncio.sleep(5)  # Give the server time to start
+    await asyncio.sleep(15)  # Give the server time to start
 
     try:
         host, port = (
