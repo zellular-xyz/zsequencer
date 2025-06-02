@@ -57,11 +57,11 @@ async def put_batches(
         raise PermissionDeniedError(f"{request.node_id} is not a posting node.")
     if request.app_name not in zconfig.APPS:
         raise InvalidRequestError(f"{request.app_name} is not a valid app name.")
-    response_data = _put_batches(request)
+    response_data = await _put_batches(request)
     return SequencerPutBatchesResponse(data=response_data)
 
 
-def _put_batches(
+async def _put_batches(
     request: SequencerPutBatchesRequest,
 ) -> SequencerPutBatchesResponseData:
     """Process the batches data and return a structured response."""
@@ -69,7 +69,7 @@ def _put_batches(
         app_name=request.app_name,
         batch_bodies=request.batches,
     )
-    batch_sequence = zdb.get_global_operational_batch_sequence(
+    batch_sequence = await zdb.get_global_operational_batch_sequence(
         app_name=request.app_name,
         after=request.sequenced_index,
     )
