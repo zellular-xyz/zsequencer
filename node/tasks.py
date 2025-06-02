@@ -103,7 +103,7 @@ async def send_app_batches(app_name: str) -> int:
                 url,
                 data=data,
                 headers=zconfig.HEADERS,
-                timeout=5,
+                timeout=5 if zconfig.get_synced_flag() else 30,
                 raise_for_status=True,
             ) as r:
                 response = await r.json()
