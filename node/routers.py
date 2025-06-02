@@ -299,6 +299,7 @@ async def get_batches(
     batch_sequence = await zdb.get_global_operational_batch_sequence(
         app_name, state, after
     )
+
     if not batch_sequence:
         return GetBatchesResponse(data=None)
 
