@@ -1,3 +1,4 @@
+import asyncio
 import bisect
 import gzip
 import json
@@ -35,16 +36,15 @@ class SnapshotManager:
         self._app_names = app_names
         self._max_chunk_size_kb = max_chunk_size_kb
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
-        self._initialize()
 
-    def _initialize(self):
+    async def initialize(self):
         for app_name in self._app_names:
-            self.initialize_app_storage(app_name)
+            await self.initialize_app_storage(app_name)
 
-    def initialize_app_storage(self, app_name: str):
+    async def initialize_app_storage(self, app_name: str):
         """Initialize storage for an app by indexing its chunks and loading the last persisted state."""
         self._index_files(app_name=app_name)
-        self._load_last_batch_index(app_name=app_name)
+        await self._load_last_batch_index(app_name=app_name)
 
     def _index_files(self, app_name: str):
         app_dir = self._get_app_storage_path(app_name=app_name)
@@ -57,13 +57,13 @@ class SnapshotManager:
             indexed_chunks.append((start_index, filename))
         self._app_name_to_chunks[app_name] = indexed_chunks
 
-    def _load_last_batch_index(self, app_name: str):
+    async def _load_last_batch_index(self, app_name: str):
         # Todo: prevent parsing chunk file for finding last batch index by tracking both start_index and end_index for chunks
         if len(self._app_name_to_chunks[app_name]) == 0:
             self._last_persisted_finalized_batch_index[app_name] = None
             return
         last_chunk_filename = self._app_name_to_chunks[app_name][-1][1]
-        last_chunk_sequence = self._load_file(
+        last_chunk_sequence = await self._load_file(
             app_name=app_name, file_name=last_chunk_filename
         )
         self._last_persisted_finalized_batch_index[app_name] = (
@@ -84,7 +84,11 @@ class SnapshotManager:
             bisect.bisect_right(indexed_chunks, batch_index, key=lambda row: row[0]) - 1
         )
 
-    def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
+    async def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
+        return await asyncio.to_thread(self._load_file_sync, app_name, file_name)
+
+    def _load_file_sync(self, app_name: str, file_name: str) -> BatchSequence:
+        zlogger.info(f"loading file {file_name=} for {app_name=}")
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
 
         try:
@@ -98,7 +102,7 @@ class SnapshotManager:
             )
             return BatchSequence()
 
-    def load_batches(
+    async def load_batches(
         self, app_name: str, after: int, retrieve_size_limit_kb: float | None = None
     ) -> BatchSequence:
         """
@@ -124,7 +128,7 @@ class SnapshotManager:
         # Process chunks starting from the found position
         indexed_chunks = self._app_name_to_chunks[app_name][file_pos:]
         for _, file_name in indexed_chunks:
-            chunk_sequence = self._load_file(app_name, file_name).filter(
+            chunk_sequence = (await self._load_file(app_name, file_name)).filter(
                 start_exclusive=after
             )
             merged_batches.extend(chunk_sequence)
@@ -204,14 +208,14 @@ class SnapshotManager:
 
         return start_exclusive_index
 
-    def load_latest_chunks(
+    async def load_latest_chunks(
         self, app_name: str, latest_chunks_count: int
     ) -> BatchSequence:
         start_exclusive_index = self.get_latest_chunks_start_index(
             app_name, latest_chunks_count
         )
 
-        return self.load_batches(app_name=app_name, after=start_exclusive_index)
+        return await self.load_batches(app_name=app_name, after=start_exclusive_index)
 
     def _get_app_storage_path(self, app_name: str) -> str:
         return os.path.join(self._root_dir, app_name)

@@ -296,7 +296,9 @@ async def get_batches(
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 
-    batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
+    batch_sequence = await zdb.get_global_operational_batch_sequence(
+        app_name, state, after
+    )
     if not batch_sequence:
         return GetBatchesResponse(data=None)
 

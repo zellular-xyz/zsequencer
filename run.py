@@ -114,7 +114,13 @@ async def main() -> None:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()
 
-    tasks = [run_sequencer_tasks(), run_node_tasks(), run_server()]
+    await zdb.initialize()
+    tasks = [
+        run_sequencer_tasks(),
+        run_node_tasks(),
+        zdb.fetch_apps_and_network_state_periodically(),
+        run_server(),
+    ]
     if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
         tasks.append(check_node_reachability())
     await asyncio.gather(*tasks)

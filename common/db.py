@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections import deque
 from collections.abc import Iterable
-from threading import Thread
 from typing import Any, TypeAlias, TypedDict
 
 from common import utils
@@ -54,11 +54,10 @@ class InMemoryDB:
             max_chunk_size_kb=zconfig.SNAPSHOT_CHUNK_SIZE_KB,
             app_names=list(zconfig.APPS.keys()),
         )
-        self.apps = self._load_finalized_batches_for_all_apps()
-        self._fetching_thread = Thread(
-            target=self._fetch_apps_and_network_state_periodically,
-        )
-        self._fetching_thread.start()
+
+    async def initialize(self):
+        await self._snapshot_manager.initialize()
+        self.apps = await self._load_finalized_batches_for_all_apps()
 
     def track_sequencing_indices(
         self,
@@ -95,7 +94,7 @@ class InMemoryDB:
                 return True
         return False
 
-    def _fetch_apps(self) -> None:
+    async def _fetch_apps(self) -> None:
         """Fetchs the apps data."""
         data = get_file_content(zconfig.APPS_FILE)
 
@@ -111,7 +110,7 @@ class InMemoryDB:
                     "is_sequencer_censoring": False,
                     "latency_tracking_queue": deque(),
                 }
-                self._snapshot_manager.initialize_app_storage(app_name)
+                await self._snapshot_manager.initialize_app_storage(app_name)
         zconfig.APPS.update(data)
         self.apps.update(new_apps)
         for app_name in zconfig.APPS:
@@ -122,11 +121,11 @@ class InMemoryDB:
             )
             os.makedirs(snapshot_path, exist_ok=True)
 
-    def _fetch_apps_and_network_state_periodically(self) -> None:
+    async def fetch_apps_and_network_state_periodically(self) -> None:
         """Periodically fetches apps and nodes data."""
         while True:
             try:
-                self._fetch_apps()
+                await self._fetch_apps()
             except Exception:
                 zlogger.error("An unexpected error occurred while fetching apps data.")
 
@@ -137,15 +136,15 @@ class InMemoryDB:
                     "An unexpected error occurred while fetching network state.",
                 )
 
-            time.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
+            await asyncio.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
-    def _load_finalized_batches_for_all_apps(self) -> dict[str, App]:
+    async def _load_finalized_batches_for_all_apps(self) -> dict[str, App]:
         """Load and return the initial state from the snapshot files."""
         result: dict[str, App] = {}
 
         # TODO: Replace with dot operator.
         for app_name in getattr(zconfig, "APPS", []):
-            finalized_batch_sequence = self._snapshot_manager.load_latest_chunks(
+            finalized_batch_sequence = await self._snapshot_manager.load_latest_chunks(
                 app_name=app_name, latest_chunks_count=zconfig.REMOVE_CHUNK_BORDER
             )
             result[app_name] = {
@@ -188,7 +187,7 @@ class InMemoryDB:
             "operational_batch_sequence"
         ].get_first_index_or_default("finalized")
 
-    def get_global_operational_batch_sequence(
+    async def get_global_operational_batch_sequence(
         self,
         app_name: str,
         state: OperationalState = "sequenced",
@@ -209,13 +208,12 @@ class InMemoryDB:
         # Get batches from storage if needed
         first_memory_index = self._get_first_finalized_batch(app_name)
         while after + 1 < first_memory_index:
-            result.extend(
-                self._snapshot_manager.load_batches(
-                    app_name=app_name,
-                    after=after,
-                    retrieve_size_limit_kb=remaining_size,
-                )
+            batches = await self._snapshot_manager.load_batches(
+                app_name=app_name,
+                after=after,
+                retrieve_size_limit_kb=remaining_size,
             )
+            result.extend(batches)
             # Return if result passes size_limit
             if result.size_kb >= size_limit:
                 return result.truncate_by_size(size_kb=size_limit).filter(
