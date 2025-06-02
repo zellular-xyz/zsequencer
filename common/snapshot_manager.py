@@ -37,7 +37,7 @@ class SnapshotManager:
         self._max_chunk_size_kb = max_chunk_size_kb
         self._last_persisted_finalized_batch_index: dict[str, int | None] = {}
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         for app_name in self._app_names:
             await self.initialize_app_storage(app_name)
 

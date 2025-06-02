@@ -54,8 +54,9 @@ class InMemoryDB:
             max_chunk_size_kb=zconfig.SNAPSHOT_CHUNK_SIZE_KB,
             app_names=list(zconfig.APPS.keys()),
         )
+        self.apps = {}
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         await self._snapshot_manager.initialize()
         self.apps = await self._load_finalized_batches_for_all_apps()
 
