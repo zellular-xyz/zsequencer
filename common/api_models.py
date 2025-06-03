@@ -130,7 +130,6 @@ class SwitchProof(BaseModel):
 class SwitchRequest(BaseModel):
     """Request to switch sequencers with supporting proofs."""
 
-    timestamp: int
     proofs: list[SwitchProof]
 
 

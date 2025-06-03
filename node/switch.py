@@ -163,28 +163,12 @@ async def send_dispute_requests() -> None:
 
 async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     """Send a single switch request to a node."""
-    # Convert SwitchProof objects to dictionaries for JSON serialization
-    proofs_dict = [
-        {
-            "node_id": proof.node_id,
-            "old_sequencer_id": proof.old_sequencer_id,
-            "new_sequencer_id": proof.new_sequencer_id,
-            "timestamp": proof.timestamp,
-            "signature": proof.signature,
-        }
-        for proof in proofs
-    ]
-
-    data = json.dumps(
-        {
-            "proofs": proofs_dict,
-            "timestamp": int(time.time()),
-        }
-    )
     url = f"{node['socket']}/node/switch"
 
     try:
-        async with session.post(url, data=data) as response:
+        async with session.post(
+            url, json={"proofs": [proof.dict() for proof in proofs]}
+        ) as response:
             await response.text()
     except (HTTPError, ClientError, asyncio.TimeoutError) as e:
         zlogger.warning(
