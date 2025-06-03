@@ -258,10 +258,15 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
-    stateful_batch_dict = batch_record_to_stateful_batch(last_batch_record)
-    stateful_batch = StatefulBatch.from_typed_dict(stateful_batch_dict)
 
-    return GetAppLastBatchResponse(data=stateful_batch)
+    if last_batch_record:
+        stateful_batch_dict = batch_record_to_stateful_batch(
+            app_name, last_batch_record
+        )
+        stateful_batch = StatefulBatch.from_typed_dict(stateful_batch_dict)
+        return GetAppLastBatchResponse(data=stateful_batch)
+    else:
+        return GetAppLastBatchResponse(data=None)
 
 
 @router.get(
