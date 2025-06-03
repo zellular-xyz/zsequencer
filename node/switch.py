@@ -79,7 +79,7 @@ async def gather_disputes() -> tuple[list[SwitchProof], float]:
         asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
             "id"
         ]
-        for node in list(zconfig.NODES.values())
+        for node in list(zconfig.last_state.attesting_nodes.values())
         if node["id"] != zconfig.NODE["id"]
     }
 
