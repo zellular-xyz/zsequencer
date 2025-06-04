@@ -14,7 +14,7 @@ from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPError
 
 from common import utils
-from common.api_models import SwitchProof
+from common.api_models import SwitchProof, SwitchRequest
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
@@ -79,7 +79,7 @@ async def gather_disputes() -> tuple[list[SwitchProof], float]:
         asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
             "id"
         ]
-        for node in list(zconfig.NODES.values())
+        for node in list(zconfig.last_state.attesting_nodes.values())
         if node["id"] != zconfig.NODE["id"]
     }
 
@@ -163,28 +163,12 @@ async def send_dispute_requests() -> None:
 
 async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     """Send a single switch request to a node."""
-    # Convert SwitchProof objects to dictionaries for JSON serialization
-    proofs_dict = [
-        {
-            "node_id": proof.node_id,
-            "old_sequencer_id": proof.old_sequencer_id,
-            "new_sequencer_id": proof.new_sequencer_id,
-            "timestamp": proof.timestamp,
-            "signature": proof.signature,
-        }
-        for proof in proofs
-    ]
-
-    data = json.dumps(
-        {
-            "proofs": proofs_dict,
-            "timestamp": int(time.time()),
-        }
-    )
     url = f"{node['socket']}/node/switch"
 
     try:
-        async with session.post(url, data=data) as response:
+        async with session.post(
+            url, json=SwitchRequest(proofs=proofs).model_dump()
+        ) as response:
             await response.text()
     except (HTTPError, ClientError, asyncio.TimeoutError) as e:
         zlogger.warning(

@@ -33,6 +33,7 @@ from common.errors import (
     BatchSizeExceededError,
     InvalidRequestError,
     InvalidSequencerError,
+    InvalidTimestampError,
     IsNotPostingNodeError,
     IsSequencerError,
     IssueNotFoundError,
@@ -163,14 +164,17 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         or zdb.has_delayed_batches()
         or zdb.is_sequencer_down
     ):
-        timestamp = int(time.time())
-        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}")
+        now = int(time.time())
+        if not (now - 5 <= request.timestamp <= now + 5):
+            raise InvalidTimestampError()
+
+        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
 
         response_data = DisputeData(
             node_id=zconfig.NODE["id"],
             old_sequencer_id=zconfig.SEQUENCER["id"],
             new_sequencer_id=switch.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
-            timestamp=timestamp,
+            timestamp=request.timestamp,
             signature=signature,
         )
 
