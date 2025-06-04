@@ -26,7 +26,6 @@ app = FastAPI(title="ZSequencer")
 
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
-zlogger.setLevel(logging.getLevelName(zconfig.LOG_LEVEL))
 
 
 @app.exception_handler(errors.BaseHTTPError)
