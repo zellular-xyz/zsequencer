@@ -165,7 +165,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         or zdb.is_sequencer_down
     ):
         now = int(time.time())
-        if not now - 5 <= request.timestamp <= now + 5:
+        if not (now - 5 <= request.timestamp <= now + 5):
             raise InvalidTimestampError()
 
         signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
