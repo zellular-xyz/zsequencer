@@ -61,14 +61,14 @@ async def run_node_tasks() -> None:
 async def run_sequencer_tasks() -> None:
     """Run sequencer tasks in a loop."""
     while True:
-        time.sleep(zconfig.SYNC_INTERVAL)
+        await asyncio.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
 
         if zconfig.is_paused:
             continue
 
-        asyncio.run(sequencer_tasks.sync())
+        await sequencer_tasks.sync()
 
 
 async def check_node_reachability() -> None:
