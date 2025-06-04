@@ -14,7 +14,7 @@ from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPError
 
 from common import utils
-from common.api_models import SwitchProof
+from common.api_models import SwitchProof, SwitchRequest
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
@@ -167,7 +167,7 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
 
     try:
         async with session.post(
-            url, json={"proofs": [proof.dict() for proof in proofs]}
+            url, json=SwitchRequest(proofs=proofs).model_dump()
         ) as response:
             await response.text()
     except (HTTPError, ClientError, asyncio.TimeoutError) as e:
