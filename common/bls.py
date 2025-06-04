@@ -47,31 +47,25 @@ def is_bls_sig_verified(
 
 async def gather_signatures(
     sign_tasks: dict[asyncio.Task, str],
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Gather signatures from nodes until the stake of nodes reaches the threshold"""
     completed_results = {}
     pending_tasks = list(sign_tasks.keys())
 
     stake_percent = 100 * zconfig.NODE["stake"] / zconfig.TOTAL_STAKE
 
-    try:
-        while stake_percent < zconfig.THRESHOLD_PERCENT:
-            done, pending_tasks = await asyncio.wait(
-                pending_tasks,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in done:
-                if not task.result():
-                    continue
-                node_id = sign_tasks[task]
-                completed_results[node_id] = task.result()
-                stake_percent += (
-                    100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
-                )
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+        done, pending_tasks = await asyncio.wait(
+            pending_tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            if not task.result():
+                continue
+            node_id = sign_tasks[task]
+            completed_results[node_id] = task.result()
+            stake_percent += 100 * zconfig.NODES[node_id]["stake"] / zconfig.TOTAL_STAKE
 
-    except Exception as error:
-        if not isinstance(error, ValueError):  # For empty list
-            zlogger.error(f"An unexpected error occurred: {error}")
     return completed_results, stake_percent
 
 
@@ -118,11 +112,15 @@ async def gather_and_aggregate_signatures(
             gather_signatures(sign_tasks),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         zlogger.error(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
-        return None
+        return
+
+    except Exception as error:
+        zlogger.error(f"An unexpected error occurred: {error}")
+        return
 
     if stake_percent < zconfig.THRESHOLD_PERCENT:
         return None
@@ -198,7 +196,6 @@ def is_sync_point_signature_verified(
     app_name: str,
     state: str,
     index: int,
-    batch_hash: str,
     chaining_hash: str,
     tag: int,
     signature_hex: str,
@@ -215,7 +212,6 @@ def is_sync_point_signature_verified(
         app_name: The name of the application for which the sync point is being verified
         state: "sequenced" for locking signatures and "lock" for finalizing signatures
         index: The index of the batch in the sequence
-        batch_hash: The hash of the batch content
         chaining_hash: The hash that chains this batch to previous batches
         tag: The network status tag used to identify the correct network state
         signature_hex: The hexadecimal representation of the BLS signature to verify
@@ -257,7 +253,6 @@ def is_sync_point_signature_verified(
             "app_name": app_name,
             "state": state,
             "index": index,
-            "hash": batch_hash,
             "chaining_hash": chaining_hash,
         },
         sort_keys=True,

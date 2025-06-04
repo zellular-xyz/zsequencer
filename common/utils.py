@@ -12,7 +12,6 @@ from web3 import Account
 
 from common.errors import (
     InvalidNodeVersionError,
-    InvalidRequestError,
     IsNotSequencerError,
     IsPausedError,
     IsSequencerError,
@@ -93,7 +92,6 @@ async def authenticate(request: Request, signature: str = Header(None)) -> None:
     except Exception as e:
         zlogger.error(f"Authentication error: {str(e)}")
         raise InvalidRequestError("Authentication error")
-
 
 def eth_sign(message: str) -> str:
     """Sign a message using the node's private key."""

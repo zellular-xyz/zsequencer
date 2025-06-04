@@ -294,8 +294,7 @@ def start(config_path: str) -> None:
     zlogger.info("Preparing node files and configurations...")
 
     # Prepare nodes
-    for i, keys in enumerate(network_keys):
-        idx = i + 1
+    for idx, keys in enumerate(network_keys, start=1):
         # Prepare node files
         node_files = prepare_simulation_files(idx, keys)
 
@@ -331,8 +330,7 @@ def start(config_path: str) -> None:
     zlogger.info(f"Starting {config.node_num} containers...")
 
     # Start containers
-    for i, node_id in enumerate(sorted(nodes_info.keys())):
-        idx = i + 1
+    for idx, node_id in enumerate(sorted(nodes_info.keys()), start=1):
         container_name = f"zsequencer-node-{idx}"
         execution_data = nodes_execution_args[node_id]
 
@@ -352,9 +350,11 @@ def start(config_path: str) -> None:
 
     zlogger.info("\nNetwork started successfully!")
     zlogger.info(
-        f"- Node ports: {config.base_port} to {config.base_port + config.node_num - 1}"
+        f"- Node ports: {config.base_port + 1} to {config.base_port + config.node_num}"
     )
-    zlogger.info(f"- Sequencer: zsequencer-node-0 (running on port {config.base_port})")
+    zlogger.info(
+        f"- Sequencer: zsequencer-node-1 (running on port {config.base_port + 1})"
+    )
     zlogger.info(f"- Configuration: {config_path}")
     zlogger.info("\nTo view logs: tests.e2e.run logs --terminal=<terminal>")
     zlogger.info("To stop the network: tests.e2e.run stop")

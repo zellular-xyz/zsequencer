@@ -10,7 +10,7 @@ SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.0.18")
+    version: str = Field(default="v0.0.19")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
@@ -60,8 +60,6 @@ class NodeConfig(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO"
     )
-
-    max_missed_batches_to_pick: int = Field(default=10)
 
     remote_host_checker_base_url: str = Field(
         default="https://portchecker.io/api/{host}/{port}"

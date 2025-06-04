@@ -22,9 +22,7 @@ class StatefulBatch(BaseModel):
     """Complete information about a batch including its state and signatures."""
 
     app_name: str
-    node_id: str
     body: str
-    hash: str
     chaining_hash: str
     lock_signature: str | None
     locked_nonsigners: list[str] | None
@@ -75,7 +73,6 @@ class SignSyncPointRequest(BaseModel):
     app_name: str
     state: str
     index: int
-    hash: str
     chaining_hash: str
 
 
@@ -85,7 +82,6 @@ class SignSyncPointData(BaseModel):
     app_name: str
     state: str
     index: int
-    hash: str
     chaining_hash: str
     signature: str
 
@@ -96,17 +92,11 @@ class SignSyncPointResponse(SuccessResponse):
     data: SignSyncPointData
 
 
-class AppMissedBatch(BaseModel):
-    """Information about a batch that was not processed by the sequencer."""
-
-    body: str
-
-
 class DisputeRequest(BaseModel):
     """Request to dispute against the sequencer."""
 
     sequencer_id: str
-    apps_missed_batches: dict[str, dict[str, AppMissedBatch]]
+    apps_censored_batches: dict[str, str]
     is_sequencer_down: bool
     timestamp: int
 
@@ -140,7 +130,6 @@ class SwitchProof(BaseModel):
 class SwitchRequest(BaseModel):
     """Request to switch sequencers with supporting proofs."""
 
-    timestamp: int
     proofs: list[SwitchProof]
 
 
@@ -148,11 +137,8 @@ class AppState(BaseModel):
     """Current consensus state information for an application."""
 
     last_sequenced_index: int
-    last_sequenced_hash: str
     last_locked_index: int
-    last_locked_hash: str
     last_finalized_index: int
-    last_finalized_hash: str
 
 
 class NodeStateData(BaseModel):
@@ -178,7 +164,6 @@ class BatchSignatureInfo(BaseModel):
     """Cryptographic proof and metadata about batch consensus status."""
 
     signature: str | None = None
-    hash: str | None = None
     chaining_hash: str | None = None
     nonsigners: list[str] | None = None
     index: int | None = None
@@ -215,26 +200,16 @@ class GetBatchesResponse(SuccessResponse):
 # Models for Sequencer Router
 
 
-class BatchData(BaseModel):
-    """Data structure for batch submission to the sequencer."""
-
-    hash: str
-    body: str
-    node_id: str
-
-
 class SequencerPutBatchesRequest(BaseModel):
     """Request format for batch sequencing with consensus information."""
 
     app_name: str
-    batches: list[BatchData]
+    batches: list[str]
     node_id: str
     signature: str
     sequenced_index: int
-    sequenced_hash: str
     sequenced_chaining_hash: str
     locked_index: int
-    locked_hash: str
     locked_chaining_hash: str
     timestamp: int
 
@@ -242,7 +217,7 @@ class SequencerPutBatchesRequest(BaseModel):
 class SequencerPutBatchesResponseData(BaseModel):
     """Response data containing both the node's submitted batches and batches from other nodes with their consensus state."""
 
-    batches: list[dict[str, Any]] = Field(default_factory=list)
+    batches: list[str] = Field(default_factory=list)
     last_finalized_index: int = 0
     finalized: BatchSignatureInfo = Field(default_factory=BatchSignatureInfo)
     locked: BatchSignatureInfo = Field(default_factory=BatchSignatureInfo)

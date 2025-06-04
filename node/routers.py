@@ -1,7 +1,6 @@
 """This module defines the FastAPI router for node."""
 
-import hashlib
-import threading
+import asyncio
 import time
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -34,6 +33,7 @@ from common.errors import (
     BatchSizeExceededError,
     InvalidRequestError,
     InvalidSequencerError,
+    InvalidTimestampError,
     IsNotPostingNodeError,
     IsSequencerError,
     IssueNotFoundError,
@@ -134,7 +134,6 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
             "app_name": request.app_name,
             "state": request.state,
             "index": request.index,
-            "hash": request.hash,
             "chaining_hash": request.chaining_hash,
         }
     )
@@ -142,7 +141,6 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         app_name=request.app_name,
         state=request.state,
         index=request.index,
-        hash=request.hash,
         chaining_hash=request.chaining_hash,
         signature=signature,
     )
@@ -164,24 +162,29 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     if request.sequencer_id != zconfig.SEQUENCER["id"]:
         raise InvalidSequencerError()
 
-    if zdb.has_missed_batches() or zdb.has_delayed_batches() or zdb.is_sequencer_down:
-        timestamp: int = int(time.time())
-        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}")
+    for app_name, batch in request.apps_censored_batches.items():
+        zdb.init_batches(app_name, [batch])
+
+    if (
+        zdb.is_sequencer_censoring()
+        or zdb.has_delayed_batches()
+        or zdb.is_sequencer_down
+    ):
+        now = int(time.time())
+        if not (now - 5 <= request.timestamp <= now + 5):
+            raise InvalidTimestampError()
+
+        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
 
         response_data = DisputeData(
             node_id=zconfig.NODE["id"],
             old_sequencer_id=zconfig.SEQUENCER["id"],
             new_sequencer_id=switch.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
-            timestamp=timestamp,
+            timestamp=request.timestamp,
             signature=signature,
         )
 
         return DisputeResponse(data=response_data)
-
-    # fixme: why init missed batches here?
-    for app_name, missed_batches in request.apps_missed_batches.items():
-        batches = [batch.body for batch in missed_batches.values()]
-        zdb.init_batches(app_name, batches)
 
     raise IssueNotFoundError()
 
@@ -202,13 +205,10 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 
     old_sequencer_id, new_sequencer_id = switch.get_switch_parameter_from_proofs(proofs)
 
-    def run_switch_sequencer() -> None:
-        switch.switch_sequencer(old_sequencer_id, new_sequencer_id)
-
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
-    threading.Thread(target=run_switch_sequencer).start()
+    asyncio.create_task(switch.switch_sequencer(old_sequencer_id, new_sequencer_id))
 
     return EmptyResponse(message="Sequencer switch initiated successfully.")
 
@@ -238,15 +238,8 @@ async def get_state() -> NodeStateResponse:
 
         app_states[app_name] = AppState(
             last_sequenced_index=last_sequenced_batch_record.get("index", 0),
-            last_sequenced_hash=last_sequenced_batch_record.get("batch", {}).get(
-                "hash", ""
-            ),
             last_locked_index=last_locked_batch_record.get("index", 0),
-            last_locked_hash=last_locked_batch_record.get("batch", {}).get("hash", ""),
             last_finalized_index=last_finalized_batch_record.get("index", 0),
-            last_finalized_hash=last_finalized_batch_record.get("batch", {}).get(
-                "hash", ""
-            ),
         )
 
     node_state = NodeStateData(
@@ -278,10 +271,15 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
         raise InvalidRequestError("Invalid state. Must be 'locked' or 'finalized'.")
 
     last_batch_record = zdb.get_last_operational_batch_record_or_empty(app_name, state)
-    stateful_batch_dict = batch_record_to_stateful_batch(last_batch_record)
-    stateful_batch = StatefulBatch.from_typed_dict(stateful_batch_dict)
 
-    return GetAppLastBatchResponse(data=stateful_batch)
+    if last_batch_record:
+        stateful_batch_dict = batch_record_to_stateful_batch(
+            app_name, last_batch_record
+        )
+        stateful_batch = StatefulBatch.from_typed_dict(stateful_batch_dict)
+        return GetAppLastBatchResponse(data=stateful_batch)
+    else:
+        return GetAppLastBatchResponse(data=None)
 
 
 @router.get(
@@ -320,7 +318,10 @@ async def get_batches(
     if app_name not in zconfig.APPS:
         raise InvalidRequestError("Invalid app name.")
 
-    batch_sequence = zdb.get_global_operational_batch_sequence(app_name, state, after)
+    batch_sequence = await zdb.get_global_operational_batch_sequence(
+        app_name, state, after
+    )
+
     if not batch_sequence:
         return GetBatchesResponse(data=None)
 
@@ -337,7 +338,6 @@ async def get_batches(
         (
             BatchSignatureInfo(
                 signature=b["batch"]["finalization_signature"],
-                hash=b["batch"]["hash"],
                 chaining_hash=b["batch"]["chaining_hash"],
                 nonsigners=b["batch"]["finalized_nonsigners"],
                 index=b["index"],
@@ -353,7 +353,6 @@ async def get_batches(
         (
             BatchSignatureInfo(
                 signature=b["batch"]["lock_signature"],
-                hash=b["batch"]["hash"],
                 chaining_hash=b["batch"]["chaining_hash"],
                 nonsigners=b["batch"]["locked_nonsigners"],
                 index=b["index"],

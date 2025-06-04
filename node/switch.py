@@ -5,18 +5,20 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from asyncio import Lock
 from collections import Counter
-from threading import Lock
 from typing import Any, TypedDict
 
 import aiohttp
+from aiohttp.client_exceptions import ClientError
+from aiohttp.web import HTTPError
 
 from common import utils
-from common.api_models import SwitchProof
-from common.batch import Batch, BatchRecord, stateful_batch_to_batch_record
+from common.api_models import SwitchProof, SwitchRequest
+from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
-from common.db import SignatureData, zdb
+from common.db import zdb
 from common.logger import zlogger
 from config import zconfig
 
@@ -35,25 +37,27 @@ async def send_dispute_request(
     is_sequencer_down: bool,
 ) -> SwitchProof | None:
     """Send a dispute request to a specific node."""
-    timestamp: int = int(time.time())
+    timestamp = int(time.time())
     data: str = json.dumps(
         {
             "sequencer_id": zconfig.SEQUENCER["id"],
-            "apps_missed_batches": zdb.get_limited_apps_missed_batches(),
+            "apps_censored_batches": zdb.get_apps_censored_batch_bodies(),
             "is_sequencer_down": is_sequencer_down,
             "has_delayed_batches": zdb.has_delayed_batches(),
             "timestamp": timestamp,
         },
     )
-    url: str = f"{node['socket']}/node/dispute"
+    url = f"{node['socket']}/node/dispute"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 url=url,
                 data=data,
                 headers=zconfig.HEADERS,
+                timeout=5,
+                raise_for_status=True,
             ) as response:
-                response_json: dict[str, Any] = await response.json()
+                response_json = await response.json()
                 if response_json["status"] == "success" and "data" in response_json:
                     data = response_json["data"]
                     return SwitchProof(
@@ -63,7 +67,7 @@ async def send_dispute_request(
                         timestamp=data["timestamp"],
                         signature=data["signature"],
                     )
-    except aiohttp.ClientError as error:
+    except (ClientError, HTTPError, asyncio.TimeoutError) as error:
         zlogger.warning(f"Error sending dispute request to {node['id']}: {error}")
 
     return None
@@ -75,7 +79,7 @@ async def gather_disputes() -> tuple[list[SwitchProof], float]:
         asyncio.create_task(send_dispute_request(node, zdb.is_sequencer_down)): node[
             "id"
         ]
-        for node in list(zconfig.NODES.values())
+        for node in list(zconfig.last_state.attesting_nodes.values())
         if node["id"] != zconfig.NODE["id"]
     }
 
@@ -99,29 +103,28 @@ async def gather_disputes() -> tuple[list[SwitchProof], float]:
 
 
 async def send_dispute_requests() -> None:
-    """Send dispute requests if there are missed batches."""
+    """Send dispute requests if sequencer has a malfunction."""
     is_not_synced = not zconfig.get_synced_flag()
     is_paused = zconfig.is_paused
 
-    no_missed_batches = not zdb.has_missed_batches()
+    no_censorship = not zdb.is_sequencer_censoring()
     no_delayed_batches = not zdb.has_delayed_batches()
     sequencer_up = not zdb.is_sequencer_down
 
-    no_functionality_issue = no_missed_batches and no_delayed_batches and sequencer_up
+    no_functionality_issue = no_censorship and no_delayed_batches and sequencer_up
 
     if is_not_synced or is_paused or no_functionality_issue:
         return
 
     zlogger.warning(
-        f"Sending dispute is_not_synced: {is_not_synced}, no_delayed_batches:{no_delayed_batches}, no_missed_batches: {no_missed_batches}, sequencer_up: {sequencer_up}, is_paused: {is_paused}"
+        f"Sending dispute {is_not_synced=}, {no_delayed_batches=}, {no_censorship=}, {sequencer_up=}, {is_paused=}"
     )
-    timestamp: int = int(time.time())
-    new_sequencer_id: str = get_next_sequencer_id(
+    timestamp = int(time.time())
+    new_sequencer_id = get_next_sequencer_id(
         old_sequencer_id=zconfig.SEQUENCER["id"],
     )
     # Create the initial SwitchProof from this node
-    proofs: list[SwitchProof] = []
-    proofs.append(
+    proofs = [
         SwitchProof(
             node_id=zconfig.NODE["id"],
             old_sequencer_id=zconfig.SEQUENCER["id"],
@@ -129,22 +132,20 @@ async def send_dispute_requests() -> None:
             timestamp=timestamp,
             signature=utils.eth_sign(f"{zconfig.SEQUENCER['id']}{timestamp}"),
         )
-    )
+    ]
 
     try:
         gathered_proofs, stake_percent = await asyncio.wait_for(
             gather_disputes(),
             timeout=zconfig.AGGREGATION_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         zlogger.warning(
             f"Aggregation of signatures timed out after {zconfig.AGGREGATION_TIMEOUT} seconds.",
         )
         return
-    except Exception as error:
-        import traceback
 
-        traceback.print_exc()
+    except Exception as error:
         zlogger.error(f"An unexpected error occurred: {error}")
         return
 
@@ -156,36 +157,20 @@ async def send_dispute_requests() -> None:
     proofs.extend(gathered_proofs)
 
     old_sequencer_id, new_sequencer_id = get_switch_parameter_from_proofs(proofs)
-    await send_switch_requests(proofs)
-    await switch_sequencer_async(old_sequencer_id, new_sequencer_id)
+    asyncio.create_task(send_switch_requests(proofs))
+    await switch_sequencer(old_sequencer_id, new_sequencer_id)
 
 
 async def _send_switch_request(session, node, proofs: list[SwitchProof]):
     """Send a single switch request to a node."""
-    # Convert SwitchProof objects to dictionaries for JSON serialization
-    proofs_dict = [
-        {
-            "node_id": proof.node_id,
-            "old_sequencer_id": proof.old_sequencer_id,
-            "new_sequencer_id": proof.new_sequencer_id,
-            "timestamp": proof.timestamp,
-            "signature": proof.signature,
-        }
-        for proof in proofs
-    ]
-
-    data = json.dumps(
-        {
-            "proofs": proofs_dict,
-            "timestamp": int(time.time()),
-        }
-    )
     url = f"{node['socket']}/node/switch"
 
     try:
-        async with session.post(url, data=data, headers=zconfig.HEADERS) as response:
-            await response.text()  # Consume the response
-    except Exception as e:
+        async with session.post(
+            url, json=SwitchRequest(proofs=proofs).model_dump()
+        ) as response:
+            await response.text()
+    except (HTTPError, ClientError, asyncio.TimeoutError) as e:
         zlogger.warning(
             f"Error occurred while sending switch request to {node['id']}: {e}"
         )
@@ -194,7 +179,11 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
 async def send_switch_requests(proofs: list[SwitchProof]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=5),
+        raise_for_status=True,
+        headers=zconfig.HEADERS,
+    ) as session:
         tasks = [
             _send_switch_request(session, node, proofs)
             for node in zconfig.NODES.values()
@@ -203,24 +192,9 @@ async def send_switch_requests(proofs: list[SwitchProof]) -> None:
         await asyncio.gather(*tasks)
 
 
-def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
-    """
-    Synchronous wrapper for sequencer switching.
-    """
-    asyncio.run(_switch_sequencer_core(old_sequencer_id, new_sequencer_id))
-
-
-async def switch_sequencer_async(old_sequencer_id: str, new_sequencer_id: str):
-    """
-    Asynchronous version of sequencer switching.
-    """
-    await _switch_sequencer_core(old_sequencer_id, new_sequencer_id)
-
-
-async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
+async def switch_sequencer(old_sequencer_id: str, new_sequencer_id: str):
     """
     Core implementation of sequencer switching logic.
-    Used by both sync and async switch functions.
     """
     if old_sequencer_id != zconfig.SEQUENCER["id"]:
         old_sequencer_node = zconfig.NODES[old_sequencer_id]
@@ -229,7 +203,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
         )
         return
 
-    with switch_lock:
+    async with switch_lock:
         zconfig.pause()
 
         try:
@@ -239,7 +213,7 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             )
 
             for app_name, entries in network_last_locked_batch_entries.items():
-                zdb.reinitialize_batches(app_name=app_name)
+                zdb.reinitialize_sequenced_batches(app_name=app_name)
                 self_node_last_locked_record = (
                     zdb.get_last_operational_batch_record_or_empty(
                         app_name=app_name, state="locked"
@@ -274,12 +248,17 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                         )
                         break
 
+                    # fixme: this is added to track rarely happening bug and should be removed
+                    if not last_locked_batch.get("locked_nonsigners"):
+                        zlogger.info(
+                            f"nonsigners should not be empty {last_locked_batch_record=}"
+                        )
+
                     # peer node must contain locked signature on claimed index and the signature must be verified
                     if not is_sync_point_signature_verified(
                         app_name=app_name,
                         state="sequenced",
                         index=last_locked_batch_record.get("index"),
-                        batch_hash=last_locked_batch.get("hash"),
                         chaining_hash=last_locked_batch.get("chaining_hash"),
                         tag=last_locked_batch.get("locked_tag"),
                         signature_hex=last_locked_batch.get("lock_signature"),
@@ -305,7 +284,6 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
             if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
                 await asyncio.sleep(zconfig.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS)
             for app_name in zconfig.APPS:
-                zdb.initialize_missing_batches(app_name)
                 if zconfig.NODE["id"] == new_sequencer_id:
                     zlogger.info(
                         "This node is acting as the SEQUENCER. ID: %s",
@@ -315,69 +293,13 @@ async def _switch_sequencer_core(old_sequencer_id: str, new_sequencer_id: str):
                     # These batches can not be added to the operational pool as sequenced,
                     # because if their number exceeds the per-node quota, batches from other
                     # nodes might not be returned immediately.
-                    # This could lead to disputes against the new leader over missing batches.
-                    zdb.reset_initialized_batches(app_name=app_name)
+                    # This could lead to disputes against the new leader because of censorship.
+                    zdb.reset_initialized_batch_bodies(app_name=app_name)
 
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)
         finally:
             zconfig.unpause()
-
-
-def _prepare_batches(
-    batch_bodies: list[str],
-    app_name: str,
-    after_index: int,
-    peer_node_id: str,
-    first_chaining_hash: str,
-    locked_signature_info: SignatureData,
-    finalized_signature_info: SignatureData,
-) -> list[Batch]:
-    chaining_hash = first_chaining_hash
-    batches: list[Batch] = []
-
-    for idx, batch_body in enumerate(batch_bodies):
-        batch_hash = utils.gen_hash(batch_body)
-        if idx > 0:
-            chaining_hash = utils.gen_hash(chaining_hash + batch_hash)
-        batches.append(
-            {
-                "app_name": app_name,
-                "node_id": peer_node_id,
-                "body": batch_body,
-                "hash": batch_hash,
-                "chaining_hash": chaining_hash,
-            }
-        )
-
-    # put signatures on corresponding batches, they are already verified
-    if locked_signature_info:
-        locked_signature_idx = (
-            locked_signature_info.get("index")
-            if after_index == 0
-            else locked_signature_info.get("index") - (after_index + 1)
-        )
-        batches[locked_signature_idx] = {
-            **batches[locked_signature_idx],
-            "lock_signature": locked_signature_info.get("signature"),
-            "locked_nonsigners": locked_signature_info.get("nonsigners"),
-            "locked_tag": locked_signature_info.get("tag"),
-        }
-
-    if finalized_signature_info:
-        finalized_signature_idx = (
-            finalized_signature_info.get("index")
-            if after_index == 0
-            else finalized_signature_info.get("index") - (after_index + 1)
-        )
-        batches[finalized_signature_idx] = {
-            **batches[finalized_signature_idx],
-            "finalization_signature": finalized_signature_info.get("signature"),
-            "finalized_nonsigners": finalized_signature_info.get("nonsigners"),
-            "finalized_tag": finalized_signature_info.get("tag"),
-        }
-
-    return batches
 
 
 async def _sync_with_peer_node(
@@ -389,95 +311,77 @@ async def _sync_with_peer_node(
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
     after_index = self_node_last_locked_index
 
-    zdb.reinitialize_batches(app_name=app_name)
+    zdb.reinitialize_sequenced_batches(app_name=app_name)
 
-    #  timeout value (in seconds)
-    timeout = aiohttp.ClientTimeout(total=5)
-
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        while True:
-            try:
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
                 params = {"after": after_index}
 
                 async with session.get(
-                    url, params=params, headers=zconfig.HEADERS
+                    url,
+                    params=params,
+                    headers=zconfig.HEADERS,
+                    timeout=5,
+                    raise_for_status=True,
                 ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        zlogger.warning(
-                            f"Failed to fetch batches from node {peer_node_socket}: {error_text}"
-                        )
-                        return False
-
                     data = await response.json()
-                    if data.get("status") != "success" or not data.get("data"):
-                        return False
+        except (ClientError, HTTPError, asyncio.TimeoutError) as e:
+            zlogger.warning(
+                f"Error occurred while fetching batches from {peer_node_socket}: {e}"
+            )
+            return False
 
-                batch_bodies = data["data"]["batches"]
-                if not batch_bodies:
-                    return False
-                chaining_hash = data["data"]["first_chaining_hash"]
-                locked_signature_info = data["data"]["locked"]
-                finalized_signature_info = data["data"]["finalized"]
-                last_page = (
-                    after_index
-                    <= target_locked_index
-                    <= after_index + len(batch_bodies)
-                )
-                zlogger.warning(f"{after_index}, {chaining_hash}")
+        if data.get("status") != "success" or not data.get("data"):
+            return False
 
-                batches = _prepare_batches(
-                    batch_bodies=batch_bodies,
-                    app_name=app_name,
-                    after_index=after_index,
-                    peer_node_id=peer_node_id,
-                    first_chaining_hash=chaining_hash,
-                    locked_signature_info=locked_signature_info,
-                    finalized_signature_info=finalized_signature_info,
-                )
+        batch_bodies = data["data"]["batches"]
+        if not batch_bodies:
+            return False
 
-                if last_page and not locked_signature_info:
-                    zlogger.warning(
-                        f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
-                    )
-                    return False
+        locked_signature_info = data["data"]["locked"]
+        finalized_signature_info = data["data"]["finalized"]
+        last_page = (
+            after_index <= target_locked_index <= after_index + len(batch_bodies)
+        )
 
-                zdb.insert_sequenced_batches(app_name=app_name, batches=batches)
+        if last_page and not locked_signature_info:
+            zlogger.warning(
+                f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
+            )
+            return False
 
-                if locked_signature_info:
-                    locking_result = zdb.lock_batches(
-                        app_name=app_name,
-                        signature_data=locked_signature_info,
-                    )
-                    if not locking_result:
-                        zlogger.warning(
-                            f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
-                        )
-                        return False
-                if finalized_signature_info:
-                    finalizing_result = zdb.finalize_batches(
-                        app_name=app_name,
-                        signature_data=finalized_signature_info,
-                    )
-                    if not finalizing_result:
-                        zlogger.warning(
-                            f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
-                        )
-                        return False
+        zdb.insert_sequenced_batch_bodies(app_name=app_name, batch_bodies=batch_bodies)
 
-                zlogger.info(
-                    f"Fetched {len(batches)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
-                )
-                if last_page:
-                    return True
-
-                after_index += len(batches)
-            except Exception as e:
+        if locked_signature_info:
+            locking_result = zdb.lock_batches(
+                app_name=app_name,
+                signature_data=locked_signature_info,
+            )
+            if not locking_result:
                 zlogger.warning(
-                    f"Error occurred while fetching batches from {peer_node_socket}: {e}"
+                    f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
                 )
                 return False
+        if finalized_signature_info:
+            finalizing_result = zdb.finalize_batches(
+                app_name=app_name,
+                signature_data=finalized_signature_info,
+            )
+            if not finalizing_result:
+                zlogger.warning(
+                    f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
+                )
+                return False
+
+        zlogger.info(
+            f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
+        )
+        if last_page:
+            return True
+
+        after_index += len(batch_bodies)
 
 
 async def _fetch_node_last_locked_batch_records_or_none(
@@ -490,31 +394,24 @@ async def _fetch_node_last_locked_batch_records_or_none(
     socket = zconfig.NODES[node_id]["socket"]
     url = f"{socket}/node/batches/locked/last"
     try:
-        async with session.get(
-            url, headers=zconfig.HEADERS, timeout=aiohttp.ClientTimeout(total=5)
-        ) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {error_text}"
-                )
-                return None
-
+        async with session.get(url) as response:
             data = await response.json()
-            if data.get("status") == "error":
-                zlogger.warning(
-                    f"Failed to fetch last locked record from node {socket}: {data}"
-                )
-                return None
 
-            return {
-                app_name: stateful_batch_to_batch_record(data["data"][app_name])
-                for app_name in zconfig.APPS
-                if app_name in data["data"]
-            }
-    except Exception as e:
+    except (ClientError, HTTPError, asyncio.TimeoutError) as e:
         zlogger.warning(f"Failed to fetch last locked record from node {socket}: {e}")
         return None
+
+    if data.get("status") == "error":
+        zlogger.warning(
+            f"Failed to fetch last locked record from node {socket}: {data}"
+        )
+        return None
+
+    return {
+        app_name: stateful_batch_to_batch_record(data["data"][app_name])
+        for app_name in zconfig.APPS
+        if app_name in data["data"]
+    }
 
 
 async def get_network_last_locked_batch_entries_sorted() -> dict[
@@ -536,7 +433,11 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
     nodes_to_query = [node_id for node_id in zconfig.NODES if node_id != self_node_id]
 
     # Query all nodes concurrently
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=5),
+        raise_for_status=True,
+        headers=zconfig.HEADERS,
+    ) as session:
         tasks_with_node_ids = {
             node_id: _fetch_node_last_locked_batch_records_or_none(session, node_id)
             for node_id in nodes_to_query

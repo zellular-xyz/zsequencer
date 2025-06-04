@@ -6,7 +6,6 @@ import json
 import os
 import pstats
 import sys
-import threading
 import time
 from random import randbytes
 from typing import Any
@@ -37,7 +36,7 @@ class Config:
         self.ADDRESS = None
 
         self._SYNCED_FLAG = False
-        self._PAUSED = threading.Event()
+        self._PAUSED = False
 
         # Load fields from config
         self.THRESHOLD_PERCENT = node_config.threshold_percent
@@ -77,7 +76,6 @@ class Config:
         self.REGISTER_OPERATOR = node_config.register_operator
         self.REGISTER_SOCKET = node_config.register_socket
         self._MODE = node_config.mode
-        self.MAX_MISSED_BATCHES_TO_PICK = node_config.max_missed_batches_to_pick
         self.REMOTE_HOST_CHECKER_BASE_URL = node_config.remote_host_checker_base_url
         self.CHECK_REACHABILITY_OF_NODE_URL = node_config.check_reachability_of_node_url
         self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (
@@ -92,13 +90,13 @@ class Config:
 
     @property
     def is_paused(self) -> bool:
-        return self._PAUSED.is_set()
+        return self._PAUSED
 
     def pause(self) -> None:
-        self._PAUSED.set()
+        self._PAUSED = True
 
     def unpause(self) -> None:
-        self._PAUSED.clear()
+        self._PAUSED = False
 
     def get_synced_flag(self) -> bool:
         return self._SYNCED_FLAG
@@ -218,7 +216,7 @@ class Config:
                 continue
             url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=1).json()
+                response = requests.get(url=url, headers=self.HEADERS, timeout=5).json()
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
