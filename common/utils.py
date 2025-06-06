@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import xxhash
-from eth_account.messages import SignableMessage, encode_defunct
+from eth_account.messages import encode_defunct
 from fastapi import Request
 from web3 import Account
 
@@ -16,6 +16,7 @@ from common.errors import (
     IsPausedError,
     IsSequencerError,
     NotSyncedError,
+    PermissionDeniedError,
 )
 from config import zconfig
 
@@ -61,10 +62,41 @@ def not_paused(request: Request) -> None:
         raise IsPausedError()
 
 
+async def authenticate(request: Request, signature: str = Header(None)) -> None:
+    """Decorator to authenticate the request."""
+    if signature is None:
+        raise PermissionDeniedError("Signature header is required")
+
+    try:
+        body = await request.body()
+        if not body:
+            raise InvalidRequestError("Empty request body")
+
+        body_hash = hashlib.sha256(body).hexdigest()
+        message = encode_defunct(text=body_hash)
+        recovered_address = Account.recover_message(message, signature=signature)
+
+        route_path = request.url.path
+        if "/sign_sync_point" in route_path:
+            if recovered_address.lower() != zconfig.SEQUENCER["id"]:
+                raise PermissionDeniedError(
+                    "Only the current sequencer can call this endpoint"
+                )
+        else:
+            if recovered_address.lower() not in zconfig.NODES:
+                raise PermissionDeniedError("Address not authorized")
+
+    except ValueError as e:
+        zlogger.error(f"Invalid signature: {str(e)}")
+        raise InvalidRequestError("Invalid signature")
+    except Exception as e:
+        zlogger.error(f"Authentication error: {str(e)}")
+        raise InvalidRequestError("Authentication error")
+
 def eth_sign(message: str) -> str:
     """Sign a message using the node's private key."""
-    message_encoded: SignableMessage = encode_defunct(text=message)
-    account_instance: Account = Account()
+    message_encoded = encode_defunct(text=message)
+    account_instance = Account()
     return account_instance.sign_message(
         signable_message=message_encoded,
         private_key=zconfig.NODE["ecdsa_private_key"],
@@ -74,9 +106,9 @@ def eth_sign(message: str) -> str:
 def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
     """Verify a signature against the node's public address."""
     try:
-        msg_encoded: SignableMessage = encode_defunct(text=message)
-        account_instance: Account = Account()
-        recovered_address: str = account_instance.recover_message(
+        msg_encoded = encode_defunct(text=message)
+        account_instance = Account()
+        recovered_address = account_instance.recover_message(
             signable_message=msg_encoded,
             signature=signature,
         )
