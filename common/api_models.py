@@ -97,17 +97,12 @@ class DisputeRequest(BaseModel):
 
     sequencer_id: str
     apps_censored_batches: dict[str, str]
-    is_sequencer_down: bool
     timestamp: int
 
 
 class DisputeData(BaseModel):
     """Dispute confirmation response with signed proof."""
 
-    node_id: str
-    old_sequencer_id: str
-    new_sequencer_id: str
-    timestamp: int
     signature: str
 
 
@@ -121,8 +116,7 @@ class SwitchProof(BaseModel):
     """Cryptographic proof authorizing a sequencer switch."""
 
     node_id: str
-    old_sequencer_id: str
-    new_sequencer_id: str
+    sequencer_id: str
     timestamp: int
     signature: str
 
@@ -205,8 +199,6 @@ class SequencerPutBatchesRequest(BaseModel):
 
     app_name: str
     batches: list[str]
-    node_id: str
-    signature: str
     sequenced_index: int
     sequenced_chaining_hash: str
     locked_index: int

@@ -1,8 +1,8 @@
 """This module defines the FastAPI router for sequencer."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 
-from common import utils
+from common import auth, utils
 from common.api_models import (
     BatchSignatureInfo,
     SequencerPutBatchesRequest,
@@ -25,6 +25,7 @@ router = APIRouter()
 @router.put(
     "/batches",
     dependencies=[
+        Depends(auth.authenticate),
         Depends(utils.sequencer_only),
         Depends(utils.not_paused),
         Depends(utils.validate_version("sequencer")),
@@ -32,11 +33,13 @@ router = APIRouter()
 )
 async def put_batches(
     request: SequencerPutBatchesRequest,
+    signer: str | None = Header(None),
 ) -> SequencerPutBatchesResponse:
     """Submit batches to the sequencer for ordering and consensus."""
+    node_id = signer
     # Check rate limits
     if not try_acquire_rate_limit_of_other_nodes(
-        node_id=request.node_id, batch_bodies=request.batches
+        node_id=node_id, batch_bodies=request.batches
     ):
         raise BatchesLimitExceededError()
     # Validate batch sizes
@@ -44,25 +47,17 @@ async def put_batches(
         if utils.get_utf8_size_kb(batch) > zconfig.MAX_BATCH_SIZE_KB:
             raise BatchSizeExceededError()
 
-    # Verify signature
-    concat_hash = "".join(utils.gen_hash(batch) for batch in request.batches)
-    is_eth_sig_verified = utils.is_eth_sig_verified(
-        signature=request.signature,
-        node_id=request.node_id,
-        message=concat_hash,
-    )
-    if not is_eth_sig_verified:
-        raise PermissionDeniedError(f"the sig on the {request=} can not be verified.")
-    if str(request.node_id) not in zconfig.last_state.posting_nodes:
-        raise PermissionDeniedError(f"{request.node_id} is not a posting node.")
+    if str(node_id) not in zconfig.last_state.posting_nodes:
+        raise PermissionDeniedError(f"{node_id} is not a posting node.")
     if request.app_name not in zconfig.APPS:
         raise InvalidRequestError(f"{request.app_name} is not a valid app name.")
-    response_data = await _put_batches(request)
+    response_data = await _put_batches(request, node_id)
     return SequencerPutBatchesResponse(data=response_data)
 
 
 async def _put_batches(
     request: SequencerPutBatchesRequest,
+    node_id: str,
 ) -> SequencerPutBatchesResponseData:
     """Process the batches data and return a structured response."""
     zdb.sequencer_init_batch_bodies(
@@ -109,7 +104,7 @@ async def _put_batches(
     zdb.upsert_node_state(
         {
             "app_name": request.app_name,
-            "node_id": request.node_id,
+            "node_id": node_id,
             "sequenced_index": request.sequenced_index,
             "sequenced_chaining_hash": request.sequenced_chaining_hash,
             "locked_index": request.locked_index,

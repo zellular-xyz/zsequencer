@@ -3,9 +3,9 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query
 
-from common import utils
+from common import auth, bls, utils
 from common.api_models import (
     AppState,
     BatchSignatureInfo,
@@ -54,7 +54,6 @@ router = APIRouter()
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
-        Depends(utils.authenticate),
     ],
 )
 async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
@@ -90,7 +89,6 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
-        Depends(utils.authenticate),
     ],
 )
 async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyResponse:
@@ -121,7 +119,7 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(utils.authenticate),
+        Depends(auth.authenticate),
     ],
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
@@ -154,7 +152,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(utils.authenticate),
+        Depends(auth.authenticate),
     ],
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
@@ -174,13 +172,10 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         if not (now - 5 <= request.timestamp <= now + 5):
             raise InvalidTimestampError()
 
-        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
+        message = utils.gen_hash(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
+        signature = bls.bls_sign(message)
 
         response_data = DisputeData(
-            node_id=zconfig.NODE["id"],
-            old_sequencer_id=zconfig.SEQUENCER["id"],
-            new_sequencer_id=switch.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
-            timestamp=request.timestamp,
             signature=signature,
         )
 
@@ -192,8 +187,9 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
 @router.post(
     "/switch",
     dependencies=[
+        Depends(utils.not_paused),
         Depends(utils.validate_version("node")),
-        Depends(utils.authenticate),
+        Depends(auth.authenticate),
     ],
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
@@ -203,12 +199,13 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     if not switch.is_switch_approved(proofs):
         raise SequencerChangeNotApprovedError()
 
-    old_sequencer_id, new_sequencer_id = switch.get_switch_parameter_from_proofs(proofs)
+    old_sequencer_id = proofs[0].sequencer_id
+    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
 
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
-    asyncio.create_task(switch.switch_sequencer(old_sequencer_id, new_sequencer_id))
+    asyncio.create_task(switch.switch_to_sequencer(new_sequencer_id))
 
     return EmptyResponse(message="Sequencer switch initiated successfully.")
 
