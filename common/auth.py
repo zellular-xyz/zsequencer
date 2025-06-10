@@ -12,7 +12,9 @@ from config import zconfig
 
 
 class CustomClientSession(aiohttp.ClientSession):
-    async def _request(self, method, url, **kwargs):
+    async def _request(
+        self, method: str, url: str, **kwargs: dict[str, Any]
+    ) -> aiohttp.ClientResponse:
         headers = kwargs.get("headers", {})
         headers["Content-Type"] = "application/json"
         headers["Version"] = zconfig.VERSION
