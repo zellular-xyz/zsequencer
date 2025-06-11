@@ -6,9 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import xxhash
-from eth_account.messages import SignableMessage, encode_defunct
 from fastapi import Request
-from web3 import Account
 
 from common.errors import (
     InvalidNodeVersionError,
@@ -59,30 +57,6 @@ def not_paused(request: Request) -> None:
     """Decorator to ensure the service is not paused."""
     if zconfig.is_paused:
         raise IsPausedError()
-
-
-def eth_sign(message: str) -> str:
-    """Sign a message using the node's private key."""
-    message_encoded: SignableMessage = encode_defunct(text=message)
-    account_instance: Account = Account()
-    return account_instance.sign_message(
-        signable_message=message_encoded,
-        private_key=zconfig.NODE["ecdsa_private_key"],
-    ).signature.hex()
-
-
-def is_eth_sig_verified(signature: str, node_id: str, message: str) -> bool:
-    """Verify a signature against the node's public address."""
-    try:
-        msg_encoded: SignableMessage = encode_defunct(text=message)
-        account_instance: Account = Account()
-        recovered_address: str = account_instance.recover_message(
-            signable_message=msg_encoded,
-            signature=signature,
-        )
-        return recovered_address.lower() == zconfig.NODES[node_id]["address"].lower()
-    except Exception:
-        return False
 
 
 def gen_hash(message: str) -> str:

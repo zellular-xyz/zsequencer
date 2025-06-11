@@ -4,13 +4,11 @@ import asyncio
 import json
 from typing import Any
 
-import aiohttp
 from eigensdk.crypto.bls import attestation
 
+from common import auth, utils
+from common.logger import zlogger
 from config import zconfig
-
-from . import utils
-from .logger import zlogger
 
 
 def bls_sign(message: str) -> str:
@@ -102,7 +100,6 @@ async def gather_and_aggregate_signatures(
                 url=f"{attesting_nodes_info[node_id]['socket']}/node/sign_sync_point",
                 data=data,
                 message=message,
-                timeout=5,
             ),
         ): node_id
         for node_id in node_ids
@@ -145,16 +142,13 @@ async def request_signature(
     url: str,
     data: dict[str, Any],
     message: str,
-    timeout: int = 5,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
-    async with aiohttp.ClientSession() as session:
+    async with auth.CustomClientSession() as session:
         try:
             async with session.post(
                 url,
                 json=data,
-                timeout=timeout,
-                headers=zconfig.HEADERS,
             ) as response:
                 response_json = await response.json()
                 if response_json.get("status") != "success":

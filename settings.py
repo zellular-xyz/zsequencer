@@ -66,7 +66,7 @@ class NodeConfig(BaseSettings):
     )
     check_reachability_of_node_url: bool = Field(default=True)
 
-    sequencer_setup_deadline_time_in_seconds: int = Field(default=20)
+    sequencer_setup_deadline_time_in_seconds: int = Field(default=10)
 
     class Config:
         env_prefix = "ZSEQUENCER_"
