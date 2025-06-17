@@ -119,7 +119,7 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(auth.authenticate),
+        Depends(auth.verify_sequencer_access),
     ],
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
@@ -152,7 +152,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
-        Depends(auth.authenticate),
+        Depends(auth.verify_node_access),
     ],
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
@@ -189,7 +189,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     dependencies=[
         Depends(utils.not_paused),
         Depends(utils.validate_version("node")),
-        Depends(auth.authenticate),
+        Depends(auth.verify_node_access),
     ],
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:

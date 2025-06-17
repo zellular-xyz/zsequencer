@@ -38,11 +38,13 @@ class CustomClientSession(aiohttp.ClientSession):
         return await super()._request(method, url, **kwargs)
 
 
-async def authenticate(
-    request: Request, signature: str = Header(None), signer: str = Header(None)
+async def verify_node_access(
+    request: Request,
+    signature: str | None = Header(None),
+    signer: str | None = Header(None),
 ) -> None:
-    """Decorator to authenticate the request."""
-    if not signature:
+    """Dependency to verify that the request is from a valid network node."""
+    if signature is None:
         raise PermissionDeniedError("Signature header is required")
     if signer is None:
         raise PermissionDeniedError("Signer header is required")
@@ -62,9 +64,13 @@ async def authenticate(
             f"Signature verification failed. {signature=}, {signer=}, {body=}, headers: {dict(request.headers)}"
         )
 
-    route_path = request.url.path
-    if "/sign_sync_point" in route_path:
-        if signer != zconfig.SEQUENCER["id"]:
-            raise PermissionDeniedError(
-                "Only the current sequencer can call this endpoint"
-            )
+
+async def verify_sequencer_access(
+    request: Request,
+    signature: str | None = Header(None),
+    signer: str | None = Header(None),
+) -> None:
+    """Dependency to verify that the request is from the current sequencer node."""
+    verify_node_access(request, signature, signer)
+    if signer != zconfig.SEQUENCER["id"]:
+        raise PermissionDeniedError("Only the current sequencer can call this endpoint")
