@@ -1,10 +1,7 @@
 """Configuration functions for the ZSequencer."""
 
-import cProfile
-import functools
 import json
 import os
-import pstats
 import sys
 import time
 from random import randbytes
