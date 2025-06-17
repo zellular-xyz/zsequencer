@@ -71,6 +71,6 @@ async def verify_sequencer_access(
     signer: str | None = Header(None),
 ) -> None:
     """Dependency to verify that the request is from the current sequencer node."""
-    verify_node_access(request, signature, signer)
+    await verify_node_access(request, signature, signer)
     if signer != zconfig.SEQUENCER["id"]:
         raise PermissionDeniedError("Only the current sequencer can call this endpoint")
