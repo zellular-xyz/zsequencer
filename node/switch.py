@@ -11,7 +11,7 @@ from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPError
 
 from common import auth, bls, utils
-from common.api_models import SwitchProof, SwitchRequest
+from common.api_models import DisputeRequest, SwitchProof, SwitchRequest
 from common.batch import BatchRecord, stateful_batch_to_batch_record
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
@@ -35,17 +35,17 @@ async def send_dispute_request(
     timestamp: int,
 ) -> SwitchProof | None:
     """Send a dispute request to a specific node."""
-    data = {
-        "sequencer_id": sequencer_id,
-        "apps_censored_batches": zdb.get_apps_censored_batch_bodies(),
-        "timestamp": timestamp,
-    }
+    request = DisputeRequest(
+        sequencer_id=sequencer_id,
+        apps_censored_batches=zdb.get_apps_censored_batch_bodies(),
+        timestamp=timestamp,
+    )
     url = f"{node['socket']}/node/dispute"
     try:
         async with auth.CustomClientSession() as session:
             async with session.post(
                 url=url,
-                json=data,
+                json=request.model_dump(),
             ) as response:
                 response_json = await response.json()
                 if response_json["status"] == "success" and "data" in response_json:

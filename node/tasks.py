@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from common import auth, bls, utils
+from common.api_models import SequencerPutBatchesRequest
 from common.batch_sequence import BatchSequence
 from common.db import zdb
 from common.errors import InvalidRequestError
@@ -69,21 +70,21 @@ async def send_app_batches(app_name: str) -> int:
         state="locked",
     )
 
-    data = {
-        "app_name": app_name,
-        "batches": batch_bodies,
-        "sequenced_index": last_sequenced_batch_record.get("index", 0),
-        "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get(
+    request = SequencerPutBatchesRequest(
+        app_name=app_name,
+        batches=batch_bodies,
+        sequenced_index=last_sequenced_batch_record.get("index", 0),
+        sequenced_chaining_hash=last_sequenced_batch_record.get("batch", {}).get(
             "chaining_hash",
             "",
         ),
-        "locked_index": last_locked_batch_record.get("index", 0),
-        "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get(
+        locked_index=last_locked_batch_record.get("index", 0),
+        locked_chaining_hash=last_locked_batch_record.get("batch", {}).get(
             "chaining_hash",
             "",
         ),
-        "timestamp": int(time.time()),
-    }
+        timestamp=int(time.time()),
+    )
 
     url = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response = None
@@ -91,7 +92,7 @@ async def send_app_batches(app_name: str) -> int:
         async with auth.CustomClientSession() as session:
             async with session.put(
                 url,
-                json=data,
+                json=request.model_dump(),
                 timeout=5 if zconfig.get_synced_flag() else 30,
                 raise_for_status=True,
             ) as r:
