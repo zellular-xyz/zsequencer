@@ -463,7 +463,7 @@ def is_switch_approved(proofs: list[SwitchProof]) -> bool:
 def is_dispute_approved(proof: SwitchProof) -> bool:
     """Check if a dispute is approved based on the provided proof."""
     now = time.time()
-    if not now - 10 <= proof.timestamp <= now:
+    if not (now - 10 <= proof.timestamp <= now):
         zlogger.warning(f"Invalid dispute time: {proof}")
         return False
     message = utils.gen_hash(f"{proof.sequencer_id}{proof.timestamp}")
