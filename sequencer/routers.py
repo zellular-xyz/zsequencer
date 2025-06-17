@@ -25,7 +25,7 @@ router = APIRouter()
 @router.put(
     "/batches",
     dependencies=[
-        Depends(auth.authenticate),
+        Depends(auth.verify_node_access),
         Depends(utils.sequencer_only),
         Depends(utils.not_paused),
         Depends(utils.validate_version("sequencer")),
