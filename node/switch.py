@@ -42,7 +42,7 @@ async def send_dispute_request(
     )
     url = f"{node['socket']}/node/dispute"
     try:
-        async with auth.CustomClientSession() as session:
+        async with auth.create_session() as session:
             async with session.post(
                 url=url,
                 json=request.model_dump(),
@@ -168,7 +168,7 @@ async def _send_switch_request(session, node, proofs: list[SwitchProof]):
 async def send_switch_requests(proofs: list[SwitchProof]) -> None:
     """Send switch requests to all nodes except self asynchronously."""
     zlogger.warning("sending switch requests...")
-    async with auth.CustomClientSession() as session:
+    async with auth.create_session() as session:
         tasks = [
             _send_switch_request(session, node, proofs)
             for node in zconfig.NODES.values()
@@ -301,7 +301,7 @@ async def _sync_with_peer_node(
 
     while True:
         try:
-            async with auth.CustomClientSession() as session:
+            async with auth.create_session() as session:
                 url = f"{peer_node_socket}/node/{app_name}/batches/sequenced"
                 params = {"after": after_index}
 
@@ -368,7 +368,7 @@ async def _sync_with_peer_node(
 
 
 async def _fetch_node_last_locked_batch_records_or_none(
-    session: auth.CustomClientSession, node_id: str
+    session: auth.create_session, node_id: str
 ) -> dict[str, BatchRecord] | None:
     """
     Fetch last locked batches for all apps from a single node asynchronously.
@@ -416,7 +416,7 @@ async def get_network_last_locked_batch_entries_sorted() -> dict[
     nodes_to_query = [node_id for node_id in zconfig.NODES if node_id != self_node_id]
 
     # Query all nodes concurrently
-    async with auth.CustomClientSession() as session:
+    async with auth.create_session() as session:
         tasks_with_node_ids = {
             node_id: _fetch_node_last_locked_batch_records_or_none(session, node_id)
             for node_id in nodes_to_query

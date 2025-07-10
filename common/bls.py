@@ -144,7 +144,7 @@ async def request_signature(
     message: str,
 ) -> dict[str, Any] | None:
     """Request a signature from a node."""
-    async with auth.CustomClientSession() as session:
+    async with auth.create_session() as session:
         try:
             async with session.post(
                 url,

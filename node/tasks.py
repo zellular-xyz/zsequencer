@@ -89,12 +89,11 @@ async def send_app_batches(app_name: str) -> int:
     url = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response = None
     try:
-        async with auth.CustomClientSession() as session:
+        async with auth.create_session() as session:
             async with session.put(
                 url,
                 json=request.model_dump(),
                 timeout=5 if zconfig.get_synced_flag() else 30,
-                raise_for_status=True,
             ) as r:
                 response = await r.json()
 

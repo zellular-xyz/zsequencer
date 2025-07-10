@@ -1,6 +1,3 @@
-import json
-from typing import Any
-
 import aiohttp
 from fastapi import Header, Request
 
@@ -12,30 +9,29 @@ from common.errors import (
 from config import zconfig
 
 
-class CustomClientSession(aiohttp.ClientSession):
-    async def _request(
-        self, method: str, url: str, **kwargs: dict[str, Any]
-    ) -> aiohttp.ClientResponse:
-        headers = kwargs.get("headers", {})
-        headers["Content-Type"] = "application/json"
-        headers["Version"] = zconfig.VERSION
+def create_session() -> aiohttp.ClientSession:
+    timeout = aiohttp.ClientTimeout(total=5)
+    return aiohttp.ClientSession(
+        middlewares=(custom_middleware,), raise_for_status=True, timeout=timeout
+    )
 
-        if method in ("PUT", "POST") and kwargs.get("json"):
-            body = json.dumps(kwargs.get("json"))
 
-            # Hash and sign
-            body_hash = utils.gen_hash(body)
-            signature = bls.bls_sign(body_hash)
+async def custom_middleware(
+    req: aiohttp.ClientRequest, handler: aiohttp.ClientHandlerType
+) -> aiohttp.ClientResponse:
+    req.headers["Content-Type"] = "application/json"
+    req.headers["Version"] = zconfig.VERSION
 
-            # Inject signature
-            headers["Signature"] = signature
-            headers["Signer"] = zconfig.NODE["id"]
+    if req.method in ("PUT", "POST") and req.body:
+        body = await req.body.as_bytes()
+        body_hash = utils.gen_hash(body)
+        signature = bls.bls_sign(body_hash)
 
-        kwargs["headers"] = headers
-        kwargs["raise_for_status"] = True
-        if "timeout" not in kwargs:
-            kwargs["timeout"] = aiohttp.ClientTimeout(total=5)
-        return await super()._request(method, url, **kwargs)
+        req.headers["Signature"] = signature
+        req.headers["Signer"] = zconfig.NODE["id"]
+
+    response = await handler(req)
+    return response
 
 
 async def verify_node_access(
