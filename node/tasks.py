@@ -11,7 +11,7 @@ from common import auth, bls, utils
 from common.api_models import SequencerPutBatchesRequest
 from common.batch_sequence import BatchSequence
 from common.db import zdb
-from common.errors import InvalidRequestError
+from common.errors import InvalidRequestError, IsNotSequencerError
 from common.logger import zlogger
 from common.state import is_state_before_or_equal
 from config import zconfig
@@ -94,12 +94,26 @@ async def send_app_batches(app_name: str) -> int:
                 url,
                 json=request.model_dump(),
                 timeout=5 if zconfig.get_synced_flag() else 30,
+                raise_for_status=False,
             ) as r:
                 response = await r.json()
 
         if response["status"] == "error":
-            zlogger.warning(response["error"]["message"])
+            zlogger.warning(response["error"])
             zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
+            if response["error"]["code"] == IsNotSequencerError.__name__:
+                # This can happen if the node faces connectivity issue and missing the switch request
+                network_sequencer = await zconfig.find_network_sequencer()
+                if (
+                    network_sequencer is not None
+                    and network_sequencer != zconfig.SEQUENCER["id"]
+                ):
+                    zlogger.warning(
+                        f"Switching to the network sequencer: {network_sequencer}"
+                    )
+                    zconfig.update_sequencer(network_sequencer)
+                    return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 

@@ -1,5 +1,7 @@
 """This module defines the FastAPI router for sequencer."""
 
+import time
+
 from fastapi import APIRouter, Depends, Header
 
 from common import auth, utils
@@ -109,6 +111,7 @@ async def _put_batches(
             "sequenced_chaining_hash": request.sequenced_chaining_hash,
             "locked_index": request.locked_index,
             "locked_chaining_hash": request.locked_chaining_hash,
+            "update_timestamp": time.time(),
         },
     )
 

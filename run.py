@@ -68,6 +68,7 @@ async def run_sequencer_tasks() -> None:
             continue
 
         await sequencer_tasks.sync()
+        await zdb.check_sequencing_state()
 
 
 async def check_node_reachability() -> None:
@@ -110,6 +111,7 @@ async def run_server() -> None:
 
 async def main() -> None:
     """Main entry point for running the Zellular Node."""
+    await zconfig.init_sequencer()
     if zconfig.SABOTAGE_SIMULATION:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()

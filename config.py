@@ -1,5 +1,6 @@
 """Configuration functions for the ZSequencer."""
 
+import asyncio
 import json
 import os
 import sys
@@ -8,7 +9,6 @@ from random import randbytes
 from typing import Any
 from urllib.parse import urlparse
 
-import requests
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from eigensdk.crypto.bls import attestation
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -196,33 +196,64 @@ class Config:
             socket=self.REGISTER_SOCKET,
         )
 
-    def init_sequencer(self) -> None:
+    async def init_sequencer(self) -> None:
         """Finds the initial sequencer id."""
+        network_sequencer = await self.find_network_sequencer()
+        if network_sequencer:
+            self.update_sequencer(network_sequencer)
+        else:
+            self.update_sequencer(self.INIT_SEQUENCER_ID)
+        if self.is_sequencer:
+            zlogger.info(
+                "This node is acting as the SEQUENCER. ID: %s",
+                self.NODE["id"],
+            )
+
+    async def find_network_sequencer(self) -> str | None:
+        """Finds the network active sequencer id."""
         sequencing_nodes = self.last_state.sequencing_nodes
         attesting_nodes = self.last_state.attesting_nodes
 
-        total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
+        total_stake = self.last_state.total_stake
 
-        sequencers_stake: dict[str, Any] = dict.fromkeys(sequencing_nodes, 0)
-        for node_id in attesting_nodes:
-            if node_id == self.NODE["id"]:
-                continue
-            url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
+        from common.auth import create_session
+
+        async def query_node_state(node_id: str) -> tuple[str, str | None]:
+            """Query a single node's state and return (node_id, sequencer_id)."""
+            url = f"{self.NODES[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, timeout=5).json()
-                if response["data"]["version"] != self.VERSION:
-                    continue
-                sequencer_id = response["data"]["sequencer_id"]
-                if sequencer_id in sequencing_nodes:
-                    sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
+                async with create_session() as session:
+                    async with session.get(url) as response:
+                        data = await response.json()
+                        if data["data"]["version"] == self.VERSION:
+                            sequencer_id = data["data"]["sequencer_id"]
+                            if sequencer_id in sequencing_nodes:
+                                return node_id, sequencer_id
             except Exception:
                 zlogger.warning(f"Unable to get state from {node_id}")
+            return node_id, None
+
+        # Create all tasks
+        tasks = [
+            query_node_state(node_id)
+            for node_id in attesting_nodes
+            if node_id != self.NODE["id"]
+        ]
+
+        results = await asyncio.gather(*tasks)
+
+        sequencers_stake = dict.fromkeys(sequencing_nodes, 0)
+        for result in results:
+            node_id, sequencer_id = result
+            if sequencer_id:
+                sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
+
         max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
         sequencers_stake[max_stake_id] += self.NODE["stake"]
         if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
-            self.update_sequencer(max_stake_id)
+            return max_stake_id
         else:
-            self.update_sequencer(self.INIT_SEQUENCER_ID)
+            return None
 
     def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
@@ -268,15 +299,6 @@ class Config:
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.",
             )
             sys.exit()
-
-        self.init_sequencer()
-
-        if self.is_sequencer:
-            zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s",
-                self.NODE["id"],
-            )
-
         self.APPS = utils.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
@@ -315,9 +337,7 @@ class Config:
 
     def update_sequencer(self, sequencer_id: str) -> None:
         """Update the sequencer configuration."""
-        self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[
-            sequencer_id
-        ]
+        self.SEQUENCER = self.NODES[sequencer_id]
 
 
 zconfig = Config.get_instance(node_config=NodeConfig())

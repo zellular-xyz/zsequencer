@@ -48,6 +48,7 @@ class InMemoryDB:
         """Initialize the InMemoryDB instance."""
         self.is_sequencer_down = False
         self.is_node_reachable = True
+        self.has_received_nodes_put_batches = False
         self._snapshot_manager = SnapshotManager(
             base_path=zconfig.SNAPSHOT_PATH,
             version=zconfig.VERSION,
@@ -470,6 +471,39 @@ class InMemoryDB:
         app_name: str = node_state["app_name"]
         node_id: str = node_state["node_id"]
         self.apps[app_name]["nodes_state"][node_id] = node_state
+
+    @property
+    def not_receiving_nodes_put_batches(self) -> bool:
+        attesting_nodes = zconfig.last_state.attesting_nodes
+        disconnected_nodes_stake = 0
+        t = time.time()
+        for node_id in attesting_nodes:
+            last_node_request_time = max(
+                self.apps[app_name]["nodes_state"]
+                .get(node_id, {})
+                .get("update_timestamp", 0)
+                for app_name in self.apps
+            )
+            if t - last_node_request_time > 5:
+                disconnected_nodes_stake += attesting_nodes[node_id]["stake"]
+
+        total_stake = zconfig.last_state.total_stake
+        return 100 * disconnected_nodes_stake / total_stake >= zconfig.THRESHOLD_PERCENT
+
+    async def check_sequencing_state(self) -> None:
+        if self.not_receiving_nodes_put_batches:
+            if self.has_received_nodes_put_batches:
+                zlogger.warning(
+                    "Not receiving nodes put batches requests, init sequencer again!"
+                )
+                await zconfig.init_sequencer()
+                if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+                    zlogger.warning(f"Sequencer updated to {zconfig.SEQUENCER['id']}")
+                    for app_name in self.apps:
+                        zdb.reinitialize_sequenced_batches(app_name=app_name)
+
+        else:
+            self.has_received_nodes_put_batches = True
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""
