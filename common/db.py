@@ -496,11 +496,12 @@ class InMemoryDB:
                 zlogger.warning(
                     "Not receiving nodes put batches requests, init sequencer again!"
                 )
-                await zconfig.init_sequencer()
-                if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
-                    zlogger.warning(f"Sequencer updated to {zconfig.SEQUENCER['id']}")
+                network_sequencer = await zconfig.find_network_sequencer()
+                if network_sequencer and zconfig.SEQUENCER["id"] != network_sequencer:
+                    zconfig.update_sequencer(network_sequencer)
+                    zlogger.warning(f"Sequencer updated to {network_sequencer}")
                     for app_name in self.apps:
-                        zdb.reinitialize_sequenced_batches(app_name=app_name)
+                        self.reinitialize_sequenced_batches(app_name=app_name)
 
         else:
             self.has_received_nodes_put_batches = True
