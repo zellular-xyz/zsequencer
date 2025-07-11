@@ -5,7 +5,7 @@ import time
 
 from fastapi import APIRouter, Depends, Query
 
-from common import utils
+from common import auth, bls, utils
 from common.api_models import (
     AppState,
     BatchSignatureInfo,
@@ -119,11 +119,14 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(auth.verify_sequencer_access),
     ],
 )
 async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointResponse:
-    """Sign a synchronization point to contribute to batch consensus."""
-    # TODO: only the sequencer should be able to call this route
+    """Sign a synchronization point to contribute to batch consensus.
+
+    This endpoint can only be called by the current active sequencer."""
+    # Sequencer verification is handled by verify_sequencer_signature dependency
     signature = tasks.sign_sync_point(
         {
             "app_name": request.app_name,
@@ -149,6 +152,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         Depends(utils.validate_version("node")),
         Depends(utils.not_sequencer),
         Depends(utils.is_synced),
+        Depends(auth.verify_node_access),
     ],
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
@@ -168,13 +172,10 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         if not (now - 5 <= request.timestamp <= now + 5):
             raise InvalidTimestampError()
 
-        signature = utils.eth_sign(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
+        message = utils.gen_hash(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
+        signature = bls.bls_sign(message)
 
         response_data = DisputeData(
-            node_id=zconfig.NODE["id"],
-            old_sequencer_id=zconfig.SEQUENCER["id"],
-            new_sequencer_id=switch.get_next_sequencer_id(zconfig.SEQUENCER["id"]),
-            timestamp=request.timestamp,
             signature=signature,
         )
 
@@ -186,7 +187,9 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
 @router.post(
     "/switch",
     dependencies=[
+        Depends(utils.not_paused),
         Depends(utils.validate_version("node")),
+        Depends(auth.verify_node_access),
     ],
 )
 async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
@@ -196,12 +199,13 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     if not switch.is_switch_approved(proofs):
         raise SequencerChangeNotApprovedError()
 
-    old_sequencer_id, new_sequencer_id = switch.get_switch_parameter_from_proofs(proofs)
+    old_sequencer_id = proofs[0].sequencer_id
+    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
 
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
-    asyncio.create_task(switch.switch_sequencer(old_sequencer_id, new_sequencer_id))
+    asyncio.create_task(switch.switch_to_sequencer(new_sequencer_id))
 
     return EmptyResponse(message="Sequencer switch initiated successfully.")
 
@@ -251,7 +255,9 @@ async def get_state() -> NodeStateResponse:
 
 @router.get(
     "/{app_name}/batches/{state}/last",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchResponse:
     """Get the latest batch for a specific application in the given state."""
@@ -275,7 +281,9 @@ async def get_last_batch_by_state(app_name: str, state: str) -> GetAppLastBatchR
 
 @router.get(
     "/batches/{state}/last",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
     """Retrieve the latest batches for all applications in one request."""
@@ -296,7 +304,9 @@ async def get_last_batches_in_bulk_mode(state: str) -> GetAppsLastBatchResponse:
 
 @router.get(
     "/{app_name}/batches/{state}",
-    dependencies=[Depends(utils.validate_version("node"))],
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_batches(
     app_name: str, state: str, after: int = Query(0, ge=0)

@@ -550,7 +550,7 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def reset_initialized_batch_bodies(self, app_name: str) -> None:
+    def clear_initialized_batch_bodies(self, app_name: str) -> None:
         """reset initialized batches after a switch for the new sequencer."""
         self.apps[app_name]["initialized_batch_bodies"] = deque()
 

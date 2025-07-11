@@ -1,10 +1,7 @@
 """Configuration functions for the ZSequencer."""
 
-import cProfile
-import functools
 import json
 import os
-import pstats
 import sys
 import time
 from random import randbytes
@@ -81,10 +78,6 @@ class Config:
         self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (
             node_config.sequencer_setup_deadline_time_in_seconds
         )
-        self.HEADERS = {
-            "Content-Type": "application/json",
-            "Version": node_config.version,
-        }
         # Init node encryption and networks configurations
         self._init_node()
 
@@ -216,7 +209,7 @@ class Config:
                 continue
             url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
             try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=5).json()
+                response = requests.get(url=url, timeout=5).json()
                 if response["data"]["version"] != self.VERSION:
                     continue
                 sequencer_id = response["data"]["sequencer_id"]
@@ -320,39 +313,11 @@ class Config:
     def TOTAL_STAKE(self):
         return self.last_state.total_stake
 
-    def update_sequencer(self, sequencer_id: str | None) -> None:
+    def update_sequencer(self, sequencer_id: str) -> None:
         """Update the sequencer configuration."""
-        if sequencer_id:
-            self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[
-                self.NETWORK_STATUS_TAG
-            ].nodes[sequencer_id]
-
-    # TODO: remove
-    @staticmethod
-    def profile_function(output_file: str) -> Any:
-        """Decorator to profile the execution of a function."""
-
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                profiler = cProfile.Profile()
-                profiler.enable()
-                try:
-                    result = func(*args, **kwargs)
-                finally:
-                    profiler.disable()
-                    with open(
-                        file=f"{zconfig.NODE['port']}_{output_file}",
-                        mode="a",
-                        encoding="utf-8",
-                    ) as file:
-                        ps = pstats.Stats(profiler, stream=file)
-                        ps.strip_dirs().sort_stats("cumulative").print_stats()
-                return result
-
-            return wrapper
-
-        return decorator
+        self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].nodes[
+            sequencer_id
+        ]
 
 
 zconfig = Config.get_instance(node_config=NodeConfig())
