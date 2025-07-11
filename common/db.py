@@ -474,6 +474,7 @@ class InMemoryDB:
 
     @property
     def not_receiving_nodes_put_batches(self) -> bool:
+        """Check if a significant portion of nodes have stopped sending batch requests, indicating potential sequencer failover."""
         attesting_nodes = zconfig.last_state.attesting_nodes
         disconnected_nodes_stake = 0
         t = time.time()
@@ -490,7 +491,9 @@ class InMemoryDB:
         total_stake = zconfig.last_state.total_stake
         return 100 * disconnected_nodes_stake / total_stake >= zconfig.THRESHOLD_PERCENT
 
-    async def check_sequencing_state(self) -> None:
+    async def detect_sequencer_failover(self) -> None:
+        """Detect if other nodes have switched to a new sequencer and update accordingly.
+        This can happen if this sequencer faces connectivity issues and misses the network's sequencer switch."""
         if self.not_receiving_nodes_put_batches:
             if self.has_received_nodes_put_batches:
                 zlogger.warning(
@@ -504,6 +507,7 @@ class InMemoryDB:
                         self.reinitialize_sequenced_batches(app_name=app_name)
 
         else:
+            # Mark that we've received requests to avoid false failover detection during initial startup
             self.has_received_nodes_put_batches = True
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
