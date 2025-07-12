@@ -195,7 +195,7 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                 zdb.apps[app_name]["nodes_state"] = {}
                 zdb.reset_latency_queue(app_name)
 
-            if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+            if zconfig.is_sequencer:
                 zlogger.info(
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
                 )

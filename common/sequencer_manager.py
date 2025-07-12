@@ -99,6 +99,6 @@ async def reset_sequencer(db_instance) -> None:
     zlogger.warning(f"Sequencer reset to {network_sequencer}")
     for app_name in db_instance.apps:
         db_instance.reinitialize_sequenced_batches(app_name=app_name)
-    if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+    if zconfig.is_sequencer:
         zlogger.info(f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}")
         db_instance.has_received_nodes_put_batches = False
