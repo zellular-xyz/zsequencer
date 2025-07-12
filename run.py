@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from common import errors
 from common.db import zdb
 from common.logger import zlogger
+from common.sequencer_manager import init_sequencer
 from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
@@ -111,11 +112,11 @@ async def run_server() -> None:
 
 async def main() -> None:
     """Main entry point for running the Zellular Node."""
-    await zconfig.init_sequencer()
     if zconfig.SABOTAGE_SIMULATION:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()
 
+    await init_sequencer()
     await zdb.initialize()
     tasks = [
         run_sequencer_tasks(),

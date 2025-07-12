@@ -1,6 +1,5 @@
 """Configuration functions for the ZSequencer."""
 
-import asyncio
 import json
 import os
 import sys
@@ -195,65 +194,6 @@ class Config:
             quorum_numbers=[0],
             socket=self.REGISTER_SOCKET,
         )
-
-    async def init_sequencer(self) -> None:
-        """Finds the initial sequencer id."""
-        network_sequencer = await self.find_network_sequencer()
-        if network_sequencer:
-            self.update_sequencer(network_sequencer)
-        else:
-            self.update_sequencer(self.INIT_SEQUENCER_ID)
-        if self.is_sequencer:
-            zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s",
-                self.NODE["id"],
-            )
-
-    async def find_network_sequencer(self) -> str | None:
-        """Finds the network active sequencer id."""
-        sequencing_nodes = self.last_state.sequencing_nodes
-        attesting_nodes = self.last_state.attesting_nodes
-
-        total_stake = self.last_state.total_stake
-
-        from common.auth import create_session
-
-        async def query_node_state(node_id: str) -> tuple[str, str | None]:
-            """Query a single node's state and return (node_id, sequencer_id)."""
-            url = f"{self.NODES[node_id]['socket']}/node/state"
-            try:
-                async with create_session() as session:
-                    async with session.get(url) as response:
-                        data = await response.json()
-                        if data["data"]["version"] == self.VERSION:
-                            sequencer_id = data["data"]["sequencer_id"]
-                            if sequencer_id in sequencing_nodes:
-                                return node_id, sequencer_id
-            except Exception:
-                zlogger.warning(f"Unable to get state from {node_id}")
-            return node_id, None
-
-        # Create all tasks
-        tasks = [
-            query_node_state(node_id)
-            for node_id in attesting_nodes
-            if node_id != self.NODE["id"]
-        ]
-
-        results = await asyncio.gather(*tasks)
-
-        sequencers_stake = dict.fromkeys(sequencing_nodes, 0)
-        for result in results:
-            node_id, sequencer_id = result
-            if sequencer_id:
-                sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
-
-        max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
-        sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
-            return max_stake_id
-        else:
-            return None
 
     def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(

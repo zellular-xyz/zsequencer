@@ -12,6 +12,7 @@ from common.batch import BatchRecord
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
 from common.logger import zlogger
+from common.sequencer_manager import reset_sequencer
 from common.snapshot_manager import SnapshotManager
 from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
@@ -500,30 +501,10 @@ class InMemoryDB:
         This can happen if this sequencer faces connectivity issues and misses the network's sequencer switch."""
         if self.not_receiving_nodes_put_batches:
             if self.has_received_nodes_put_batches:
-                await self.reset_sequencer()
+                await reset_sequencer(self)
         else:
             # Mark that we've received requests to avoid false failover detection during initial startup
             self.has_received_nodes_put_batches = True
-
-    async def reset_sequencer(self) -> None:
-        """Reset the sequencer to the network sequencer."""
-        zlogger.warning("Finding the network sequencer ...")
-        network_sequencer = await zconfig.find_network_sequencer()
-
-        if not network_sequencer:
-            zlogger.warning("Network sequencer not found, skipping reset.")
-            return
-
-        if zconfig.SEQUENCER["id"] == network_sequencer:
-            zlogger.warning(
-                "Network sequencer is the same as the current sequencer, skipping reset."
-            )
-            return
-
-        zconfig.update_sequencer(network_sequencer)
-        zlogger.warning(f"Sequencer reset to {network_sequencer}")
-        for app_name in self.apps:
-            self.reinitialize_sequenced_batches(app_name=app_name)
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""

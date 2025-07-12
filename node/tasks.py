@@ -14,6 +14,7 @@ from common.db import zdb
 from common.errors import InvalidRequestError, IsNotSequencerError
 from common.logger import zlogger
 from common.state import is_state_before_or_equal
+from common.sequencer_manager import reset_sequencer
 from config import zconfig
 from node.rate_limit import (
     get_remaining_capacity_kb_of_self_node,
@@ -104,7 +105,7 @@ async def send_app_batches(app_name: str) -> int:
 
             # This can happen if the node misses a switch request because of a reason like connectivity issues
             if response["error"]["code"] == IsNotSequencerError.__name__:
-                await zdb.reset_sequencer()
+                await reset_sequencer(zdb)
 
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
