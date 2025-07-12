@@ -13,8 +13,8 @@ from common.batch_sequence import BatchSequence
 from common.db import zdb
 from common.errors import InvalidRequestError, IsNotSequencerError
 from common.logger import zlogger
-from common.state import is_state_before_or_equal
 from common.sequencer_manager import reset_sequencer
+from common.state import is_state_before_or_equal
 from config import zconfig
 from node.rate_limit import (
     get_remaining_capacity_kb_of_self_node,
