@@ -477,7 +477,8 @@ class InMemoryDB:
         """Check if a significant portion of nodes have stopped sending batch requests, indicating potential sequencer failover."""
         attesting_nodes = zconfig.last_state.attesting_nodes
         disconnected_nodes_stake = 0
-        t = time.time()
+        current_time = time.time()
+        NODE_INACTIVITY_THRESHOLD_SECONDS = 5
         for node_id in attesting_nodes:
             last_node_request_time = max(
                 self.apps[app_name]["nodes_state"]
@@ -485,7 +486,10 @@ class InMemoryDB:
                 .get("update_timestamp", 0)
                 for app_name in self.apps
             )
-            if t - last_node_request_time > 5:
+            if (
+                current_time - last_node_request_time
+                > NODE_INACTIVITY_THRESHOLD_SECONDS
+            ):
                 disconnected_nodes_stake += attesting_nodes[node_id]["stake"]
 
         total_stake = zconfig.last_state.total_stake
