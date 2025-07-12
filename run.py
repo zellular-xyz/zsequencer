@@ -68,7 +68,7 @@ async def run_sequencer_tasks() -> None:
             continue
 
         await sequencer_tasks.sync()
-        await zdb.detect_sequencer_failover()
+        await zdb.detect_and_reset_sequencer_on_failover()
 
 
 async def check_node_reachability() -> None:

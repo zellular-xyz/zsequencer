@@ -495,7 +495,7 @@ class InMemoryDB:
         total_stake = zconfig.last_state.total_stake
         return 100 * disconnected_nodes_stake / total_stake >= zconfig.THRESHOLD_PERCENT
 
-    async def detect_sequencer_failover(self) -> None:
+    async def detect_and_reset_sequencer_on_failover(self) -> None:
         """Detect if other nodes have switched to a new sequencer and update accordingly.
         This can happen if this sequencer faces connectivity issues and misses the network's sequencer switch."""
         if self.not_receiving_nodes_put_batches:
