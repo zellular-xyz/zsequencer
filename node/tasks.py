@@ -104,20 +104,7 @@ async def send_app_batches(app_name: str) -> int:
 
             # This can happen if the node misses a switch request because of a reason like connectivity issues
             if response["error"]["code"] == IsNotSequencerError.__name__:
-                # Try to find the seqeuncer that network has consensus on
-                network_sequencer = await zconfig.find_network_sequencer()
-                if (
-                    network_sequencer is not None
-                    and network_sequencer != zconfig.SEQUENCER["id"]
-                ):
-                    # Switch to the network seqeuncer if network is has consensus on another sequencer
-                    zlogger.warning(
-                        f"Switching to the network sequencer: {network_sequencer}"
-                    )
-                    zconfig.update_sequencer(network_sequencer)
-                    for app_name in zdb.apps:
-                        zdb.reinitialize_sequenced_batches(app_name=app_name)
-                    return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
+                await zdb.reset_sequencer()
 
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
