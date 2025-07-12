@@ -211,6 +211,9 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 
 @router.get(
     "/state",
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_state() -> NodeStateResponse:
     """Retrieve current node information and application status."""
