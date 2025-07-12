@@ -476,7 +476,7 @@ class InMemoryDB:
         attesting_nodes = zconfig.last_state.attesting_nodes
         disconnected_nodes_stake = 0
         current_time = time.time()
-        NODE_INACTIVITY_THRESHOLD_SECONDS = 5
+        NODE_INACTIVITY_THRESHOLD_SECONDS = 10
         for node_id in attesting_nodes:
             last_node_request_time = max(
                 self.apps[app_name]["nodes_state"]
