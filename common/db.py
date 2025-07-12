@@ -466,11 +466,8 @@ class InMemoryDB:
         node_state: dict[str, Any],
     ) -> None:
         """Upsert the state of a node."""
-        if not node_state["sequenced_index"]:
-            return
-
-        app_name: str = node_state["app_name"]
-        node_id: str = node_state["node_id"]
+        app_name = node_state["app_name"]
+        node_id = node_state["node_id"]
         self.apps[app_name]["nodes_state"][node_id] = node_state
 
     @property
