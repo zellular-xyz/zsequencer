@@ -199,6 +199,7 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                 zlogger.info(
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
                 )
+                zdb.has_received_nodes_put_batches = False
                 for app_name in zconfig.APPS:
                     # Clear initialized batches if this node becomes the new sequencer.
                     # These batches can not be added to the operational pool as sequenced,
