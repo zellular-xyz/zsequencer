@@ -1,6 +1,10 @@
 import asyncio
 
+from aiohttp.client_exceptions import ClientError
+from aiohttp.web import HTTPError
+
 from common.auth import create_session
+from common.errors import IsSequencerError
 from common.logger import zlogger
 from config import zconfig
 
@@ -24,14 +28,27 @@ async def _query_node_state(node_id: str) -> tuple[str, str | None]:
     url = f"{zconfig.NODES[node_id]['socket']}/node/state"
     try:
         async with create_session() as session:
-            async with session.get(url) as response:
+            async with session.get(url, raise_for_status=False) as response:
                 data = await response.json()
-                if data["data"]["version"] == zconfig.VERSION:
-                    sequencer_id = data["data"]["sequencer_id"]
-                    return node_id, sequencer_id
-    except Exception:
-        zlogger.warning(f"Unable to get state from {node_id}")
-    return node_id, None
+                if (
+                    data["status"] == "error"
+                    and data["error"]["code"] == IsSequencerError.__name__
+                ):
+                    # Node is not responding to /node/state because it's sequencer
+                    return node_id, node_id
+
+                if data["status"] == "error":
+                    zlogger.warning(
+                        f"Unexpected response while querying state from {node_id}: {data}"
+                    )
+                    return node_id, None
+
+                sequencer_id = data["data"]["sequencer_id"]
+                return node_id, sequencer_id
+
+    except (ClientError, HTTPError, asyncio.TimeoutError) as e:
+        zlogger.warning(f"Unable to get state from {node_id}: {e}")
+        return node_id, None
 
 
 async def _find_network_sequencer() -> str | None:
