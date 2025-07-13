@@ -12,7 +12,6 @@ from common.batch import BatchRecord
 from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
 from common.logger import zlogger
-from common.sequencer_manager import reset_sequencer
 from common.snapshot_manager import SnapshotManager
 from common.state import FinalizedState, OperationalState, SequencedState
 from config import zconfig
@@ -49,7 +48,6 @@ class InMemoryDB:
         """Initialize the InMemoryDB instance."""
         self.is_sequencer_down = False
         self.is_node_reachable = True
-        self.has_received_nodes_put_batches = False
         self._snapshot_manager = SnapshotManager(
             base_path=zconfig.SNAPSHOT_PATH,
             version=zconfig.VERSION,
@@ -469,39 +467,6 @@ class InMemoryDB:
         app_name = node_state["app_name"]
         node_id = node_state["node_id"]
         self.apps[app_name]["nodes_state"][node_id] = node_state
-
-    @property
-    def not_receiving_nodes_put_batches(self) -> bool:
-        """Check if a significant portion of nodes have stopped sending batch requests, indicating potential sequencer failover."""
-        attesting_nodes = zconfig.last_state.attesting_nodes
-        disconnected_nodes_stake = 0
-        current_time = time.time()
-        NODE_INACTIVITY_THRESHOLD_SECONDS = 10
-        for node_id in attesting_nodes:
-            last_node_request_time = max(
-                self.apps[app_name]["nodes_state"]
-                .get(node_id, {})
-                .get("update_timestamp", 0)
-                for app_name in self.apps
-            )
-            if (
-                current_time - last_node_request_time
-                > NODE_INACTIVITY_THRESHOLD_SECONDS
-            ):
-                disconnected_nodes_stake += attesting_nodes[node_id]["stake"]
-
-        total_stake = zconfig.last_state.total_stake
-        return 100 * disconnected_nodes_stake / total_stake >= zconfig.THRESHOLD_PERCENT
-
-    async def detect_and_reset_sequencer_on_failover(self) -> None:
-        """Detect if other nodes have switched to a new sequencer and update accordingly.
-        This can happen if this sequencer faces connectivity issues and misses the network's sequencer switch."""
-        if self.not_receiving_nodes_put_batches:
-            if self.has_received_nodes_put_batches:
-                await reset_sequencer(self)
-        else:
-            # Mark that we've received requests to avoid false failover detection during initial startup
-            self.has_received_nodes_put_batches = True
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
         """Get the state of all nodes for a given app."""
