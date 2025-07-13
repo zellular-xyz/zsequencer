@@ -16,7 +16,7 @@ class SequencerManager:
 
     def __init__(self):
         """Initialize the sequencer manager."""
-        self.has_received_nodes_put_batches = False
+        self.has_received_node_updates = False
 
     async def init_sequencer(self) -> None:
         """Initialize the sequencer id for the node."""
@@ -113,11 +113,11 @@ class SequencerManager:
             zlogger.info(
                 f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
             )
-            self.has_received_nodes_put_batches = False
+            self.has_received_node_updates = False
 
     @property
-    def not_receiving_nodes_put_batches(self) -> bool:
-        """Check if a significant portion of nodes have stopped sending batch requests, indicating potential sequencer failover."""
+    def not_receiving_node_updates(self) -> bool:
+        """Check if a significant portion of nodes have stopped sending updates, indicating potential sequencer failover."""
         attesting_nodes = zconfig.last_state.attesting_nodes
         disconnected_nodes_stake = 0
         current_time = time.time()
@@ -141,12 +141,12 @@ class SequencerManager:
     async def detect_and_reset_sequencer_on_failover(self) -> None:
         """Detect if other nodes have switched to a new sequencer and update accordingly.
         This can happen if this sequencer faces connectivity issues and misses the network's sequencer switch."""
-        if self.not_receiving_nodes_put_batches:
-            if self.has_received_nodes_put_batches:
+        if self.not_receiving_node_updates:
+            if self.has_received_node_updates:
                 await self.reset_sequencer()
         else:
             # Mark that we've received requests to avoid false failover detection during initial startup
-            self.has_received_nodes_put_batches = True
+            self.has_received_node_updates = True
 
 
 # Global instance

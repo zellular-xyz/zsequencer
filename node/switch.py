@@ -201,7 +201,7 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
                 )
 
-                zsequencer_manager.has_received_nodes_put_batches = False
+                zsequencer_manager.has_received_node_updates = False
                 for app_name in zconfig.APPS:
                     # Clear initialized batches if this node becomes the new sequencer.
                     # These batches can not be added to the operational pool as sequenced,
