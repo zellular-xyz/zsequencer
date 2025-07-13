@@ -126,7 +126,6 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     """Sign a synchronization point to contribute to batch consensus.
 
     This endpoint can only be called by the current active sequencer."""
-    # Sequencer verification is handled by verify_sequencer_signature dependency
     signature = tasks.sign_sync_point(
         {
             "app_name": request.app_name,
@@ -212,6 +211,9 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 
 @router.get(
     "/state",
+    dependencies=[
+        Depends(utils.validate_version("node")),
+    ],
 )
 async def get_state() -> NodeStateResponse:
     """Retrieve current node information and application status."""

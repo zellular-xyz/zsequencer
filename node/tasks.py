@@ -11,8 +11,9 @@ from common import auth, bls, utils
 from common.api_models import SequencerPutBatchesRequest
 from common.batch_sequence import BatchSequence
 from common.db import zdb
-from common.errors import InvalidRequestError
+from common.errors import InvalidRequestError, IsNotSequencerError
 from common.logger import zlogger
+from common.sequencer_manager import zsequencer_manager
 from common.state import is_state_before_or_equal
 from config import zconfig
 from node.rate_limit import (
@@ -94,12 +95,18 @@ async def send_app_batches(app_name: str) -> int:
                 url,
                 json=request.model_dump(),
                 timeout=5 if zconfig.get_synced_flag() else 30,
+                raise_for_status=False,
             ) as r:
                 response = await r.json()
 
         if response["status"] == "error":
-            zlogger.warning(response["error"]["message"])
+            zlogger.warning(response["error"])
             zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
+
+            # This can happen if the node misses a switch request because of a reason like connectivity issues
+            if response["error"]["code"] == IsNotSequencerError.__name__:
+                await zsequencer_manager.reset_sequencer()
+
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
@@ -186,6 +193,12 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
         or not is_state_before_or_equal(sync_point["state"], batch_record["state"])
         or batch_record["index"] != sync_point["index"]
     ):
+        zlogger.debug(
+            "Invalid sync point reasons: "
+            f"{(batch.get("chaining_hash") != sync_point["chaining_hash"])=} "
+            f"{(not is_state_before_or_equal(sync_point["state"], batch_record["state"]))=} "
+            f"{(batch_record['index'] != sync_point['index'])=}"
+        )
         raise InvalidRequestError(f"Invalid sync point. {sync_point=}, {batch_record=}")
     message = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)

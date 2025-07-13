@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from common import errors
 from common.db import zdb
 from common.logger import zlogger
+from common.sequencer_manager import zsequencer_manager
 from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
@@ -68,6 +69,7 @@ async def run_sequencer_tasks() -> None:
             continue
 
         await sequencer_tasks.sync()
+        await zsequencer_manager.detect_and_reset_sequencer_on_failover()
 
 
 async def check_node_reachability() -> None:
@@ -114,6 +116,7 @@ async def main() -> None:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()
 
+    await zsequencer_manager.init_sequencer()
     await zdb.initialize()
     tasks = [
         run_sequencer_tasks(),

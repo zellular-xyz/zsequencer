@@ -157,11 +157,11 @@ class NodeStateResponse(SuccessResponse):
 class BatchSignatureInfo(BaseModel):
     """Cryptographic proof and metadata about batch consensus status."""
 
-    signature: str | None = None
-    chaining_hash: str | None = None
-    nonsigners: list[str] | None = None
-    index: int | None = None
-    tag: int | None = None
+    signature: str
+    chaining_hash: str
+    nonsigners: list[str]
+    index: int
+    tag: int
 
 
 class GetAppLastBatchResponse(SuccessResponse):

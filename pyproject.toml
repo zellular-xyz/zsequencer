@@ -18,7 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy",
-    "zellular",
+    "zellular==0.2.8",
     "poethepoet",
     "ruff",
     "sphinx==7.1.2",
