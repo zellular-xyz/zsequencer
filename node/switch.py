@@ -17,6 +17,7 @@ from common.batch_sequence import BatchSequence
 from common.bls import is_sync_point_signature_verified
 from common.db import zdb
 from common.logger import zlogger
+from common.sequencer_manager import zsequencer_manager
 from config import zconfig
 
 
@@ -199,7 +200,8 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                 zlogger.info(
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
                 )
-                zdb.has_received_nodes_put_batches = False
+
+                zsequencer_manager.has_received_nodes_put_batches = False
                 for app_name in zconfig.APPS:
                     # Clear initialized batches if this node becomes the new sequencer.
                     # These batches can not be added to the operational pool as sequenced,
@@ -257,7 +259,7 @@ async def _sync_with_latest_locks() -> None:
 
             # fixme: this is added to track rarely happening bug and should be removed
             if not last_locked_batch.get("locked_nonsigners"):
-                zlogger.info(
+                zlogger.warning(
                     f"nonsigners should not be empty {last_locked_batch_record=}"
                 )
 
@@ -269,7 +271,7 @@ async def _sync_with_latest_locks() -> None:
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
                 signature_hex=last_locked_batch.get("lock_signature"),
-                nonsigners=last_locked_batch.get("locked_nonsigners"),
+                nonsigners=last_locked_batch.get("locked_nonsigners", []),
             ):
                 zlogger.warning(
                     f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified."
