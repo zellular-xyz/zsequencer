@@ -51,7 +51,9 @@ def main(config_path: str) -> None:
                     f"Port {port} is used by sequencer. No request will be sent to the sequencer anymore."
                 )
             else:
-                zlogger.error(e)
+                zlogger.error(f"Unexpected exception occured: {e}")
+        except Exception as e:
+            zlogger.error(f"Unexpected exception occured: {type(e)} {e}")
 
 
 if __name__ == "__main__":
