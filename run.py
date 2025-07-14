@@ -33,9 +33,11 @@ app.include_router(sequencer_router, prefix="/sequencer")
 async def base_http_exception_handler(
     request: Request, e: errors.BaseHTTPError
 ) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+
     zlogger.log(
         e.log_level,
-        f"[API_ERROR] {e.__class__.__name__} at {request.url.path}: {e.status_code} - {e.detail['error']['message']}",
+        f"[API_ERROR] {e.__class__.__name__} at {request.url.path} from {client_ip}: {e.status_code} - {e.detail['error']['message']}",
     )
     return JSONResponse(status_code=e.status_code, content=e.detail)
 
