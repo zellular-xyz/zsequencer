@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from common import errors
 from common.db import zdb
 from common.logger import zlogger
+from common.sequencer_manager import zsequencer_manager
 from config import zconfig
 from node import tasks as node_tasks
 from node.routers import router as node_router
@@ -32,9 +33,11 @@ app.include_router(sequencer_router, prefix="/sequencer")
 async def base_http_exception_handler(
     request: Request, e: errors.BaseHTTPError
 ) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+
     zlogger.log(
         e.log_level,
-        f"[API_ERROR] {e.__class__.__name__} at {request.url.path}: {e.status_code} - {e.detail['error']['message']}",
+        f"[API_ERROR] {e.__class__.__name__} at {request.url.path} from {client_ip}: {e.status_code} - {e.detail['error']['message']}",
     )
     return JSONResponse(status_code=e.status_code, content=e.detail)
 
@@ -68,6 +71,7 @@ async def run_sequencer_tasks() -> None:
             continue
 
         await sequencer_tasks.sync()
+        await zsequencer_manager.detect_and_reset_sequencer_on_failover()
 
 
 async def check_node_reachability() -> None:
@@ -114,6 +118,7 @@ async def main() -> None:
         sabotage_simulator = SabotageSimulator()
         sabotage_simulator.start_simulating()
 
+    await zsequencer_manager.init_sequencer()
     await zdb.initialize()
     tasks = [
         run_sequencer_tasks(),

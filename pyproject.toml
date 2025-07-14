@@ -3,6 +3,7 @@ name = "zsequencer"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp==3.12.13",
     "eigensdk==0.0.3",
     "pydantic==2.9.2",
     "pydantic-settings==2.7.1",
@@ -17,7 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy",
-    "zellular",
+    "zellular==0.2.8",
     "poethepoet",
     "ruff",
     "sphinx==7.1.2",

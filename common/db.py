@@ -464,11 +464,8 @@ class InMemoryDB:
         node_state: dict[str, Any],
     ) -> None:
         """Upsert the state of a node."""
-        if not node_state["sequenced_index"]:
-            return
-
-        app_name: str = node_state["app_name"]
-        node_id: str = node_state["node_id"]
+        app_name = node_state["app_name"]
+        node_id = node_state["node_id"]
         self.apps[app_name]["nodes_state"][node_id] = node_state
 
     def get_nodes_state(self, app_name: str) -> list[dict[str, Any]]:
@@ -550,7 +547,7 @@ class InMemoryDB:
                 current_time=int(time.time()),
             )
 
-    def reset_initialized_batch_bodies(self, app_name: str) -> None:
+    def clear_initialized_batch_bodies(self, app_name: str) -> None:
         """reset initialized batches after a switch for the new sequencer."""
         self.apps[app_name]["initialized_batch_bodies"] = deque()
 

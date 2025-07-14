@@ -7,13 +7,13 @@ import random
 import time
 from typing import Any
 
-import aiohttp
-
-from common import bls, utils
+from common import auth, bls, utils
+from common.api_models import SequencerPutBatchesRequest
 from common.batch_sequence import BatchSequence
 from common.db import zdb
-from common.errors import InvalidRequestError
+from common.errors import InvalidRequestError, IsNotSequencerError
 from common.logger import zlogger
+from common.sequencer_manager import zsequencer_manager
 from common.state import is_state_before_or_equal
 from config import zconfig
 from node.rate_limit import (
@@ -71,46 +71,42 @@ async def send_app_batches(app_name: str) -> int:
         state="locked",
     )
 
-    concat_hash: str = "".join(
-        utils.gen_hash(batch_body) for batch_body in batch_bodies
-    )
-    concat_sig: str = utils.eth_sign(concat_hash)
-    data: str = json.dumps(
-        {
-            "app_name": app_name,
-            "batches": batch_bodies,
-            "node_id": zconfig.NODE["id"],
-            "signature": concat_sig,
-            "sequenced_index": last_sequenced_batch_record.get("index", 0),
-            "sequenced_chaining_hash": last_sequenced_batch_record.get("batch", {}).get(
-                "chaining_hash",
-                "",
-            ),
-            "locked_index": last_locked_batch_record.get("index", 0),
-            "locked_chaining_hash": last_locked_batch_record.get("batch", {}).get(
-                "chaining_hash",
-                "",
-            ),
-            "timestamp": int(time.time()),
-        },
+    request = SequencerPutBatchesRequest(
+        app_name=app_name,
+        batches=batch_bodies,
+        sequenced_index=last_sequenced_batch_record.get("index", 0),
+        sequenced_chaining_hash=last_sequenced_batch_record.get("batch", {}).get(
+            "chaining_hash",
+            "",
+        ),
+        locked_index=last_locked_batch_record.get("index", 0),
+        locked_chaining_hash=last_locked_batch_record.get("batch", {}).get(
+            "chaining_hash",
+            "",
+        ),
+        timestamp=int(time.time()),
     )
 
     url = f"{zconfig.SEQUENCER['socket']}/sequencer/batches"
     response = None
     try:
-        async with aiohttp.ClientSession() as session:
+        async with auth.create_session() as session:
             async with session.put(
                 url,
-                data=data,
-                headers=zconfig.HEADERS,
+                json=request.model_dump(),
                 timeout=5 if zconfig.get_synced_flag() else 30,
-                raise_for_status=True,
+                raise_for_status=False,
             ) as r:
                 response = await r.json()
 
         if response["status"] == "error":
-            zlogger.warning(response["error"]["message"])
+            zlogger.warning(response["error"])
             zdb.reinit_missed_batch_bodies(app_name, batch_bodies)
+
+            # This can happen if the node misses a switch request because of a reason like connectivity issues
+            if response["error"]["code"] == IsNotSequencerError.__name__:
+                await zsequencer_manager.reset_sequencer()
+
             zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
@@ -197,7 +193,13 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
         or not is_state_before_or_equal(sync_point["state"], batch_record["state"])
         or batch_record["index"] != sync_point["index"]
     ):
+        zlogger.debug(
+            "Invalid sync point reasons: "
+            f"{(batch.get("chaining_hash") != sync_point["chaining_hash"])=} "
+            f"{(not is_state_before_or_equal(sync_point["state"], batch_record["state"]))=} "
+            f"{(batch_record['index'] != sync_point['index'])=}"
+        )
         raise InvalidRequestError(f"Invalid sync point. {sync_point=}, {batch_record=}")
-    message: str = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
+    message = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature

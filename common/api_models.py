@@ -97,17 +97,12 @@ class DisputeRequest(BaseModel):
 
     sequencer_id: str
     apps_censored_batches: dict[str, str]
-    is_sequencer_down: bool
     timestamp: int
 
 
 class DisputeData(BaseModel):
     """Dispute confirmation response with signed proof."""
 
-    node_id: str
-    old_sequencer_id: str
-    new_sequencer_id: str
-    timestamp: int
     signature: str
 
 
@@ -121,8 +116,7 @@ class SwitchProof(BaseModel):
     """Cryptographic proof authorizing a sequencer switch."""
 
     node_id: str
-    old_sequencer_id: str
-    new_sequencer_id: str
+    sequencer_id: str
     timestamp: int
     signature: str
 
@@ -130,7 +124,6 @@ class SwitchProof(BaseModel):
 class SwitchRequest(BaseModel):
     """Request to switch sequencers with supporting proofs."""
 
-    timestamp: int
     proofs: list[SwitchProof]
 
 
@@ -164,11 +157,11 @@ class NodeStateResponse(SuccessResponse):
 class BatchSignatureInfo(BaseModel):
     """Cryptographic proof and metadata about batch consensus status."""
 
-    signature: str | None = None
-    chaining_hash: str | None = None
-    nonsigners: list[str] | None = None
-    index: int | None = None
-    tag: int | None = None
+    signature: str
+    chaining_hash: str
+    nonsigners: list[str]
+    index: int
+    tag: int
 
 
 class GetAppLastBatchResponse(SuccessResponse):
@@ -206,8 +199,6 @@ class SequencerPutBatchesRequest(BaseModel):
 
     app_name: str
     batches: list[str]
-    node_id: str
-    signature: str
     sequenced_index: int
     sequenced_chaining_hash: str
     locked_index: int

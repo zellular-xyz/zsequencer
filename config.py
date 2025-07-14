@@ -1,17 +1,13 @@
 """Configuration functions for the ZSequencer."""
 
-import cProfile
-import functools
 import json
 import os
-import pstats
 import sys
 import time
 from random import randbytes
 from typing import Any
 from urllib.parse import urlparse
 
-import requests
 from eigensdk.chainio.clients.builder import BuildAllConfig, build_all
 from eigensdk.crypto.bls import attestation
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -81,10 +77,6 @@ class Config:
         self.SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS = (
             node_config.sequencer_setup_deadline_time_in_seconds
         )
-        self.HEADERS = {
-            "Content-Type": "application/json",
-            "Version": node_config.version,
-        }
         # Init node encryption and networks configurations
         self._init_node()
 
@@ -203,34 +195,6 @@ class Config:
             socket=self.REGISTER_SOCKET,
         )
 
-    def init_sequencer(self) -> None:
-        """Finds the initial sequencer id."""
-        sequencing_nodes = self.last_state.sequencing_nodes
-        attesting_nodes = self.last_state.attesting_nodes
-
-        total_stake = self.HISTORICAL_NETWORK_STATE[self.NETWORK_STATUS_TAG].total_stake
-
-        sequencers_stake: dict[str, Any] = dict.fromkeys(sequencing_nodes, 0)
-        for node_id in attesting_nodes:
-            if node_id == self.NODE["id"]:
-                continue
-            url: str = f"{attesting_nodes[node_id]['socket']}/node/state"
-            try:
-                response = requests.get(url=url, headers=self.HEADERS, timeout=5).json()
-                if response["data"]["version"] != self.VERSION:
-                    continue
-                sequencer_id = response["data"]["sequencer_id"]
-                if sequencer_id in sequencing_nodes:
-                    sequencers_stake[sequencer_id] += attesting_nodes[node_id]["stake"]
-            except Exception:
-                zlogger.warning(f"Unable to get state from {node_id}")
-        max_stake_id = max(sequencers_stake, key=lambda k: sequencers_stake[k])
-        sequencers_stake[max_stake_id] += self.NODE["stake"]
-        if 100 * sequencers_stake[max_stake_id] / total_stake >= self.THRESHOLD_PERCENT:
-            self.update_sequencer(max_stake_id)
-        else:
-            self.update_sequencer(self.INIT_SEQUENCER_ID)
-
     def _init_node(self):
         bls_key_pair: attestation.KeyPair = attestation.KeyPair.read_from_file(
             self.BLS_KEY_STORE_PATH,
@@ -275,15 +239,6 @@ class Config:
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.",
             )
             sys.exit()
-
-        self.init_sequencer()
-
-        if self.is_sequencer:
-            zlogger.info(
-                "This node is acting as the SEQUENCER. ID: %s",
-                self.NODE["id"],
-            )
-
         self.APPS = utils.get_file_content(self.APPS_FILE)
 
         for app_name in self.APPS:
@@ -320,39 +275,9 @@ class Config:
     def TOTAL_STAKE(self):
         return self.last_state.total_stake
 
-    def update_sequencer(self, sequencer_id: str | None) -> None:
+    def update_sequencer(self, sequencer_id: str) -> None:
         """Update the sequencer configuration."""
-        if sequencer_id:
-            self.SEQUENCER = self.HISTORICAL_NETWORK_STATE[
-                self.NETWORK_STATUS_TAG
-            ].nodes[sequencer_id]
-
-    # TODO: remove
-    @staticmethod
-    def profile_function(output_file: str) -> Any:
-        """Decorator to profile the execution of a function."""
-
-        def decorator(func):
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                profiler = cProfile.Profile()
-                profiler.enable()
-                try:
-                    result = func(*args, **kwargs)
-                finally:
-                    profiler.disable()
-                    with open(
-                        file=f"{zconfig.NODE['port']}_{output_file}",
-                        mode="a",
-                        encoding="utf-8",
-                    ) as file:
-                        ps = pstats.Stats(profiler, stream=file)
-                        ps.strip_dirs().sort_stats("cumulative").print_stats()
-                return result
-
-            return wrapper
-
-        return decorator
+        self.SEQUENCER = self.NODES[sequencer_id]
 
 
 zconfig = Config.get_instance(node_config=NodeConfig())

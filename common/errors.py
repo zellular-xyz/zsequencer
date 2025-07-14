@@ -61,6 +61,12 @@ class IssueNotFoundError(BaseHTTPError):
     log_level = logging.INFO
 
 
+class InvalidTimestampError(BaseHTTPError):
+    status_code = status.HTTP_400_BAD_REQUEST
+    message = "Requested timestamp does not match the node timestamp."
+    log_level = logging.INFO
+
+
 class SequencerChangeNotApprovedError(BaseHTTPError):
     status_code = status.HTTP_403_FORBIDDEN
     message = "The sequencer change request is not approved."

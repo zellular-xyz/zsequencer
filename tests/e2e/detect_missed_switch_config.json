@@ -16,19 +16,19 @@
       "ZSEQUENCER_SABOTAGE_SIMULATION": "true",
       "ZSEQUENCER_CHECK_REACHABILITY_OF_NODE_URL": "false",
       "ZSEQUENCER_LOG_LEVEL": "INFO",
-      "ZSEQUENCER_SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS": "10"
+      "ZSEQUENCER_SEQUENCER_SETUP_DEADLINE_TIME_IN_SECONDS": "5"
     },
     "base_port": 6005,
-    "node_num": 4,
+    "node_num": 7,
     "sabotages_config": {
       "1": {
         "out_of_reach_time_series": [
           {
-            "time_duration": 10,
+            "time_duration": 20,
             "up": true
           },
           {
-            "time_duration": 100,
+            "time_duration": 20,
             "up": false
           },
           {
@@ -44,11 +44,11 @@
             "up": true
           },
           {
-            "time_duration": 10,
+            "time_duration": 1000,
             "up": false
           },
           {
-            "time_duration": 100,
+            "time_duration": 1000,
             "up": true
           }
         ]
@@ -64,7 +64,7 @@
             "up": false
           },
           {
-            "time_duration": 100,
+            "time_duration": 1000,
             "up": true
           }
         ]
@@ -72,15 +72,63 @@
       "4": {
         "out_of_reach_time_series": [
           {
+            "time_duration": 10,
+            "up": true
+          },
+          {
+            "time_duration": 60,
+            "up": false
+          },
+          {
+            "time_duration": 1000,
+            "up": true
+          }
+        ]
+      },
+      "5": {
+        "out_of_reach_time_series": [
+          {
             "time_duration": 1000,
             "up": true
           },
           {
-            "time_duration": 10,
+            "time_duration": 1000,
             "up": false
           },
           {
-            "time_duration": 100,
+            "time_duration": 1000,
+            "up": true
+          }
+        ]
+      },
+      "6": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 1000,
+            "up": true
+          },
+          {
+            "time_duration": 1000,
+            "up": false
+          },
+          {
+            "time_duration": 1000,
+            "up": true
+          }
+        ]
+      },
+      "7": {
+        "out_of_reach_time_series": [
+          {
+            "time_duration": 1000,
+            "up": true
+          },
+          {
+            "time_duration": 1000,
+            "up": false
+          },
+          {
+            "time_duration": 1000,
             "up": true
           }
         ]

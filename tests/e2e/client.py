@@ -5,7 +5,7 @@ import random
 import time
 from uuid import uuid4
 
-from requests.exceptions import RequestException
+from httpx import HTTPStatusError
 from zellular import StaticNetwork, Zellular
 
 from common.errors import IsSequencerError
@@ -13,7 +13,7 @@ from common.logger import zlogger
 from tests.e2e.run import SIMULATION_DATA_DIR, load_simulation_config
 
 
-def is_sequencer_error(e: RequestException) -> bool:
+def is_sequencer_error(e: HTTPStatusError) -> bool:
     return (
         e.response is not None
         and e.response.headers.get("content-type") == "application/json"
@@ -44,14 +44,16 @@ def main(config_path: str) -> None:
         txs = [{"tx_id": str(uuid4()), "operation": "foo", "t": t} for i in range(1)]
         try:
             zellular.send(json.dumps(txs))
-        except RequestException as e:
+        except HTTPStatusError as e:
             if is_sequencer_error(e):
                 sequencer_port = port
                 zlogger.warning(
                     f"Port {port} is used by sequencer. No request will be sent to the sequencer anymore."
                 )
             else:
-                zlogger.error(e)
+                zlogger.error(f"Unexpected exception occured: {e}")
+        except Exception as e:
+            zlogger.error(f"Unexpected exception occured: {type(e)} {e}")
 
 
 if __name__ == "__main__":
