@@ -66,7 +66,7 @@ async def send_dispute_request(
 async def gather_disputes(
     sequencer_id: str, timestamp: int
 ) -> tuple[list[SwitchProof], float]:
-    """Gather dispute data from nodes until the stake of nodes reaches the threshold."""
+    """Gather dispute data from nodes until the stake of nodes reaches above of the half of threshold."""
     dispute_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(send_dispute_request(node, sequencer_id, timestamp)): node[
             "id"
@@ -80,7 +80,7 @@ async def gather_disputes(
     stake_percent = (
         100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
     )
-    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT / 2:
         done, pending_tasks = await asyncio.wait(
             pending_tasks,
             return_when=asyncio.FIRST_COMPLETED,
@@ -139,7 +139,7 @@ async def send_dispute_requests() -> None:
         zlogger.error(f"An unexpected error occurred while gathering disputes: {error}")
         return
 
-    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
+    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT / 2:
         zlogger.warning(
             f"Not enough stake for dispute, stake_percent : {stake_percent}"
         )
@@ -460,7 +460,7 @@ def is_switch_approved(proofs: list[SwitchProof]) -> bool:
 
     node_ids = [proof.node_id for proof in proofs if is_dispute_approved(proof)]
     stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
-    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
+    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT / 2
 
 
 def is_dispute_approved(proof: SwitchProof) -> bool:
