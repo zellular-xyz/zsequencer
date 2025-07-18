@@ -49,12 +49,6 @@ class NotSyncedError(BaseHTTPError):
     log_level = logging.WARNING
 
 
-class InvalidSequencerError(BaseHTTPError):
-    status_code = status.HTTP_400_BAD_REQUEST
-    message = "The sequencer ID is invalid."
-    log_level = logging.INFO
-
-
 class IssueNotFoundError(BaseHTTPError):
     status_code = status.HTTP_404_NOT_FOUND
     message = "The specified issue was not found."
