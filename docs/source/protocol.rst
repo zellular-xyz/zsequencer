@@ -44,7 +44,7 @@ Finalising
 
 * **Store Latest Index:** The sequencer keeps track of the latest index returned to each node after a post request.
 
-* **Determine Syncing Point:** The sequencer periodically calculates the syncing point, the index reached by a threshold number of nodes, and requests a signature from them on the chaining hash of that index to indicate readiness to lock transactions.
+* **Determine Syncing Point:** The sequencer periodically calculates the syncing point, the index reached by more than 2/3 of nodes, and requests a signature from them on the chaining hash of that index to indicate readiness to lock transactions.
 
 * **Aggregate Locking Signatures:** Upon receiving locking signatures from the nodes, the sequencer aggregates them and sends the aggregated locking signature back to the nodes. Nodes verify and update the state of all transactions up to that index to *locked* and respond with a finalising signature.
 
@@ -70,7 +70,7 @@ Disputing
 
 * **Sharing Evidence:** The node shares the problematic transactions with other nodes and collects their signatures to confirm the Sequencer's malfunction.
 
-* **Triggering a Switch:** If the threshold number of nodes confirms the issue, the node sends the collected signatures to all nodes to initiate the switching process.
+* **Triggering a Switch:** If more than 1/3 of nodes confirms the issue, the node sends the collected signatures to all nodes to initiate the switching process.
 
 Switching
 ~~~~~~~~~
