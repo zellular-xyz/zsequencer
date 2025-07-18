@@ -148,7 +148,6 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     "/dispute",
     dependencies=[
         Depends(utils.validate_version("node")),
-        Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(auth.verify_node_access),
     ],
