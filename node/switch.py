@@ -271,7 +271,7 @@ async def _sync_with_latest_locks() -> None:
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
                 signature_hex=last_locked_batch.get("lock_signature"),
-                nonsigners=last_locked_batch.get("locked_nonsigners", []),
+                nonsigners=last_locked_batch.get("locked_nonsigners") or [],
             ):
                 zlogger.warning(
                     f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified."
