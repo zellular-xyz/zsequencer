@@ -32,6 +32,7 @@ from common.db import zdb
 from common.errors import (
     BatchSizeExceededError,
     InvalidRequestError,
+    InvalidSequencerError,
     InvalidTimestampError,
     IsNotPostingNodeError,
     IsSequencerError,
@@ -168,7 +169,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         )
     ):
         # Reject the dispute if the node is not sequencer and the dispute is against its sequencer
-        # and it has issue with its sequencer
+        # while it doesn't have any issues with its sequencer
         raise IssueNotFoundError()
 
     if not zconfig.is_sequencer:
@@ -207,8 +208,10 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
         raise SequencerChangeNotApprovedError()
 
     old_sequencer_id = proofs[0].sequencer_id
-    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
+    if old_sequencer_id != zconfig.SEQUENCER["id"]:
+        raise InvalidSequencerError()
 
+    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
