@@ -146,8 +146,12 @@ async def send_dispute_requests() -> None:
         return
     proofs.extend(gathered_proofs)
 
-    asyncio.create_task(send_switch_requests(proofs))
     new_sequencer_id = get_next_sequencer_id(sequencer_id)
+    zlogger.info(
+        f"switching sequencer {zconfig.NODES[sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']} while sending switch request to other nodes"
+    )
+
+    asyncio.create_task(send_switch_requests(proofs))
     await switch_to_sequencer(new_sequencer_id)
 
 
@@ -192,10 +196,6 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
             zconfig.update_sequencer(new_sequencer_id)
             await _sync_with_latest_locks()
 
-            for app_name in zconfig.APPS:
-                zdb.apps[app_name]["nodes_state"] = {}
-                zdb.reset_latency_queue(app_name)
-
             if zconfig.is_sequencer:
                 zlogger.info(
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
@@ -216,6 +216,13 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                     f"Waiting for {duration} seconds before start sending requests to the new sequencer."
                 )
                 await asyncio.sleep(duration)
+
+            for app_name in zconfig.APPS:
+                zdb.apps[app_name]["nodes_state"] = {}
+                zdb.reset_latency_queue(app_name)
+
+        except Exception as e:
+            zlogger.error("Unexpected error while switching the sequencer: {e}")
 
         finally:
             zconfig.unpause()
