@@ -149,38 +149,47 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     "/dispute",
     dependencies=[
         Depends(utils.validate_version("node")),
-        Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(auth.verify_node_access),
     ],
 )
 async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     """Report a dispute about sequencer issues and receive a signed confirmation."""
-    if request.sequencer_id != zconfig.SEQUENCER["id"]:
-        raise InvalidSequencerError()
-
-    for app_name, batch in request.apps_censored_batches.items():
-        zdb.init_batches(app_name, [batch])
+    if zconfig.is_sequencer and request.sequencer_id == zconfig.NODE["id"]:
+        # Reject the dispute if the node is sequencer and the dispute is against it
+        raise IssueNotFoundError()
 
     if (
-        zdb.is_sequencer_censoring()
-        or zdb.has_delayed_batches()
-        or zdb.is_sequencer_down
-    ):
-        now = int(time.time())
-        if not (now - 5 <= request.timestamp <= now + 5):
-            raise InvalidTimestampError()
-
-        message = utils.gen_hash(f"{zconfig.SEQUENCER['id']}{request.timestamp}")
-        signature = bls.bls_sign(message)
-
-        response_data = DisputeData(
-            signature=signature,
+        not zconfig.is_sequencer
+        and request.sequencer_id == zconfig.SEQUENCER["id"]
+        and not (
+            zdb.is_sequencer_censoring()
+            or zdb.has_delayed_batches()
+            or zdb.is_sequencer_down
         )
+    ):
+        # Reject the dispute if the node is not sequencer and the dispute is against its sequencer
+        # while it doesn't have any issues with its sequencer
+        raise IssueNotFoundError()
 
-        return DisputeResponse(data=response_data)
+    if not zconfig.is_sequencer:
+        # Init other nodes censored batches to either face problem with the sequencer if
+        # it's really censoring or relay the batches other nodes faced problem relaying
+        for app_name, batch in request.apps_censored_batches.items():
+            zdb.init_batches(app_name, [batch])
 
-    raise IssueNotFoundError()
+    now = int(time.time())
+    if not (now - 5 <= request.timestamp <= now + 5):
+        raise InvalidTimestampError()
+
+    message = utils.gen_hash(f"{request.sequencer_id}{request.timestamp}")
+    signature = bls.bls_sign(message)
+
+    response_data = DisputeData(
+        signature=signature,
+    )
+
+    return DisputeResponse(data=response_data)
 
 
 @router.post(
@@ -199,8 +208,10 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
         raise SequencerChangeNotApprovedError()
 
     old_sequencer_id = proofs[0].sequencer_id
-    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
+    if old_sequencer_id != zconfig.SEQUENCER["id"]:
+        raise InvalidSequencerError()
 
+    new_sequencer_id = switch.get_next_sequencer_id(old_sequencer_id)
     zlogger.info(
         f"switch request received {zconfig.NODES[old_sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']}."
     )
