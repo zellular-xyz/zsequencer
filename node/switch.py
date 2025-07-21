@@ -222,7 +222,7 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                 zdb.reset_latency_queue(app_name)
 
         except Exception as e:
-            zlogger.error("Unexpected error while switching the sequencer: {e}")
+            zlogger.error(f"Unexpected error while switching the sequencer: {e}")
 
         finally:
             zconfig.unpause()
