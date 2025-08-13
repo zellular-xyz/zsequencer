@@ -139,9 +139,9 @@ async def send_dispute_requests() -> None:
         zlogger.error(f"An unexpected error occurred while gathering disputes: {error}")
         return
 
-    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT / 2:
+    if stake_percent < zconfig.THRESHOLD_PERCENT / 2:
         zlogger.warning(
-            f"Not enough stake for dispute, stake_percent : {stake_percent}"
+            f"Not enough stake for dispute, stake_percent :{stake_percent}"
         )
         return
     proofs.extend(gathered_proofs)
