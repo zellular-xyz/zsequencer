@@ -26,8 +26,9 @@ def main() -> None:
         duration = time.time() - start
         zlogger.info(f"duration: {duration:.2f}, last: {last}")
         if last["data"] and last["data"]["index"] - first_index >= BULK_SIZE:
-
-            zlogger.info(f"Duration: {duration}, Transactions: {BULK_SIZE}, TPS: {int(BULK_SIZE / duration)}")
+            zlogger.info(
+                f"Duration: {duration}, Transactions: {BULK_SIZE}, TPS: {int(BULK_SIZE / duration)}"
+            )
             break
 
 

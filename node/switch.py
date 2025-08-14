@@ -140,9 +140,7 @@ async def send_dispute_requests() -> None:
         return
 
     if stake_percent < zconfig.THRESHOLD_PERCENT / 2:
-        zlogger.warning(
-            f"Not enough stake for dispute, stake_percent :{stake_percent}"
-        )
+        zlogger.warning(f"Not enough stake for dispute, stake_percent: {stake_percent}")
         return
     proofs.extend(gathered_proofs)
 
