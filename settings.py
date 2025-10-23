@@ -10,7 +10,7 @@ SIMULATION_MODES = [MODE_DEV, MODE_TEST]
 
 
 class NodeConfig(BaseSettings):
-    version: str = Field(default="v0.1.1")
+    version: str = Field(default="v0.1.2")
     nodes_info_sync_border: int = Field(default=5)
 
     nodes_source: str = Field(default="file")
