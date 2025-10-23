@@ -123,6 +123,9 @@ class SequencerManager:
         current_time = time.time()
         NODE_INACTIVITY_THRESHOLD_SECONDS = 10
         for node_id in attesting_nodes:
+            if node_id == zconfig.NODE["id"]:
+                continue
+
             last_node_request_time = max(
                 zdb.apps[app_name]["nodes_state"]
                 .get(node_id, {})

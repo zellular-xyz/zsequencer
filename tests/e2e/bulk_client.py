@@ -21,12 +21,14 @@ def main() -> None:
     r = requests.put(gateway + "/node/batches", json={"simple_app": txs})
     zlogger.info(f"transactions sent: {r.text}")
     while True:
-        time.sleep(0.05)
+        time.sleep(0.01)
         last = requests.get(gateway + "/node/simple_app/batches/finalized/last").json()
         duration = time.time() - start
         zlogger.info(f"duration: {duration:.2f}, last: {last}")
         if last["data"] and last["data"]["index"] - first_index >= BULK_SIZE:
-            zlogger.info(f"TPS: {int(BULK_SIZE / duration)}")
+            zlogger.info(
+                f"Duration: {duration}, Transactions: {BULK_SIZE}, TPS: {int(BULK_SIZE / duration)}"
+            )
             break
 
 

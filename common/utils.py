@@ -49,7 +49,7 @@ def validate_version(role: str) -> Callable[[Request], None]:
 
 def is_synced(request: Request) -> None:
     """Decorator to ensure the app is synced with sequencer (leader) before processing the request."""
-    if not zconfig.get_synced_flag():
+    if not zconfig.is_sequencer and not zconfig.get_synced_flag():
         raise NotSyncedError()
 
 

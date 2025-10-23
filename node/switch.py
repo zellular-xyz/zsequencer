@@ -66,7 +66,7 @@ async def send_dispute_request(
 async def gather_disputes(
     sequencer_id: str, timestamp: int
 ) -> tuple[list[SwitchProof], float]:
-    """Gather dispute data from nodes until the stake of nodes reaches the threshold."""
+    """Gather dispute data from nodes until the stake of nodes reaches above of the half of threshold."""
     dispute_tasks: dict[asyncio.Task, str] = {
         asyncio.create_task(send_dispute_request(node, sequencer_id, timestamp)): node[
             "id"
@@ -80,7 +80,7 @@ async def gather_disputes(
     stake_percent = (
         100 * zconfig.NODES[zconfig.NODE["id"]]["stake"] / zconfig.TOTAL_STAKE
     )
-    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT:
+    while pending_tasks and stake_percent < zconfig.THRESHOLD_PERCENT / 2:
         done, pending_tasks = await asyncio.wait(
             pending_tasks,
             return_when=asyncio.FIRST_COMPLETED,
@@ -139,15 +139,17 @@ async def send_dispute_requests() -> None:
         zlogger.error(f"An unexpected error occurred while gathering disputes: {error}")
         return
 
-    if not gathered_proofs or stake_percent < zconfig.THRESHOLD_PERCENT:
-        zlogger.warning(
-            f"Not enough stake for dispute, stake_percent : {stake_percent}"
-        )
+    if stake_percent < zconfig.THRESHOLD_PERCENT / 2:
+        zlogger.warning(f"Not enough stake for dispute, stake_percent: {stake_percent}")
         return
     proofs.extend(gathered_proofs)
 
-    asyncio.create_task(send_switch_requests(proofs))
     new_sequencer_id = get_next_sequencer_id(sequencer_id)
+    zlogger.info(
+        f"switching sequencer {zconfig.NODES[sequencer_id]['socket']} -> {zconfig.NODES[new_sequencer_id]['socket']} while sending switch request to other nodes"
+    )
+
+    asyncio.create_task(send_switch_requests(proofs))
     await switch_to_sequencer(new_sequencer_id)
 
 
@@ -192,10 +194,6 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
             zconfig.update_sequencer(new_sequencer_id)
             await _sync_with_latest_locks()
 
-            for app_name in zconfig.APPS:
-                zdb.apps[app_name]["nodes_state"] = {}
-                zdb.reset_latency_queue(app_name)
-
             if zconfig.is_sequencer:
                 zlogger.info(
                     f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"
@@ -216,6 +214,13 @@ async def switch_to_sequencer(new_sequencer_id: str) -> None:
                     f"Waiting for {duration} seconds before start sending requests to the new sequencer."
                 )
                 await asyncio.sleep(duration)
+
+            for app_name in zconfig.APPS:
+                zdb.apps[app_name]["nodes_state"] = {}
+                zdb.reset_latency_queue(app_name)
+
+        except Exception as e:
+            zlogger.error(f"Unexpected error while switching the sequencer: {e}")
 
         finally:
             zconfig.unpause()
@@ -271,7 +276,7 @@ async def _sync_with_latest_locks() -> None:
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
                 signature_hex=last_locked_batch.get("lock_signature"),
-                nonsigners=last_locked_batch.get("locked_nonsigners", []),
+                nonsigners=last_locked_batch.get("locked_nonsigners") or [],
             ):
                 zlogger.warning(
                     f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} is not verified."
@@ -460,7 +465,7 @@ def is_switch_approved(proofs: list[SwitchProof]) -> bool:
 
     node_ids = [proof.node_id for proof in proofs if is_dispute_approved(proof)]
     stake = sum([zconfig.NODES[node_id]["stake"] for node_id in node_ids])
-    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT
+    return 100 * stake / zconfig.TOTAL_STAKE >= zconfig.THRESHOLD_PERCENT / 2
 
 
 def is_dispute_approved(proof: SwitchProof) -> bool:

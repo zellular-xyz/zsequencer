@@ -107,7 +107,7 @@ class Config:
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
     def get_network_state(self, tag: int) -> NetworkState:
-        if tag != 0 and (tag in self.HISTORICAL_NETWORK_STATE):
+        if tag in self.HISTORICAL_NETWORK_STATE:
             return self.HISTORICAL_NETWORK_STATE[tag]
 
         nodes_data: dict[str, dict[str, Any]] = {}
