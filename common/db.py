@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 from collections import deque
@@ -51,7 +50,6 @@ class InMemoryDB:
         self._snapshot_manager = SnapshotManager(
             base_path=zconfig.SNAPSHOT_PATH,
             version=zconfig.VERSION,
-            max_chunk_size_kb=zconfig.SNAPSHOT_CHUNK_SIZE_KB,
             app_names=list(zconfig.APPS.keys()),
         )
         self.apps = {}
@@ -95,7 +93,7 @@ class InMemoryDB:
                 return True
         return False
 
-    async def _fetch_apps(self) -> None:
+    async def fetch_apps(self) -> None:
         """Fetchs the apps data."""
         data = get_file_content(zconfig.APPS_FILE)
 
@@ -121,23 +119,6 @@ class InMemoryDB:
                 app_name,
             )
             os.makedirs(snapshot_path, exist_ok=True)
-
-    async def fetch_apps_and_network_state_periodically(self) -> None:
-        """Periodically fetches apps and nodes data."""
-        while True:
-            try:
-                await self._fetch_apps()
-            except Exception:
-                zlogger.error("An unexpected error occurred while fetching apps data.")
-
-            try:
-                zconfig.fetch_network_state()
-            except Exception:
-                zlogger.error(
-                    "An unexpected error occurred while fetching network state.",
-                )
-
-            await asyncio.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
     async def _load_finalized_batches_for_all_apps(self) -> dict[str, App]:
         """Load and return the initial state from the snapshot files."""
@@ -441,23 +422,35 @@ class InMemoryDB:
         self.apps[app_name]["operational_batch_sequence"].promote(
             last_index=signature_finalized_index, target_state="finalized"
         )
+        self._store_snapshot(app_name, only_if_size_exceeds=True)
+        self._prune_old_finalized_batches(app_name)
+        return True
 
+    def _store_snapshot(self, app_name, only_if_size_exceeds):
         last_persisted_index = self._snapshot_manager.get_last_batch_index(app_name)
+        last_finalized_index = self.apps[app_name][
+            "operational_batch_sequence"
+        ].get_last_index_or_default(state="finalized")
         fresh_finalized_sequence = self.apps[app_name][
             "operational_batch_sequence"
         ].filter(
             start_exclusive=last_persisted_index,
-            end_inclusive=signature_finalized_index,
+            end_inclusive=last_finalized_index,
         )
 
-        if fresh_finalized_sequence.size_kb < zconfig.SNAPSHOT_CHUNK_SIZE_KB:
+        if (
+            only_if_size_exceeds
+            and fresh_finalized_sequence.size_kb < zconfig.SNAPSHOT_CHUNK_SIZE_KB
+        ):
             return True
 
-        self._snapshot_manager.chunk_and_store_batch_sequence(
+        self._snapshot_manager.store_batch_sequence(
             app_name=app_name, batches=fresh_finalized_sequence
         )
-        self._prune_old_finalized_batches(app_name)
-        return True
+
+    def shutdown(self) -> None:
+        for app_name in self.apps:
+            self._store_snapshot(app_name, only_if_size_exceeds=False)
 
     def upsert_node_state(
         self,

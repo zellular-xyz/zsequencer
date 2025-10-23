@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import signal
+import sys
 
 import requests
 import uvicorn
@@ -28,6 +30,8 @@ app = FastAPI(title="ZSequencer")
 app.include_router(node_router, prefix="/node")
 app.include_router(sequencer_router, prefix="/sequencer")
 
+shutdown_event = asyncio.Event()
+
 
 @app.exception_handler(errors.BaseHTTPError)
 async def base_http_exception_handler(
@@ -49,7 +53,7 @@ def base_redirect() -> RedirectResponse:
 
 async def run_node_tasks() -> None:
     """Run node tasks in a loop."""
-    while True:
+    while not shutdown_event.is_set():
         await asyncio.sleep(0.1)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             continue
@@ -62,7 +66,7 @@ async def run_node_tasks() -> None:
 
 async def run_sequencer_tasks() -> None:
     """Run sequencer tasks in a loop."""
-    while True:
+    while not shutdown_event.is_set():
         await asyncio.sleep(zconfig.SYNC_INTERVAL)
         if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
             continue
@@ -72,6 +76,24 @@ async def run_sequencer_tasks() -> None:
 
         await sequencer_tasks.sync()
         await zsequencer_manager.detect_and_reset_sequencer_on_failover()
+
+
+async def fetch_apps_and_network_state_periodically() -> None:
+    """Periodically fetches apps and nodes data."""
+    while not shutdown_event.is_set():
+        try:
+            await zdb.fetch_apps()
+        except Exception:
+            zlogger.error("An unexpected error occurred while fetching apps data.")
+
+        try:
+            zconfig.fetch_network_state()
+        except Exception:
+            zlogger.error(
+                "An unexpected error occurred while fetching network state.",
+            )
+
+        await asyncio.sleep(zconfig.FETCH_APPS_AND_NODES_INTERVAL)
 
 
 async def check_node_reachability() -> None:
@@ -108,8 +130,20 @@ async def run_server() -> None:
     config = uvicorn.Config(
         "run:app", host="0.0.0.0", port=zconfig.PORT, reload=False, log_level="warning"
     )
+    global server
     server = uvicorn.Server(config)
     await server.serve()
+
+
+def shutdown(sig, frame):
+    if shutdown_event.is_set():
+        return
+
+    zlogger.error(f"Received exit signal {sig} ...")
+    shutdown_event.set()
+    if "server" in globals():
+        server.should_exit = True
+    zdb.shutdown()
 
 
 async def main() -> None:
@@ -123,7 +157,7 @@ async def main() -> None:
     tasks = [
         run_sequencer_tasks(),
         run_node_tasks(),
-        zdb.fetch_apps_and_network_state_periodically(),
+        fetch_apps_and_network_state_periodically(),
         run_server(),
     ]
     if zconfig.CHECK_REACHABILITY_OF_NODE_URL:
@@ -132,4 +166,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        zlogger.error("Keyboard interrupt detected. Exiting...")
+        sys.exit(0)
