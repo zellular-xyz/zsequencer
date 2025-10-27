@@ -30,6 +30,7 @@ from common.api_models import (
 from common.batch import batch_record_to_stateful_batch
 from common.db import zdb
 from common.errors import (
+    BatchesLimitExceededError,
     BatchSizeExceededError,
     InvalidRequestError,
     InvalidSequencerError,
@@ -42,6 +43,7 @@ from common.errors import (
 from common.logger import zlogger
 from config import zconfig
 from node import switch, tasks
+from node.rate_limit import try_acquire_rate_limit_of_self_node
 from settings import MODE_PROD
 
 router = APIRouter()
@@ -51,7 +53,6 @@ router = APIRouter()
     "/batches",
     dependencies=[
         Depends(utils.validate_version("node")),
-        Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
@@ -74,10 +75,17 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
             for item in batches
             if utils.get_utf8_size_kb(str(item)) <= zconfig.MAX_BATCH_SIZE_KB
         ]
+
+        if not zconfig.is_sequencer:
+            zdb.init_batch_bodies(app_name, valid_batches)
+        else:
+            if not try_acquire_rate_limit_of_self_node(valid_batches):
+                raise BatchesLimitExceededError()
+            zdb.sequencer_init_batch_bodies(app_name, valid_batches)
+
         zlogger.info(
-            f"The batches are going to be initialized. app: {app_name}, number of batches: {len(valid_batches)}."
+            f"The batches are added. app: {app_name}, number of batches: {len(valid_batches)}."
         )
-        zdb.init_batches(app_name, valid_batches)
 
     return EmptyResponse(message="The batches are received successfully.")
 
@@ -86,7 +94,6 @@ async def put_bulk_batches(request: NodePutBulkBatchesRequest) -> EmptyResponse:
     "/{app_name}/batches",
     dependencies=[
         Depends(utils.validate_version("node")),
-        Depends(utils.not_sequencer),
         Depends(utils.is_synced),
         Depends(utils.not_paused),
     ],
@@ -107,8 +114,14 @@ async def put_batches(app_name: str, request: NodePutBatchRequest) -> EmptyRespo
     if utils.get_utf8_size_kb(data) > zconfig.MAX_BATCH_SIZE_KB:
         raise BatchSizeExceededError()
 
+    if not zconfig.is_sequencer:
+        zdb.init_batch_bodies(app_name, [data])
+    else:
+        if not try_acquire_rate_limit_of_self_node([data]):
+            raise BatchesLimitExceededError()
+        zdb.sequencer_init_batch_bodies(app_name, [data])
+
     zlogger.info(f"The batch is added. app: {app_name}, data length: {len(data)}.")
-    zdb.init_batches(app_name, [data])
 
     return EmptyResponse(message="The batch is received successfully.")
 
@@ -176,7 +189,7 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
         # Init other nodes censored batches to either face problem with the sequencer if
         # it's really censoring or relay the batches other nodes faced problem relaying
         for app_name, batch in request.apps_censored_batches.items():
-            zdb.init_batches(app_name, [batch])
+            zdb.init_batch_bodies(app_name, [batch])
 
     now = int(time.time())
     if not (now - 5 <= request.timestamp <= now + 5):
