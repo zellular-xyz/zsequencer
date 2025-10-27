@@ -44,7 +44,6 @@ from common.logger import zlogger
 from config import zconfig
 from node import switch, tasks
 from node.rate_limit import try_acquire_rate_limit_of_self_node
-from settings import MODE_PROD
 
 router = APIRouter()
 
@@ -241,12 +240,6 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
 )
 async def get_state() -> NodeStateResponse:
     """Retrieve current node information and application status."""
-    if (
-        zconfig.get_mode() == MODE_PROD
-        and zconfig.NODE["id"] == zconfig.SEQUENCER["id"]
-    ):
-        raise IsSequencerError()
-
     app_states = {}
     for app_name in list(zconfig.APPS.keys()):
         last_sequenced_batch_record = zdb.get_last_operational_batch_record_or_empty(
