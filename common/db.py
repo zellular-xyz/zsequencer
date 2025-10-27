@@ -229,7 +229,7 @@ class InMemoryDB:
         """Get a batch by its index."""
         return self.apps[app_name]["operational_batch_sequence"].get_or_empty(index)
 
-    def init_batches(self, app_name: str, batch_bodies: Iterable[str]) -> None:
+    def init_batch_bodies(self, app_name: str, batch_bodies: Iterable[str]) -> None:
         """Initialize batches of transactions with a given body."""
         if not batch_bodies:
             return

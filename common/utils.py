@@ -20,13 +20,13 @@ from config import zconfig
 
 def sequencer_only(request: Request) -> None:
     """Decorator to restrict access to sequencer-only functions."""
-    if zconfig.NODE["id"] != zconfig.SEQUENCER["id"]:
+    if not zconfig.is_sequencer:
         raise IsNotSequencerError()
 
 
 def not_sequencer(request: Request) -> None:
     """Decorator to restrict access to non-sequencer functions."""
-    if zconfig.NODE["id"] == zconfig.SEQUENCER["id"]:
+    if zconfig.is_sequencer:
         raise IsSequencerError()
 
 
