@@ -36,7 +36,6 @@ from common.errors import (
     InvalidSequencerError,
     InvalidTimestampError,
     IsNotPostingNodeError,
-    IsSequencerError,
     IssueNotFoundError,
     SequencerChangeNotApprovedError,
 )
