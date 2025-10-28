@@ -3,6 +3,7 @@ import bisect
 import gzip
 import json
 import os
+from concurrent.futures import ProcessPoolExecutor
 from typing import TypeAlias
 
 from common.batch_sequence import BatchSequence
@@ -15,20 +16,15 @@ ChunkFileInfo: TypeAlias = tuple[int, str]  # (start_index, filename)
 class SnapshotManager:
     """Manages chunked snapshots of batch sequences for multiple applications."""
 
+    # Shared process pool for gzip read/write
+    _EXECUTOR = ProcessPoolExecutor(max_workers=2)
+
     def __init__(
         self,
         base_path: str,
         version: str,
         app_names: list[str],
     ):
-        """
-        Initialize the SnapshotManager.
-
-        Args:
-            base_path: Base directory path for storing snapshots
-            version: Version identifier for the snapshot directory
-            app_names: List of application names to manage
-        """
         self._root_dir = os.path.join(base_path, version)
         self._app_name_to_chunks: dict[str, list[ChunkFileInfo]] = {}
         self._app_names = app_names
@@ -81,16 +77,33 @@ class SnapshotManager:
             bisect.bisect_right(indexed_chunks, batch_index, key=lambda row: row[0]) - 1
         )
 
-    async def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
-        return await asyncio.to_thread(self._load_file_sync, app_name, file_name)
+    def _write_gzip_sync(self, path: str, data: dict) -> None:
+        """Write gzip file via temp file and rename to ensure atomic save."""
+        tmp_path = f"{path}.tmp"
+        with gzip.open(tmp_path, "wt", encoding="UTF-8") as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)  # atomic move
 
-    def _load_file_sync(self, app_name: str, file_name: str) -> BatchSequence:
+    def _read_gzip_sync(self, path: str) -> dict:
+        with gzip.open(path, "rt", encoding="UTF-8") as f:
+            return json.load(f)
+
+    async def _gzip_write_async(self, path: str, data: dict) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self._EXECUTOR, self._write_gzip_sync, path, data)
+
+    async def _gzip_read_async(self, path: str) -> dict:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._EXECUTOR, self._read_gzip_sync, path)
+
+    async def _load_file(self, app_name: str, file_name: str) -> BatchSequence:
+        """Load gzip chunk asynchronously using process pool."""
         zlogger.info(f"loading file {file_name=} for {app_name=}")
         file_path = os.path.join(self._get_app_storage_path(app_name), file_name)
 
         try:
-            with gzip.open(file_path, "rt", encoding="UTF-8") as file:
-                return BatchSequence.from_mapping(json.load(file))
+            data = await self._gzip_read_async(file_path)
+            return BatchSequence.from_mapping(data)
         except (FileNotFoundError, EOFError):
             return BatchSequence()
         except (OSError, IOError, json.JSONDecodeError) as error:
@@ -102,14 +115,6 @@ class SnapshotManager:
     async def load_batches(
         self, app_name: str, after: int, retrieve_size_limit_kb: float | None = None
     ) -> BatchSequence:
-        """
-        Load all finalized batches for a given app from chunks after a given batch index.
-
-        Args:
-            app_name: Name of the app to load batches for
-            after: Load batches after this index
-            retrieve_size_limit_kb: Maximum size of batches to load in KB
-        """
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f"App not found in indexed chunks: {app_name}")
 
@@ -137,7 +142,6 @@ class SnapshotManager:
         return merged_batches
 
     def store_batch_sequence(self, app_name: str, batches: BatchSequence):
-        """Store a finalized batch sequence as a new chunk."""
         if not batches:
             return
 
@@ -150,25 +154,12 @@ class SnapshotManager:
             batches.get_last_index_or_default()
         )
 
-        with gzip.open(chunk_path, "wt", encoding="UTF-8") as file:
-            json.dump(batches.to_mapping(), file)
+        zlogger.info(f"saving file {chunk_filename=} for {app_name=}")
+        asyncio.create_task(self._gzip_write_async(chunk_path, batches.to_mapping()))
 
     def get_latest_chunks_start_index(
         self, app_name: str, latest_chunks_count: int
     ) -> int:
-        """
-        Get the starting index for loading the specified number of most recent chunks.
-
-        Args:
-            app_name: Name of the app to get the index for
-            latest_chunks_count: Number of most recent chunks to consider
-
-        Returns:
-            The index where the latest chunks start, or BEFORE_GLOBAL_INDEX_OFFSET if not enough chunks
-
-        Raises:
-            KeyError: If app_name is not found in indexed chunks
-        """
         if app_name not in self._app_name_to_chunks:
             raise KeyError(f"App not found in indexed chunks: {app_name}")
 
