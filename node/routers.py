@@ -21,6 +21,7 @@ from common.api_models import (
     NodePutBulkBatchesRequest,
     NodeStateData,
     NodeStateResponse,
+    ReadyResponse,
     SignSyncPointData,
     SignSyncPointRequest,
     SignSyncPointResponse,
@@ -229,6 +230,17 @@ async def post_switch_sequencer(request: SwitchRequest) -> EmptyResponse:
     asyncio.create_task(switch.switch_to_sequencer(new_sequencer_id))
 
     return EmptyResponse(message="Sequencer switch initiated successfully.")
+
+
+@router.get(
+    "/ready",
+    dependencies=[
+        Depends(utils.is_synced),
+        Depends(utils.not_paused),
+    ],
+)
+async def ready() -> ReadyResponse:
+    return ReadyResponse(status=True)
 
 
 @router.get(
