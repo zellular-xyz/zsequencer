@@ -90,7 +90,8 @@ class Config:
     def unpause(self) -> None:
         self._PAUSED = False
 
-    def get_synced_flag(self) -> bool:
+    @property
+    def is_synced(self) -> bool:
         return self._SYNCED_FLAG
 
     def set_synced_flag(self) -> None:

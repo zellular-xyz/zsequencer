@@ -94,7 +94,7 @@ async def send_app_batches(app_name: str) -> int:
             async with session.put(
                 url,
                 json=request.model_dump(),
-                timeout=5 if zconfig.get_synced_flag() else 30,
+                timeout=5 if zconfig.is_synced else 30,
                 raise_for_status=False,
             ) as r:
                 response = await r.json()
