@@ -96,7 +96,7 @@ async def gather_disputes(
 
 async def send_dispute_requests() -> None:
     """Send dispute requests if sequencer has a malfunction."""
-    is_not_synced = not zconfig.get_synced_flag()
+    is_not_synced = not zconfig.is_synced
     is_paused = zconfig.is_paused
 
     no_censorship = not zdb.is_sequencer_censoring()

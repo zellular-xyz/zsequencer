@@ -148,6 +148,12 @@ class NodeStateData(BaseModel):
     apps: dict[str, AppState]
 
 
+class ReadyResponse(BaseModel):
+    """Response with node readiness status."""
+
+    status: bool
+
+
 class NodeStateResponse(SuccessResponse):
     """Response with complete node state information."""
 
