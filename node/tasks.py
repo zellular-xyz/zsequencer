@@ -183,11 +183,29 @@ def sync_with_sequencer(
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """Confirm and sign the sync point"""
+    now = time.time()
+    if not (now - 10 < sync_point["timestamp"] < now + 10):
+        raise InvalidRequestError(
+            f"Sync point timestamp out of range! {sync_point=}, {now=}"
+        )
+
+    for state in ("locked", "finalized"):
+        batch_record = zdb.get_last_operational_batch_record_or_empty(
+            app_name=sync_point["app_name"],
+            state=state,
+        )
+        batch = batch_record.get("batch")
+        if batch and batch[f"{state}_timestamp"] > sync_point["timestamp"]:
+            raise InvalidRequestError(
+                f"Sync point timestamps should be incremental. {sync_point=}, {batch=}"
+            )
+
     batch_record = zdb.get_batch_record_by_index_or_empty(
         sync_point["app_name"],
         sync_point["index"],
     )
     batch = batch_record.get("batch", {})
+
     if (
         batch.get("chaining_hash") != sync_point["chaining_hash"]
         or not is_state_before_or_equal(sync_point["state"], batch_record["state"])

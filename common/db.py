@@ -34,6 +34,7 @@ class SignatureData(TypedDict, total=False):
     signature: str
     nonsigners: list[str]
     tag: int
+    timestamp: int
 
 
 class InMemoryDB:
@@ -309,6 +310,7 @@ class InMemoryDB:
             index=signature_data["index"],
             chaining_hash=signature_data["chaining_hash"],
             tag=signature_data["tag"],
+            timestamp=signature_data["timestamp"],
             signature_hex=signature_data["signature"],
             nonsigners=signature_data["nonsigners"],
         ):
@@ -347,9 +349,15 @@ class InMemoryDB:
             )
             return False
 
-        target_batch["lock_signature"] = signature_data["signature"]
-        target_batch["locked_nonsigners"] = signature_data["nonsigners"]
-        target_batch["locked_tag"] = signature_data["tag"]
+        target_batch.update(
+            {
+                "lock_signature": signature_data["signature"],
+                "locked_nonsigners": signature_data["nonsigners"],
+                "locked_tag": signature_data["tag"],
+                "locked_timestamp": signature_data["timestamp"],
+            }
+        )
+
         self.apps[app_name]["operational_batch_sequence"].promote(
             last_index=signature_data["index"],
             target_state="locked",
@@ -367,6 +375,7 @@ class InMemoryDB:
             index=signature_data["index"],
             chaining_hash=signature_data["chaining_hash"],
             tag=signature_data["tag"],
+            timestamp=signature_data["timestamp"],
             signature_hex=signature_data["signature"],
             nonsigners=signature_data["nonsigners"],
         ):
@@ -415,6 +424,7 @@ class InMemoryDB:
                 "finalization_signature": signature_data["signature"],
                 "finalized_nonsigners": signature_data["nonsigners"],
                 "finalized_tag": signature_data["tag"],
+                "finalized_timestamp": signature_data["timestamp"],
             }
         )
 

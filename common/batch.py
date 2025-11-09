@@ -10,9 +10,11 @@ class Batch(TypedDict, total=False):
     lock_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
+    locked_timestamp: int
     finalization_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
+    finalized_timestamp: int
 
 
 def get_batch_size_kb(batch: Batch) -> float:
@@ -36,9 +38,11 @@ class StatefulBatch(TypedDict, total=False):
     lock_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
+    locked_timestamp: int
     finalization_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
+    finalized_timestamp: int
     index: int
     state: State
 

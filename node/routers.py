@@ -144,6 +144,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
             "state": request.state,
             "index": request.index,
             "chaining_hash": request.chaining_hash,
+            "timestamp": request.timestamp,
         }
     )
     response_data = SignSyncPointData(
@@ -151,6 +152,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         state=request.state,
         index=request.index,
         chaining_hash=request.chaining_hash,
+        timestamp=request.timestamp,
         signature=signature,
     )
 
@@ -369,6 +371,7 @@ async def get_batches(
                 nonsigners=b["batch"]["finalized_nonsigners"],
                 index=b["index"],
                 tag=b["batch"]["finalized_tag"],
+                timestamp=b["batch"]["finalized_timestamp"],
             )
             for b in batch_sequence.records(reverse=True)
             if b["batch"].get("finalization_signature")
@@ -384,6 +387,7 @@ async def get_batches(
                 nonsigners=b["batch"]["locked_nonsigners"],
                 index=b["index"],
                 tag=b["batch"]["locked_tag"],
+                timestamp=b["batch"]["locked_timestamp"],
             )
             for b in batch_sequence.records(reverse=True)
             if b["batch"].get("lock_signature")

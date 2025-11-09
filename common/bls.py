@@ -134,6 +134,7 @@ async def gather_and_aggregate_signatures(
         "signature": aggregated_signature,
         "nonsigners": nonsigners,
         "tag": tag,
+        "timestamp": data["timestamp"],
     }
 
 
@@ -192,6 +193,7 @@ def is_sync_point_signature_verified(
     index: int,
     chaining_hash: str,
     tag: int,
+    timestamp: int,
     signature_hex: str,
     nonsigners: list[str],
 ) -> bool:
@@ -201,19 +203,6 @@ def is_sync_point_signature_verified(
     This function verifies whether a given BLS signature is valid for a synchronization point
     by checking the quorum of signers and validating the signature against the aggregated
     public key of all signing nodes.
-
-    Args:
-        app_name: The name of the application for which the sync point is being verified
-        state: "sequenced" for locking signatures and "lock" for finalizing signatures
-        index: The index of the batch in the sequence
-        chaining_hash: The hash that chains this batch to previous batches
-        tag: The network status tag used to identify the correct network state
-        signature_hex: The hexadecimal representation of the BLS signature to verify
-        nonsigners: List of node IDs that did not participate in signing
-
-    Returns:
-        bool: True if the signature is valid and meets the quorum requirements,
-              False otherwise
 
     Note:
         - The function first loads the network state using the provided tag
@@ -248,6 +237,7 @@ def is_sync_point_signature_verified(
             "state": state,
             "index": index,
             "chaining_hash": chaining_hash,
+            "timestamp": timestamp,
         },
         sort_keys=True,
     )

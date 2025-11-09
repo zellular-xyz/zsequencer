@@ -128,6 +128,7 @@ async def _put_batches(
             signature=last_finalized_batch.get("finalization_signature", ""),
             nonsigners=last_finalized_batch.get("finalized_nonsigners", []),
             tag=last_finalized_batch.get("finalized_tag", 0),
+            timestamp=last_finalized_batch.get("finalized_timestamp", 0),
         ),
         locked=BatchSignatureInfo(
             index=last_locked_batch_record.get("index", 0),
@@ -135,5 +136,6 @@ async def _put_batches(
             signature=last_locked_batch.get("lock_signature", ""),
             nonsigners=last_locked_batch.get("locked_nonsigners", []),
             tag=last_locked_batch.get("locked_tag", 0),
+            timestamp=last_locked_batch.get("locked_timestamp", 0),
         ),
     )

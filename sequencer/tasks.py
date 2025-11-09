@@ -1,5 +1,6 @@
 """This module handles synchronization processes for locked and finalized batches."""
 
+import time
 from typing import Any
 
 from common import bls
@@ -74,11 +75,13 @@ async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
     if locked_sync_point:
+        timestamp = int(time.time())
         locked_data = {
             "app_name": app_name,
             "state": "sequenced",
             "index": locked_sync_point["state"]["sequenced_index"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
+            "timestamp": timestamp,
         }
         lock_signature: (
             dict[str, Any] | None
@@ -107,11 +110,13 @@ async def sync_app(app_name: str) -> None:
 
     finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
     if finalized_sync_point:
+        timestamp = int(time.time())
         finalized_data = {
             "app_name": app_name,
             "state": "locked",
             "index": finalized_sync_point["state"]["locked_index"],
             "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
+            "timestamp": timestamp,
         }
         finalization_signature: (
             dict[str, Any] | None

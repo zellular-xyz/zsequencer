@@ -275,6 +275,7 @@ async def _sync_with_latest_locks() -> None:
                 index=last_locked_batch_record.get("index"),
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
+                timestamp=last_locked_batch.get("locked_timestamp"),
                 signature_hex=last_locked_batch.get("lock_signature"),
                 nonsigners=last_locked_batch.get("locked_nonsigners") or [],
             ):

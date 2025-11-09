@@ -27,9 +27,11 @@ class StatefulBatch(BaseModel):
     lock_signature: str | None
     locked_nonsigners: list[str] | None
     locked_tag: int | None
+    locked_timestamp: int | None
     finalization_signature: str | None
     finalized_nonsigners: list[str] | None
     finalized_tag: int | None
+    finalized_timestamp: int | None
     index: int
     state: OperationalState
 
@@ -74,6 +76,7 @@ class SignSyncPointRequest(BaseModel):
     state: str
     index: int
     chaining_hash: str
+    timestamp: int
 
 
 class SignSyncPointData(BaseModel):
@@ -83,6 +86,7 @@ class SignSyncPointData(BaseModel):
     state: str
     index: int
     chaining_hash: str
+    timestamp: int
     signature: str
 
 
@@ -168,6 +172,7 @@ class BatchSignatureInfo(BaseModel):
     nonsigners: list[str]
     index: int
     tag: int
+    timestamp: int
 
 
 class GetAppLastBatchResponse(SuccessResponse):
