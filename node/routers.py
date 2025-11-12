@@ -143,6 +143,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
             "app_name": request.app_name,
             "state": request.state,
             "index": request.index,
+            "parent_index": request.parent_index,
             "chaining_hash": request.chaining_hash,
             "timestamp": request.timestamp,
         }
@@ -151,6 +152,7 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
         app_name=request.app_name,
         state=request.state,
         index=request.index,
+        parent_index=request.parent_index,
         chaining_hash=request.chaining_hash,
         timestamp=request.timestamp,
         signature=signature,
@@ -363,43 +365,26 @@ async def get_batches(
 
     first_chaining_hash = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
 
-    finalized = next(
-        (
-            BatchSignatureInfo(
-                signature=b["batch"]["finalization_signature"],
-                chaining_hash=b["batch"]["chaining_hash"],
-                nonsigners=b["batch"]["finalized_nonsigners"],
-                index=b["index"],
-                tag=b["batch"]["finalized_tag"],
-                timestamp=b["batch"]["finalized_timestamp"],
+    finalized_signatures = []
+    for batch_record in batch_sequence.records():
+        batch = batch_record["batch"]
+        if "finalized_signature" in batch:
+            signature_info = BatchSignatureInfo(
+                state="locked",
+                index=batch_record["index"],
+                chaining_hash=batch["chaining_hash"],
+                signature=batch["finalized_signature"],
+                nonsigners=batch["finalized_nonsigners"],
+                tag=batch["finalized_tag"],
+                timestamp=batch["finalized_timestamp"],
+                parent_index=batch["finalized_parent_index"]
             )
-            for b in batch_sequence.records(reverse=True)
-            if b["batch"].get("finalization_signature")
-        ),
-        None,
-    )
-
-    locked = next(
-        (
-            BatchSignatureInfo(
-                signature=b["batch"]["lock_signature"],
-                chaining_hash=b["batch"]["chaining_hash"],
-                nonsigners=b["batch"]["locked_nonsigners"],
-                index=b["index"],
-                tag=b["batch"]["locked_tag"],
-                timestamp=b["batch"]["locked_timestamp"],
-            )
-            for b in batch_sequence.records(reverse=True)
-            if b["batch"].get("lock_signature")
-        ),
-        None,
-    )
+            finalized_signatures.append(signature_info)
 
     response_data = GetBatchesData(
         batches=[b["body"] for b in batch_sequence.batches()],
         first_chaining_hash=first_chaining_hash,
-        finalized=finalized,
-        locked=locked,
+        finalized_signatures=finalized_signatures,
     )
 
     return GetBatchesResponse(data=response_data)

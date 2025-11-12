@@ -194,6 +194,7 @@ def is_sync_point_signature_verified(
     chaining_hash: str,
     tag: int,
     timestamp: int,
+    parent_index: int,
     signature_hex: str,
     nonsigners: list[str],
 ) -> bool:
@@ -238,6 +239,7 @@ def is_sync_point_signature_verified(
             "index": index,
             "chaining_hash": chaining_hash,
             "timestamp": timestamp,
+            "parent_index": parent_index,
         },
         sort_keys=True,
     )

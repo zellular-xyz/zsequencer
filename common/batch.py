@@ -7,14 +7,17 @@ from common.utils import get_utf8_size_kb
 class Batch(TypedDict, total=False):
     body: str
     chaining_hash: str
-    lock_signature: str
+    locked_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
     locked_timestamp: int
-    finalization_signature: str
+    locked_parent_index: int
+    finalized_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
     finalized_timestamp: int
+    finalized_next_index: int
+    finalized_parent_index: int
 
 
 def get_batch_size_kb(batch: Batch) -> float:
@@ -35,14 +38,17 @@ class StatefulBatch(TypedDict, total=False):
     node_id: str
     body: str
     chaining_hash: str
-    lock_signature: str
+    locked_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
     locked_timestamp: int
-    finalization_signature: str
+    locked_parent_index: int
+    finalized_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
     finalized_timestamp: int
+    finalized_next_index: int
+    finalized_parent_index: int
     index: int
     state: State
 

@@ -70,6 +70,10 @@ async def send_app_batches(app_name: str) -> int:
         app_name=app_name,
         state="locked",
     )
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=app_name,
+        state="finalized",
+    )
 
     request = SequencerPutBatchesRequest(
         app_name=app_name,
@@ -84,6 +88,7 @@ async def send_app_batches(app_name: str) -> int:
             "chaining_hash",
             "",
         ),
+        finalized_index=last_finalized_batch_record.get("index", 0),
         timestamp=int(time.time()),
     )
 
@@ -144,29 +149,30 @@ def sync_with_sequencer(
         app_name=app_name,
         batch_bodies=sequencer_response["batches"],
     )
+
+    last_sequenced_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name,
+        "sequenced",
+    ).get("index", 0)
     last_locked_index = zdb.get_last_operational_batch_record_or_empty(
         app_name,
         "locked",
     ).get("index", 0)
-    if sequencer_response["locked"]["index"] > last_locked_index:
-        locking_result = zdb.lock_batches(
-            app_name=app_name,
-            signature_data=sequencer_response["locked"],
-        )
-        if not locking_result:
-            zlogger.error("Invalid locking signature received from sequencer")
 
-    last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name,
-        "finalized",
-    ).get("index", 0)
-    if sequencer_response["finalized"]["index"] > last_finalized_index:
-        finalizing_result = zdb.finalize_batches(
-            app_name=app_name,
-            signature_data=sequencer_response["finalized"],
-        )
-        if not finalizing_result:
+    locked_signature = sequencer_response["last_locked_signature"]
+    if (
+        locked_signature
+        and last_locked_index < locked_signature["index"] <= last_sequenced_index
+    ):
+        result = zdb.promote_batches(app_name, locked_signature)
+        if not result:
+            zlogger.error("Invalid locking signature received from sequencer")
+            return
+    for finalized_signature in sequencer_response["finalized_signatures"]:
+        result = zdb.promote_batches(app_name, finalized_signature)
+        if not result:
             zlogger.error("Invalid finalizing signature received from sequencer")
+            return
 
     current_time = int(time.time())
     for state in ("sequenced", "finalized"):
@@ -189,16 +195,19 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
             f"Sync point timestamp out of range! {sync_point=}, {now=}"
         )
 
-    for state in ("locked", "finalized"):
-        batch_record = zdb.get_last_operational_batch_record_or_empty(
-            app_name=sync_point["app_name"],
-            state=state,
+    promotion_state = "locked" if sync_point["state"] == "sequenced" else "finalized"
+    last_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=sync_point["app_name"],
+        state=promotion_state,
+    )
+    last_batch = last_batch_record.get("batch")
+    if (
+        last_batch
+        and last_batch[f"{promotion_state}_timestamp"] > sync_point["timestamp"]
+    ):
+        raise InvalidRequestError(
+            f"Sync point timestamps should be incremental. {sync_point=}, {last_batch=}"
         )
-        batch = batch_record.get("batch")
-        if batch and batch[f"{state}_timestamp"] > sync_point["timestamp"]:
-            raise InvalidRequestError(
-                f"Sync point timestamps should be incremental. {sync_point=}, {batch=}"
-            )
 
     batch_record = zdb.get_batch_record_by_index_or_empty(
         sync_point["app_name"],
@@ -218,6 +227,7 @@ def sign_sync_point(sync_point: dict[str, Any]) -> str:
             f"{(batch_record['index'] != sync_point['index'])=}"
         )
         raise InvalidRequestError(f"Invalid sync point. {sync_point=}, {batch_record=}")
+
     message = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature
