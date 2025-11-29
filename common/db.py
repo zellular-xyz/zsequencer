@@ -352,13 +352,21 @@ class InMemoryDB:
 
         last_finalized_index = last_finalized_batch_record.get("index")
         if (
-            last_finalized_batch_record
+            last_finalized_index
             and signature_data["parent_index"] != last_finalized_index
         ):
             zlogger.warning(
                 f"Invalid parent index. {last_finalized_index=} {signature_data["parent_index"]=}"
             )
             return False
+
+        if promotion_state == "locked" and last_batch_record:
+            last_locked_index = last_batch_record["index"]
+            if last_locked_index != last_finalized_index:
+                zlogger.warning(
+                    f"Can not lock a new index before the previous locked one is finalized. {last_finalized_index=} {last_locked_index=}"
+                )
+                return False
 
         # Update target batch with finalization data
         target_batch = self.get_batch_record_by_index_or_empty(

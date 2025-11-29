@@ -73,13 +73,18 @@ async def sync() -> None:
 
 async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
+
     last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
         app_name, "finalized"
     ).get("index", 0)
 
+    last_locked_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name, "locked"
+    ).get("index", 0)
+
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
 
-    if locked_sync_point:
+    if locked_sync_point and last_locked_index == last_finalized_index:
         locked_data = {
             "app_name": app_name,
             "state": "sequenced",
