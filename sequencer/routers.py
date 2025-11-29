@@ -18,6 +18,7 @@ from common.errors import (
     InvalidRequestError,
     PermissionDeniedError,
 )
+from common.logger import zlogger
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
@@ -82,12 +83,12 @@ async def _put_batches(
         last_locked_signature = BatchSignatureInfo(
             state="sequenced",
             index=last_locked_batch_record["index"],
-            parent_index=last_locked_batch["locked_parent_index"],
+            parent_index=last_locked_batch["parent_index"],
             chaining_hash=last_locked_batch["chaining_hash"],
             signature=last_locked_batch["locked_signature"],
             nonsigners=last_locked_batch["locked_nonsigners"],
             tag=last_locked_batch["locked_tag"],
-            timestamp=last_locked_batch["locked_timestamp"],
+            timestamp=0,
         )
     else:
         last_locked_signature = None
@@ -99,33 +100,43 @@ async def _put_batches(
     last_finalized_index = last_finalized_batch_record.get("index", 0)
 
     finalized_signatures = []
-    next_index = (
-        zdb.get_batch_record_by_index_or_empty(
-            app_name=request.app_name, index=request.finalized_index or 1
+
+    if request.finalized_index:
+        next_index = (
+            zdb.get_batch_record_by_index_or_empty(
+                app_name=request.app_name, index=request.finalized_index
+            )
+            .get("batch", {})
+            .get("next_index")
         )
-        .get("batch", {})
-        .get("finalized_next_index")
+    else:
+        next_index = zdb.first_finalized_index
+
+    zlogger.info(
+        f"{zconfig.NODES[node_id]['socket']} {request.finalized_index=} {next_index=}"
     )
-    while (
-        next_index
-        and next_index <= batch_sequence.get_last_index_or_default()
-        and len(finalized_signatures) < 5
+    while next_index and (
+        not batch_sequence.has_any()
+        or next_index <= batch_sequence.get_last_index_or_default()
     ):
         batch = zdb.get_batch_record_by_index_or_empty(
             app_name=request.app_name, index=next_index
         )["batch"]
+
+        zlogger.info(f"{next_index=} {batch=}")
+
         signature_info = BatchSignatureInfo(
             state="locked",
             index=next_index,
-            parent_index=batch["finalized_parent_index"],
+            parent_index=batch["parent_index"],
             chaining_hash=batch["chaining_hash"],
             signature=batch["finalized_signature"],
             nonsigners=batch["finalized_nonsigners"],
             tag=batch["finalized_tag"],
-            timestamp=batch["finalized_timestamp"],
+            timestamp=batch["timestamp"],
         )
         finalized_signatures.append(signature_info)
-        next_index = batch.get("finalized_next_index")
+        next_index = batch.get("next_index")
 
     zdb.upsert_node_state(
         {

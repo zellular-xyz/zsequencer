@@ -7,17 +7,15 @@ from common.utils import get_utf8_size_kb
 class Batch(TypedDict, total=False):
     body: str
     chaining_hash: str
+    parent_index: int
+    next_index: int
+    timestamp: int
     locked_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
-    locked_timestamp: int
-    locked_parent_index: int
     finalized_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
-    finalized_timestamp: int
-    finalized_next_index: int
-    finalized_parent_index: int
 
 
 def get_batch_size_kb(batch: Batch) -> float:
@@ -38,17 +36,15 @@ class StatefulBatch(TypedDict, total=False):
     node_id: str
     body: str
     chaining_hash: str
+    parent_index: int
+    next_index: int
+    timestamp: int
     locked_signature: str
     locked_nonsigners: list[str]
     locked_tag: int
-    locked_timestamp: int
-    locked_parent_index: int
     finalized_signature: str
     finalized_nonsigners: list[str]
     finalized_tag: int
-    finalized_timestamp: int
-    finalized_next_index: int
-    finalized_parent_index: int
     index: int
     state: State
 
@@ -59,9 +55,10 @@ def batch_record_to_stateful_batch(
     return cast(
         "StatefulBatch",
         {
-            key: batch_record.get(key)
+            key: {"app_name": app_name}.get(key)
+            or batch_record.get(key)
+            # getting from batch should be last item to ensure including keys whose values are False equivalent like "" or []
             or batch_record.get("batch", {}).get(key)
-            or {"app_name": app_name}.get(key)
             for key in StatefulBatch.__annotations__
         },
     )

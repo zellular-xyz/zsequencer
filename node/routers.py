@@ -3,7 +3,7 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from common import auth, bls, utils
 from common.api_models import (
@@ -166,10 +166,13 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     dependencies=[
         Depends(utils.validate_version("node")),
         Depends(utils.is_synced),
+        Depends(utils.not_paused),
         Depends(auth.verify_node_access),
     ],
 )
-async def post_dispute(request: DisputeRequest) -> DisputeResponse:
+async def post_dispute(
+    request: DisputeRequest, signer: str | None = Header(None)
+) -> DisputeResponse:
     """Report a dispute about sequencer issues and receive a signed confirmation."""
     if zconfig.is_sequencer and request.sequencer_id == zconfig.NODE["id"]:
         # Reject the dispute if the node is sequencer and the dispute is against it
@@ -197,6 +200,13 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     now = int(time.time())
     if not (now - 5 <= request.timestamp <= now + 5):
         raise InvalidTimestampError()
+
+    zlogger.info(
+        f"approving dispute requested by {zconfig.NODES[signer]['socket']} on {zconfig.NODES[request.sequencer_id]['socket']} while sequencer is {zconfig.NODES[zconfig.SEQUENCER['id']]['socket']}."
+    )
+    zlogger.info(
+        f"{zdb.is_sequencer_censoring()=} {zdb.has_delayed_batches()=} {zdb.is_sequencer_down=}"
+    )
 
     message = utils.gen_hash(f"{request.sequencer_id}{request.timestamp}")
     signature = bls.bls_sign(message)
@@ -376,8 +386,8 @@ async def get_batches(
                 signature=batch["finalized_signature"],
                 nonsigners=batch["finalized_nonsigners"],
                 tag=batch["finalized_tag"],
-                timestamp=batch["finalized_timestamp"],
-                parent_index=batch["finalized_parent_index"]
+                timestamp=batch["timestamp"],
+                parent_index=batch["parent_index"],
             )
             finalized_signatures.append(signature_info)
 

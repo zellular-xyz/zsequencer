@@ -24,17 +24,15 @@ class StatefulBatch(BaseModel):
     app_name: str
     body: str
     chaining_hash: str
+    parent_index: int | None
+    next_index: int | None
+    timestamp: int | None
     locked_signature: str | None
     locked_nonsigners: list[str] | None
     locked_tag: int | None
-    locked_timestamp: int | None
-    locked_parent_index: int | None
     finalized_signature: str | None
     finalized_nonsigners: list[str] | None
     finalized_tag: int | None
-    finalized_timestamp: int | None
-    finalized_parent_index: int | None
-    finalized_next_index: int | None
     index: int
     state: OperationalState
 

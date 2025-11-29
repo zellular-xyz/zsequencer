@@ -247,7 +247,7 @@ async def _sync_with_latest_locks() -> None:
             # does not need to process node-id with invalid last
             if "locked_signature" not in last_locked_batch:
                 zlogger.warning(
-                    f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} does not have lock signature."
+                    f"Node id: {node_id} claiming locked signature on index: {last_locked_batch_record.get('index')} does not have lock signature. {last_locked_batch_record=}"
                 )
                 continue
 
@@ -275,8 +275,8 @@ async def _sync_with_latest_locks() -> None:
                 index=last_locked_batch_record.get("index"),
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
-                timestamp=last_locked_batch.get("locked_timestamp"),
-                parent_index=last_locked_batch.get("locked_parent_index"),
+                timestamp=last_locked_batch.get("timestamp"),
+                parent_index=last_locked_batch.get("parent_index"),
                 signature_hex=last_locked_batch.get("locked_signature"),
                 nonsigners=last_locked_batch.get("locked_nonsigners") or [],
             ):
@@ -351,7 +351,7 @@ async def _sync_with_peer_node(
                     "signature": target_locked_batch["locked_signature"],
                     "nonsigners": target_locked_batch["locked_nonsigners"],
                     "tag": target_locked_batch["locked_tag"],
-                    "timestamp": target_locked_batch["locked_timestamp"],
+                    "timestamp": target_locked_batch["timestamp"],
                 },
             )
             if not result:

@@ -73,17 +73,20 @@ async def sync() -> None:
 
 async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
+    last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name, "finalized"
+    ).get("index", 0)
+
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
 
     if locked_sync_point:
-        timestamp = int(time.time())
         locked_data = {
             "app_name": app_name,
             "state": "sequenced",
             "index": locked_sync_point["state"]["sequenced_index"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
-            "timestamp": timestamp,
-            "parent_index": 0,
+            "timestamp": 0,
+            "parent_index": last_finalized_index,
         }
         locked_signature: (
             dict[str, Any] | None
@@ -106,9 +109,6 @@ async def sync_app(app_name: str) -> None:
             )
 
     finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
-    last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name, "finalized"
-    ).get("index", 0)
     if finalized_sync_point:
         timestamp = int(time.time())
         finalized_data = {

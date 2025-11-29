@@ -56,6 +56,7 @@ class InMemoryDB:
             app_names=list(zconfig.APPS.keys()),
         )
         self.apps = {}
+        self.first_finalized_index = None
 
     async def initialize(self) -> None:
         await self._snapshot_manager.initialize()
@@ -304,6 +305,10 @@ class InMemoryDB:
                 {"body": batch_body, "chaining_hash": chaining_hash}
             )
 
+    def save_log(self, s):
+        with open(zconfig.SNAPSHOT_PATH + "/promotion_logs.txt", "a") as f:
+            f.write(s + "\n")
+
     def promote_batches(self, app_name: str, signature_data: SignatureData) -> bool:
         """Update batches to 'finalized' or 'locked' state up to a specified index"""
         if signature_data["state"] not in ("sequenced", "locked"):
@@ -311,7 +316,6 @@ class InMemoryDB:
                 f"The {signature_data=} has an invalid state.",
             )
             return False
-
         if not is_sync_point_signature_verified(
             app_name=app_name,
             state=signature_data["state"],
@@ -342,18 +346,19 @@ class InMemoryDB:
             )
             return False
 
-        if promotion_state == "finalized":
-            last_index = last_batch_record.get("index")
-            if last_batch_record and signature_data["parent_index"] != last_index:
-                zlogger.warning(
-                    f"Invalid parent index. {last_index=} {signature_data["parent_index"]=}"
-                )
-                return False
+        last_finalized_batch_record = self.get_last_operational_batch_record_or_empty(
+            app_name, "finalized"
+        )
 
-            prev_batch_record = last_batch_record
-            if not prev_batch_record:
-                prev_batch_record = self.get_batch_record_by_index_or_empty(app_name, 1)
-            prev_batch_record["batch"]["finalized_next_index"] = signature_data["index"]
+        last_finalized_index = last_finalized_batch_record.get("index")
+        if (
+            last_finalized_batch_record
+            and signature_data["parent_index"] != last_finalized_index
+        ):
+            zlogger.warning(
+                f"Invalid parent index. {last_finalized_index=} {signature_data["parent_index"]=}"
+            )
+            return False
 
         # Update target batch with finalization data
         target_batch = self.get_batch_record_by_index_or_empty(
@@ -374,22 +379,30 @@ class InMemoryDB:
             )
             return False
 
+        if promotion_state == "finalized":
+            if last_finalized_batch_record:
+                last_finalized_batch_record["batch"]["next_index"] = signature_data[
+                    "index"
+                ]
+            else:
+                self.first_finalized_index = signature_data["index"]
+
+        self.save_log(
+            f"{promotion_state=} {signature_data["index"]=} {signature_data["parent_index"]=}"
+        )
         target_batch.update(
             {
-                f"{promotion_state}_parent_index": signature_data["parent_index"],
+                "parent_index": signature_data["parent_index"],
                 f"{promotion_state}_signature": signature_data["signature"],
                 f"{promotion_state}_nonsigners": signature_data["nonsigners"],
                 f"{promotion_state}_tag": signature_data["tag"],
-                f"{promotion_state}_timestamp": signature_data["timestamp"],
+                "timestamp": signature_data["timestamp"],
             }
         )
 
         # Promote batches to finalized state
         self.apps[app_name]["operational_batch_sequence"].promote(
             last_index=signature_data["index"], target_state=promotion_state
-        )
-        last_locked = self.get_last_operational_batch_record_or_empty(
-            app_name, "locked"
         )
         if promotion_state == "finalized":
             self._store_snapshot(app_name, only_if_size_exceeds=True)
