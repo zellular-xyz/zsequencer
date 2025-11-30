@@ -235,7 +235,7 @@ class Config:
 
         os.makedirs(self.SNAPSHOT_PATH, exist_ok=True)
 
-        if urlparse(self.NODE["socket"]).port != self.PORT:
+        if self.CHECK_REACHABILITY_OF_NODE_URL and urlparse(self.NODE["socket"]).port != self.PORT:
             zlogger.warning(
                 f"The node port in the .env file does not match the node port provided by {self.NODE_SOURCE.value}.",
             )

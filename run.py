@@ -54,7 +54,7 @@ def base_redirect() -> RedirectResponse:
 async def run_node_tasks() -> None:
     """Run node tasks in a loop."""
     while not shutdown_event.is_set():
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
         if zconfig.NODE["id"] == zconfig.SEQUENCER["id"] or zconfig.is_paused:
             continue
         if not zdb.is_node_reachable:

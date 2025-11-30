@@ -84,7 +84,7 @@ class SequencerManager:
         if (
             100 * sequencers_stake[max_stake_id] / total_stake
             >= zconfig.THRESHOLD_PERCENT
-        ):
+        ) and (max_stake_id, max_stake_id) in results:
             return max_stake_id
         else:
             return None
@@ -109,6 +109,9 @@ class SequencerManager:
         zlogger.warning(f"Sequencer reset to {network_sequencer}")
         for app_name in zdb.apps:
             zdb.reinitialize_sequenced_batches(app_name=app_name)
+            zdb.apps[app_name]["nodes_state"] = {}
+            zdb.reset_latency_queue(app_name)
+
         if zconfig.is_sequencer:
             zlogger.info(
                 f"This node is acting as the SEQUENCER. ID: {zconfig.NODE['id']}"

@@ -29,11 +29,14 @@ class App(TypedDict, total=False):
 
 
 class SignatureData(TypedDict, total=False):
+    state: str
     index: int
     chaining_hash: str
     signature: str
     nonsigners: list[str]
     tag: int
+    timestamp: int
+    parent_index: int
 
 
 class InMemoryDB:
@@ -53,6 +56,7 @@ class InMemoryDB:
             app_names=list(zconfig.APPS.keys()),
         )
         self.apps = {}
+        self.first_finalized_index = None
 
     async def initialize(self) -> None:
         await self._snapshot_manager.initialize()
@@ -301,95 +305,68 @@ class InMemoryDB:
                 {"body": batch_body, "chaining_hash": chaining_hash}
             )
 
-    def lock_batches(self, app_name: str, signature_data: SignatureData) -> bool:
-        """Update batches to 'locked' state up to a specified index."""
+    def save_log(self, s):
+        with open(zconfig.SNAPSHOT_PATH + "/promotion_logs.txt", "a") as f:
+            f.write(s + "\n")
+
+    def promote_batches(self, app_name: str, signature_data: SignatureData) -> bool:
+        """Update batches to 'finalized' or 'locked' state up to a specified index"""
+        if signature_data["state"] not in ("sequenced", "locked"):
+            zlogger.warning(
+                f"The {signature_data=} has an invalid state.",
+            )
+            return False
         if not is_sync_point_signature_verified(
             app_name=app_name,
-            state="sequenced",
+            state=signature_data["state"],
             index=signature_data["index"],
             chaining_hash=signature_data["chaining_hash"],
             tag=signature_data["tag"],
+            timestamp=signature_data["timestamp"],
+            parent_index=signature_data["parent_index"],
             signature_hex=signature_data["signature"],
             nonsigners=signature_data["nonsigners"],
         ):
             zlogger.warning(
-                f"The locking {signature_data=} can not be verified.",
+                f"The {signature_data=} can not be verified.",
             )
             return False
 
-        if signature_data["index"] <= self.apps[app_name][
-            "operational_batch_sequence"
-        ].get_last_index_or_default(
-            "locked",
-            default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET,
+        promotion_state = (
+            "locked" if signature_data["state"] == "sequenced" else "finalized"
+        )
+        last_batch_record = self.get_last_operational_batch_record_or_empty(
+            app_name, promotion_state
+        )
+
+        # Skip if already promoted or batch not found
+        if last_batch_record and signature_data["index"] <= last_batch_record["index"]:
+            zlogger.warning(
+                f"The {signature_data=} is old.",
+            )
+            return False
+
+        last_finalized_batch_record = self.get_last_operational_batch_record_or_empty(
+            app_name, "finalized"
+        )
+
+        last_finalized_index = last_finalized_batch_record.get("index")
+        if (
+            last_finalized_index
+            and signature_data["parent_index"] != last_finalized_index
         ):
             zlogger.warning(
-                f"The locking {signature_data=} is old.",
+                f"Invalid parent index. {last_finalized_index=} {signature_data["parent_index"]=}"
             )
             return False
 
-        target_batch = self.get_batch_record_by_index_or_empty(
-            app_name,
-            signature_data["index"],
-        ).get("batch", {})
-
-        if not target_batch:
-            zlogger.warning(
-                f"The locking {signature_data=} couldn't be found in the "
-                "operational batches.",
-            )
-            return False
-
-        if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
-            zlogger.warning(
-                "The chaining hash on the locking signature does not match the corrosponding batch"
-                f"in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
-            )
-            return False
-
-        target_batch["lock_signature"] = signature_data["signature"]
-        target_batch["locked_nonsigners"] = signature_data["nonsigners"]
-        target_batch["locked_tag"] = signature_data["tag"]
-        self.apps[app_name]["operational_batch_sequence"].promote(
-            last_index=signature_data["index"],
-            target_state="locked",
-        )
-        return True
-
-    def finalize_batches(self, app_name: str, signature_data: SignatureData) -> bool:
-        """
-        Update batches to 'finalized' state up to a specified index and save snapshots.
-        Snapshots are created when accumulated batch sizes exceed SNAPSHOT_SIZE_KB.
-        """
-        if not is_sync_point_signature_verified(
-            app_name=app_name,
-            state="locked",
-            index=signature_data["index"],
-            chaining_hash=signature_data["chaining_hash"],
-            tag=signature_data["tag"],
-            signature_hex=signature_data["signature"],
-            nonsigners=signature_data["nonsigners"],
-        ):
-            zlogger.warning(
-                f"The finalizing {signature_data=} can not be verified.",
-            )
-            return False
-
-        signature_finalized_index = signature_data.get(
-            "index", BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
-        )
-        last_finalized_index = self.apps[app_name][
-            "operational_batch_sequence"
-        ].get_last_index_or_default(
-            "finalized", default=BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
-        )
-
-        # Skip if already finalized or batch not found
-        if signature_finalized_index <= last_finalized_index:
-            zlogger.warning(
-                f"The finalizing {signature_data=} is old.",
-            )
-            return False
+        if promotion_state == "locked" and last_batch_record:
+            last_locked_index = last_batch_record["index"]
+            if last_locked_index != last_finalized_index:
+                zlogger.warning(
+                    f"Can not lock a new index before the previous locked one is finalized. {last_finalized_index=} {last_locked_index=}"
+                )
+                return False
 
         # Update target batch with finalization data
         target_batch = self.get_batch_record_by_index_or_empty(
@@ -399,31 +376,46 @@ class InMemoryDB:
 
         if not target_batch:
             zlogger.warning(
-                f"The finalizing {signature_data=} couldn't be found in the operational batches."
+                f"The {signature_data=} couldn't be found in the operational batches."
             )
             return False
 
         if signature_data["chaining_hash"] != target_batch["chaining_hash"]:
             zlogger.warning(
-                "The chaining hash on the finalizing signature does not match the corrosponding batch"
-                f"in the operational batches!\nSignature: {signature_data}\nBatch: {target_batch}"
+                "The chaining hash on the signature does not match the corrosponding batch"
+                f"in the operational batches!\n{signature_data=}\n{target_batch=}"
             )
             return False
 
+        if promotion_state == "finalized":
+            if last_finalized_batch_record:
+                last_finalized_batch_record["batch"]["next_index"] = signature_data[
+                    "index"
+                ]
+            else:
+                self.first_finalized_index = signature_data["index"]
+
+        self.save_log(
+            f"{promotion_state=} {signature_data["index"]=} {signature_data["parent_index"]=}"
+        )
         target_batch.update(
             {
-                "finalization_signature": signature_data["signature"],
-                "finalized_nonsigners": signature_data["nonsigners"],
-                "finalized_tag": signature_data["tag"],
+                "parent_index": signature_data["parent_index"],
+                f"{promotion_state}_signature": signature_data["signature"],
+                f"{promotion_state}_nonsigners": signature_data["nonsigners"],
+                f"{promotion_state}_tag": signature_data["tag"],
+                "timestamp": signature_data["timestamp"],
             }
         )
 
         # Promote batches to finalized state
         self.apps[app_name]["operational_batch_sequence"].promote(
-            last_index=signature_finalized_index, target_state="finalized"
+            last_index=signature_data["index"], target_state=promotion_state
         )
-        self._store_snapshot(app_name, only_if_size_exceeds=True)
-        self._prune_old_finalized_batches(app_name)
+        if promotion_state == "finalized":
+            self._store_snapshot(app_name, only_if_size_exceeds=True)
+            self._prune_old_finalized_batches(app_name)
+
         return True
 
     def _store_snapshot(self, app_name, only_if_size_exceeds):

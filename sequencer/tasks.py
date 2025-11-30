@@ -1,5 +1,6 @@
 """This module handles synchronization processes for locked and finalized batches."""
 
+import time
 from typing import Any
 
 from common import bls
@@ -72,55 +73,65 @@ async def sync() -> None:
 
 async def sync_app(app_name: str) -> None:
     """Synchronize a specific app."""
+
+    last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name, "finalized"
+    ).get("index", 0)
+
+    last_locked_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name, "locked"
+    ).get("index", 0)
+
     locked_sync_point: dict[str, Any] | None = find_locked_sync_point(app_name)
-    if locked_sync_point:
+
+    if locked_sync_point and last_locked_index == last_finalized_index:
         locked_data = {
             "app_name": app_name,
             "state": "sequenced",
             "index": locked_sync_point["state"]["sequenced_index"],
             "chaining_hash": locked_sync_point["state"]["sequenced_chaining_hash"],
+            "timestamp": 0,
+            "parent_index": last_finalized_index,
         }
-        lock_signature: (
+        locked_signature: (
             dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=locked_data,
             node_ids=locked_sync_point["party"],
         )
-
-        if lock_signature:
-            locked_data.update(lock_signature)
+        if locked_signature:
+            locked_data.update(locked_signature)
             locked_data = {
                 key: value
                 for key, value in locked_data.items()
                 if key in SignatureData.__annotations__
             }
             zdb.upsert_locked_sync_point(app_name=app_name, signature_data=locked_data)
-            zdb.lock_batches(
+
+            zdb.promote_batches(
                 app_name=app_name,
                 signature_data=locked_data,
             )
 
-    ############################################################
-    ############################################################
-    ############################################################
-    ############################################################
-
     finalized_sync_point: dict[str, Any] | None = find_finalized_sync_point(app_name)
     if finalized_sync_point:
+        timestamp = int(time.time())
         finalized_data = {
             "app_name": app_name,
             "state": "locked",
             "index": finalized_sync_point["state"]["locked_index"],
             "chaining_hash": finalized_sync_point["state"]["locked_chaining_hash"],
+            "timestamp": timestamp,
+            "parent_index": last_finalized_index,
         }
-        finalization_signature: (
+        finalized_signature: (
             dict[str, Any] | None
         ) = await bls.gather_and_aggregate_signatures(
             data=finalized_data,
             node_ids=finalized_sync_point["party"],
         )
-        if finalization_signature:
-            finalized_data.update(finalization_signature)
+        if finalized_signature:
+            finalized_data.update(finalized_signature)
             finalized_data = {
                 key: value
                 for key, value in finalized_data.items()
@@ -130,7 +141,7 @@ async def sync_app(app_name: str) -> None:
                 app_name=app_name,
                 signature_data=finalized_data,
             )
-            zdb.finalize_batches(
+            zdb.promote_batches(
                 app_name=app_name,
                 signature_data=finalized_data,
             )

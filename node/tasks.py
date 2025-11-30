@@ -70,6 +70,10 @@ async def send_app_batches(app_name: str) -> int:
         app_name=app_name,
         state="locked",
     )
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=app_name,
+        state="finalized",
+    )
 
     request = SequencerPutBatchesRequest(
         app_name=app_name,
@@ -84,6 +88,7 @@ async def send_app_batches(app_name: str) -> int:
             "chaining_hash",
             "",
         ),
+        finalized_index=last_finalized_batch_record.get("index", 0),
         timestamp=int(time.time()),
     )
 
@@ -106,8 +111,8 @@ async def send_app_batches(app_name: str) -> int:
             # This can happen if the node misses a switch request because of a reason like connectivity issues
             if response["error"]["code"] == IsNotSequencerError.__name__:
                 await zsequencer_manager.reset_sequencer()
-
-            zdb.is_sequencer_down = True
+            else:
+                zdb.is_sequencer_down = True
             return BatchSequence.BEFORE_GLOBAL_INDEX_OFFSET
 
         try_acquire_rate_limit_of_self_node(batch_bodies)
@@ -144,29 +149,30 @@ def sync_with_sequencer(
         app_name=app_name,
         batch_bodies=sequencer_response["batches"],
     )
+
+    last_sequenced_index = zdb.get_last_operational_batch_record_or_empty(
+        app_name,
+        "sequenced",
+    ).get("index", 0)
     last_locked_index = zdb.get_last_operational_batch_record_or_empty(
         app_name,
         "locked",
     ).get("index", 0)
-    if sequencer_response["locked"]["index"] > last_locked_index:
-        locking_result = zdb.lock_batches(
-            app_name=app_name,
-            signature_data=sequencer_response["locked"],
-        )
-        if not locking_result:
+
+    locked_signature = sequencer_response["last_locked_signature"]
+    if (
+        locked_signature
+        and last_locked_index < locked_signature["index"] <= last_sequenced_index
+    ):
+        result = zdb.promote_batches(app_name, locked_signature)
+        if not result:
             zlogger.error("Invalid locking signature received from sequencer")
 
-    last_finalized_index = zdb.get_last_operational_batch_record_or_empty(
-        app_name,
-        "finalized",
-    ).get("index", 0)
-    if sequencer_response["finalized"]["index"] > last_finalized_index:
-        finalizing_result = zdb.finalize_batches(
-            app_name=app_name,
-            signature_data=sequencer_response["finalized"],
-        )
-        if not finalizing_result:
+    for finalized_signature in sequencer_response["finalized_signatures"]:
+        result = zdb.promote_batches(app_name, finalized_signature)
+        if not result:
             zlogger.error("Invalid finalizing signature received from sequencer")
+            break
 
     current_time = int(time.time())
     for state in ("sequenced", "finalized"):
@@ -183,23 +189,56 @@ def sync_with_sequencer(
 
 def sign_sync_point(sync_point: dict[str, Any]) -> str:
     """Confirm and sign the sync point"""
+    if sync_point["state"] == "locked":
+        now = time.time()
+        if not (now - 10 < sync_point["timestamp"] < now + 10):
+            raise InvalidRequestError(
+                f"Sync point timestamp out of range! {sync_point=}, {now=}"
+            )
+    else:
+        if sync_point["timestamp"] != 0:
+            raise InvalidRequestError(
+                f"Sync point timestamp should be 0 for locking signature! {sync_point=}"
+            )
+
+    last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=sync_point["app_name"],
+        state="finalized",
+    )
+    last_finalized_batch = last_finalized_batch_record.get("batch")
+    if last_finalized_batch:
+        if (
+            sync_point["state"] == "locked"
+            and last_finalized_batch["timestamp"] > sync_point["timestamp"]
+        ):
+            raise InvalidRequestError(
+                f"Sync point timestamps should be incremental. {sync_point=}, {last_finalized_batch=}"
+            )
+
+        if sync_point["parent_index"] != last_finalized_batch_record["index"]:
+            raise InvalidRequestError(
+                f"Sync point parent is {sync_point['parent_index']} while it should be {last_finalized_batch_record['index']}"
+            )
+
     batch_record = zdb.get_batch_record_by_index_or_empty(
         sync_point["app_name"],
         sync_point["index"],
     )
     batch = batch_record.get("batch", {})
+
     if (
         batch.get("chaining_hash") != sync_point["chaining_hash"]
         or not is_state_before_or_equal(sync_point["state"], batch_record["state"])
         or batch_record["index"] != sync_point["index"]
     ):
-        zlogger.debug(
+        zlogger.warning(
             "Invalid sync point reasons: "
             f"{(batch.get("chaining_hash") != sync_point["chaining_hash"])=} "
             f"{(not is_state_before_or_equal(sync_point["state"], batch_record["state"]))=} "
             f"{(batch_record['index'] != sync_point['index'])=}"
         )
         raise InvalidRequestError(f"Invalid sync point. {sync_point=}, {batch_record=}")
+
     message = utils.gen_hash(json.dumps(sync_point, sort_keys=True))
     signature = bls.bls_sign(message)
     return signature

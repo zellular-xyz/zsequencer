@@ -24,10 +24,13 @@ class StatefulBatch(BaseModel):
     app_name: str
     body: str
     chaining_hash: str
-    lock_signature: str | None
+    parent_index: int | None
+    next_index: int | None
+    timestamp: int | None
+    locked_signature: str | None
     locked_nonsigners: list[str] | None
     locked_tag: int | None
-    finalization_signature: str | None
+    finalized_signature: str | None
     finalized_nonsigners: list[str] | None
     finalized_tag: int | None
     index: int
@@ -73,7 +76,9 @@ class SignSyncPointRequest(BaseModel):
     app_name: str
     state: str
     index: int
+    parent_index: int
     chaining_hash: str
+    timestamp: int
 
 
 class SignSyncPointData(BaseModel):
@@ -82,7 +87,9 @@ class SignSyncPointData(BaseModel):
     app_name: str
     state: str
     index: int
+    parent_index: int
     chaining_hash: str
+    timestamp: int
     signature: str
 
 
@@ -163,11 +170,14 @@ class NodeStateResponse(SuccessResponse):
 class BatchSignatureInfo(BaseModel):
     """Cryptographic proof and metadata about batch consensus status."""
 
+    state: str
     signature: str
     chaining_hash: str
     nonsigners: list[str]
     index: int
+    parent_index: int
     tag: int
+    timestamp: int
 
 
 class GetAppLastBatchResponse(SuccessResponse):
@@ -187,8 +197,7 @@ class GetBatchesData(BaseModel):
 
     batches: list[str]
     first_chaining_hash: str
-    finalized: BatchSignatureInfo | None = None
-    locked: BatchSignatureInfo | None = None
+    finalized_signatures: list[BatchSignatureInfo]
 
 
 class GetBatchesResponse(SuccessResponse):
@@ -209,16 +218,17 @@ class SequencerPutBatchesRequest(BaseModel):
     sequenced_chaining_hash: str
     locked_index: int
     locked_chaining_hash: str
+    finalized_index: int
     timestamp: int
 
 
 class SequencerPutBatchesResponseData(BaseModel):
     """Response data containing both the node's submitted batches and batches from other nodes with their consensus state."""
 
-    batches: list[str] = Field(default_factory=list)
-    last_finalized_index: int = 0
-    finalized: BatchSignatureInfo = Field(default_factory=BatchSignatureInfo)
-    locked: BatchSignatureInfo = Field(default_factory=BatchSignatureInfo)
+    batches: list[str]
+    last_finalized_index: int
+    finalized_signatures: list[BatchSignatureInfo]
+    last_locked_signature: BatchSignatureInfo | None
 
 
 class SequencerPutBatchesResponse(SuccessResponse):
