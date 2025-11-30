@@ -18,6 +18,7 @@ from common.errors import (
     InvalidRequestError,
     PermissionDeniedError,
 )
+from common.logger import zlogger
 from config import zconfig
 from sequencer.rate_limit import try_acquire_rate_limit_of_other_nodes
 
@@ -67,43 +68,76 @@ async def _put_batches(
         app_name=request.app_name,
         batch_bodies=request.batches,
     )
+
     batch_sequence = await zdb.get_global_operational_batch_sequence(
         app_name=request.app_name,
         after=request.sequenced_index,
     )
+
+    last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
+        app_name=request.app_name,
+        state="locked",
+    )
+    if last_locked_batch_record:
+        last_locked_batch = last_locked_batch_record["batch"]
+        last_locked_signature = BatchSignatureInfo(
+            state="sequenced",
+            index=last_locked_batch_record["index"],
+            parent_index=last_locked_batch["parent_index"],
+            chaining_hash=last_locked_batch["chaining_hash"],
+            signature=last_locked_batch["locked_signature"],
+            nonsigners=last_locked_batch["locked_nonsigners"],
+            tag=last_locked_batch["locked_tag"],
+            timestamp=0,
+        )
+    else:
+        last_locked_signature = None
+
     last_finalized_batch_record = zdb.get_last_operational_batch_record_or_empty(
         app_name=request.app_name,
         state="finalized",
     )
     last_finalized_index = last_finalized_batch_record.get("index", 0)
-    last_locked_batch_record = zdb.get_last_operational_batch_record_or_empty(
-        app_name=request.app_name,
-        state="locked",
+
+    finalized_signatures = []
+
+    if request.finalized_index:
+        next_index = (
+            zdb.get_batch_record_by_index_or_empty(
+                app_name=request.app_name, index=request.finalized_index
+            )
+            .get("batch", {})
+            .get("next_index")
+        )
+    else:
+        next_index = zdb.first_finalized_index
+
+    zlogger.info(
+        f"{zconfig.NODES[node_id]['socket']} {request.finalized_index=} {next_index=}"
     )
-    if batch_sequence:
-        if batch_sequence.get_last_or_empty()[
-            "index"
-        ] < last_finalized_batch_record.get("index", 0):
-            last_finalized_batch_record = next(
-                (
-                    d
-                    for d in batch_sequence.records(reverse=True)
-                    if "finalization_signature" in d["batch"]
-                ),
-                {},
-            )
-        if batch_sequence.get_last_or_empty()["index"] < last_locked_batch_record.get(
-            "index",
-            0,
-        ):
-            last_locked_batch_record = next(
-                (
-                    d
-                    for d in batch_sequence.records(reverse=True)
-                    if "lock_signature" in d["batch"]
-                ),
-                {},
-            )
+    while next_index and (
+        not batch_sequence.has_any()
+        or next_index <= batch_sequence.get_last_index_or_default()
+    ):
+        batch = zdb.get_batch_record_by_index_or_empty(
+            app_name=request.app_name, index=next_index
+        )["batch"]
+
+        zlogger.info(f"{next_index=} {batch=}")
+
+        signature_info = BatchSignatureInfo(
+            state="locked",
+            index=next_index,
+            parent_index=batch["parent_index"],
+            chaining_hash=batch["chaining_hash"],
+            signature=batch["finalized_signature"],
+            nonsigners=batch["finalized_nonsigners"],
+            tag=batch["finalized_tag"],
+            timestamp=batch["timestamp"],
+        )
+        finalized_signatures.append(signature_info)
+        next_index = batch.get("next_index")
+
     zdb.upsert_node_state(
         {
             "app_name": request.app_name,
@@ -116,24 +150,9 @@ async def _put_batches(
         },
     )
 
-    last_finalized_batch = last_finalized_batch_record.get("batch", {})
-    last_locked_batch = last_locked_batch_record.get("batch", {})
-
     return SequencerPutBatchesResponseData(
         batches=[batch["body"] for batch in batch_sequence.batches()],
         last_finalized_index=last_finalized_index,
-        finalized=BatchSignatureInfo(
-            index=last_finalized_batch_record.get("index", 0),
-            chaining_hash=last_finalized_batch.get("chaining_hash", ""),
-            signature=last_finalized_batch.get("finalization_signature", ""),
-            nonsigners=last_finalized_batch.get("finalized_nonsigners", []),
-            tag=last_finalized_batch.get("finalized_tag", 0),
-        ),
-        locked=BatchSignatureInfo(
-            index=last_locked_batch_record.get("index", 0),
-            chaining_hash=last_locked_batch.get("chaining_hash", ""),
-            signature=last_locked_batch.get("lock_signature", ""),
-            nonsigners=last_locked_batch.get("locked_nonsigners", []),
-            tag=last_locked_batch.get("locked_tag", 0),
-        ),
+        finalized_signatures=finalized_signatures,
+        last_locked_signature=last_locked_signature,
     )

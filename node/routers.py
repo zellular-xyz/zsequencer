@@ -3,7 +3,7 @@
 import asyncio
 import time
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 
 from common import auth, bls, utils
 from common.api_models import (
@@ -143,14 +143,18 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
             "app_name": request.app_name,
             "state": request.state,
             "index": request.index,
+            "parent_index": request.parent_index,
             "chaining_hash": request.chaining_hash,
+            "timestamp": request.timestamp,
         }
     )
     response_data = SignSyncPointData(
         app_name=request.app_name,
         state=request.state,
         index=request.index,
+        parent_index=request.parent_index,
         chaining_hash=request.chaining_hash,
+        timestamp=request.timestamp,
         signature=signature,
     )
 
@@ -162,10 +166,13 @@ async def post_sign_sync_point(request: SignSyncPointRequest) -> SignSyncPointRe
     dependencies=[
         Depends(utils.validate_version("node")),
         Depends(utils.is_synced),
+        Depends(utils.not_paused),
         Depends(auth.verify_node_access),
     ],
 )
-async def post_dispute(request: DisputeRequest) -> DisputeResponse:
+async def post_dispute(
+    request: DisputeRequest, signer: str | None = Header(None)
+) -> DisputeResponse:
     """Report a dispute about sequencer issues and receive a signed confirmation."""
     if zconfig.is_sequencer and request.sequencer_id == zconfig.NODE["id"]:
         # Reject the dispute if the node is sequencer and the dispute is against it
@@ -193,6 +200,13 @@ async def post_dispute(request: DisputeRequest) -> DisputeResponse:
     now = int(time.time())
     if not (now - 5 <= request.timestamp <= now + 5):
         raise InvalidTimestampError()
+
+    zlogger.info(
+        f"approving dispute requested by {zconfig.NODES[signer]['socket']} on {zconfig.NODES[request.sequencer_id]['socket']} while sequencer is {zconfig.NODES[zconfig.SEQUENCER['id']]['socket']}."
+    )
+    zlogger.info(
+        f"{zdb.is_sequencer_censoring()=} {zdb.has_delayed_batches()=} {zdb.is_sequencer_down=}"
+    )
 
     message = utils.gen_hash(f"{request.sequencer_id}{request.timestamp}")
     signature = bls.bls_sign(message)
@@ -361,41 +375,26 @@ async def get_batches(
 
     first_chaining_hash = batch_sequence.get_first_or_empty()["batch"]["chaining_hash"]
 
-    finalized = next(
-        (
-            BatchSignatureInfo(
-                signature=b["batch"]["finalization_signature"],
-                chaining_hash=b["batch"]["chaining_hash"],
-                nonsigners=b["batch"]["finalized_nonsigners"],
-                index=b["index"],
-                tag=b["batch"]["finalized_tag"],
+    finalized_signatures = []
+    for batch_record in batch_sequence.records():
+        batch = batch_record["batch"]
+        if "finalized_signature" in batch:
+            signature_info = BatchSignatureInfo(
+                state="locked",
+                index=batch_record["index"],
+                chaining_hash=batch["chaining_hash"],
+                signature=batch["finalized_signature"],
+                nonsigners=batch["finalized_nonsigners"],
+                tag=batch["finalized_tag"],
+                timestamp=batch["timestamp"],
+                parent_index=batch["parent_index"],
             )
-            for b in batch_sequence.records(reverse=True)
-            if b["batch"].get("finalization_signature")
-        ),
-        None,
-    )
-
-    locked = next(
-        (
-            BatchSignatureInfo(
-                signature=b["batch"]["lock_signature"],
-                chaining_hash=b["batch"]["chaining_hash"],
-                nonsigners=b["batch"]["locked_nonsigners"],
-                index=b["index"],
-                tag=b["batch"]["locked_tag"],
-            )
-            for b in batch_sequence.records(reverse=True)
-            if b["batch"].get("lock_signature")
-        ),
-        None,
-    )
+            finalized_signatures.append(signature_info)
 
     response_data = GetBatchesData(
         batches=[b["body"] for b in batch_sequence.batches()],
         first_chaining_hash=first_chaining_hash,
-        finalized=finalized,
-        locked=locked,
+        finalized_signatures=finalized_signatures,
     )
 
     return GetBatchesResponse(data=response_data)

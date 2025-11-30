@@ -245,9 +245,9 @@ async def _sync_with_latest_locks() -> None:
             )
             last_locked_batch = last_locked_batch_record.get("batch")
             # does not need to process node-id with invalid last
-            if "lock_signature" not in last_locked_batch:
+            if "locked_signature" not in last_locked_batch:
                 zlogger.warning(
-                    f"Node id: {node_id} claiming locked signature on index : {last_locked_batch_record.get('index')} does not have lock signature."
+                    f"Node id: {node_id} claiming locked signature on index: {last_locked_batch_record.get('index')} does not have lock signature. {last_locked_batch_record=}"
                 )
                 continue
 
@@ -275,7 +275,9 @@ async def _sync_with_latest_locks() -> None:
                 index=last_locked_batch_record.get("index"),
                 chaining_hash=last_locked_batch.get("chaining_hash"),
                 tag=last_locked_batch.get("locked_tag"),
-                signature_hex=last_locked_batch.get("lock_signature"),
+                timestamp=last_locked_batch.get("timestamp"),
+                parent_index=last_locked_batch.get("parent_index"),
+                signature_hex=last_locked_batch.get("locked_signature"),
                 nonsigners=last_locked_batch.get("locked_nonsigners") or [],
             ):
                 zlogger.warning(
@@ -288,7 +290,7 @@ async def _sync_with_latest_locks() -> None:
                 peer_node_id=node_id,
                 app_name=app_name,
                 self_node_last_locked_index=self_node_last_locked_batch_index,
-                target_locked_index=last_locked_batch_record["index"],
+                target_locked_batch_record=last_locked_batch_record,
             )
             if result:
                 # if the syncing process with claiming peer node was successful ,
@@ -300,7 +302,7 @@ async def _sync_with_peer_node(
     peer_node_id: str,
     app_name: str,
     self_node_last_locked_index: int,
-    target_locked_index: int,
+    target_locked_batch_record: BatchRecord,
 ) -> bool:
     peer_node_socket = zconfig.NODES[peer_node_id]["socket"]
     after_index = self_node_last_locked_index
@@ -328,47 +330,49 @@ async def _sync_with_peer_node(
             return False
 
         batch_bodies = data["data"]["batches"]
-        if not batch_bodies:
-            return False
-
-        locked_signature_info = data["data"]["locked"]
-        finalized_signature_info = data["data"]["finalized"]
-        last_page = (
-            after_index <= target_locked_index <= after_index + len(batch_bodies)
+        zlogger.info(
+            f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
         )
 
-        if last_page and not locked_signature_info:
-            zlogger.warning(
-                f"While syncing with peer node: {peer_node_id}, the last page which contains the claiming locked index does not contain any locked singature!"
-            )
+        if not batch_bodies:
             return False
 
         zdb.insert_sequenced_batch_bodies(app_name=app_name, batch_bodies=batch_bodies)
 
-        if locked_signature_info:
-            locking_result = zdb.lock_batches(
-                app_name=app_name,
-                signature_data=locked_signature_info,
+        last_sequenced_index = after_index + len(batch_bodies)
+        target_locked_batch = target_locked_batch_record["batch"]
+        if target_locked_batch_record["index"] <= last_sequenced_index:
+            result = zdb.promote_batches(
+                app_name,
+                {
+                    "state": "sequenced",
+                    "index": target_locked_batch_record["index"],
+                    "chaining_hash": target_locked_batch["chaining_hash"],
+                    "signature": target_locked_batch["locked_signature"],
+                    "nonsigners": target_locked_batch["locked_nonsigners"],
+                    "tag": target_locked_batch["locked_tag"],
+                    "timestamp": target_locked_batch["timestamp"],
+                },
             )
-            if not locking_result:
-                zlogger.warning(
-                    f"peer node id: {peer_node_id} contains invalid lock signature on index: {locked_signature_info.get('index')}"
-                )
+            if not result:
+                zlogger.error("Invalid locking signature received from sequencer")
                 return False
-        if finalized_signature_info:
-            finalizing_result = zdb.finalize_batches(
+
+        finalized_signatures = data["data"]["finalized_signatures"]
+        for signature_info in finalized_signatures:
+            if not zdb.promote_batches(
                 app_name=app_name,
-                signature_data=finalized_signature_info,
-            )
-            if not finalizing_result:
+                signature_data=signature_info,
+            ):
                 zlogger.warning(
-                    f"peer node id: {peer_node_id} contains invalid finalized signature on index: {finalized_signature_info.get('index')}"
+                    f"peer node id: {peer_node_id} contains invalid signature on index: {signature_info.get('index')}"
                 )
                 return False
 
-        zlogger.info(
-            f"Fetched {len(batch_bodies)} new batches from peer node {peer_node_id} for app {app_name}, continuing from index {after_index}"
+        last_page = (
+            after_index <= target_locked_batch_record["index"] <= last_sequenced_index
         )
+
         if last_page:
             return True
 
